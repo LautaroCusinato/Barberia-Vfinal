@@ -9,9 +9,6 @@ const hasRealCredentials =
   !url.includes('tu-proyecto.supabase.co') &&
   key !== 'tu-anon-key-publica'
 
-// Si no cargaste las variables de entorno todavia, el dashboard sigue
-// funcionando con datos de ejemplo (ver src/data/mockData.js).
-// Apenas completes .env con tu proyecto real de Supabase, esto se activa solo.
 export const isSupabaseConfigured = Boolean(hasRealCredentials)
 
 export const supabase = isSupabaseConfigured ? createClient(url, key) : null

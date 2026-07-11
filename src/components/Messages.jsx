@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MessageCircleOff, ChevronLeft, Search, Send, X } from 'lucide-react'
+import { MessageCircleOff, ChevronLeft, Search, Send, X, Phone, Bot, User } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { normalizar } from '../lib/text'
 
@@ -10,10 +10,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   const [query, setQuery] = useState('')
   const threadRef = useRef(null)
 
-  // Busca tanto en el nombre del cliente como en el texto de los
-  // mensajes, asi el dueño puede encontrar una conversacion aunque no
-  // se acuerde bien el nombre pero si algo puntual que se dijo.
-  const conversacionesFiltradas = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = normalizar(query.trim())
     if (!q) return conversaciones
     return conversaciones.filter((c) => {
@@ -40,22 +37,11 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     }
   }
 
-  // Siempre arranca mostrando el último mensaje (como cualquier chat),
-  // no el primero de la conversación.
   useEffect(() => {
     if (threadRef.current) {
       threadRef.current.scrollTop = threadRef.current.scrollHeight
     }
   }, [selected?.id, selected?.mensajes?.length])
-
-  if (conversaciones.length === 0) {
-    return (
-      <div className="empty-state">
-        <MessageCircleOff size={26} style={{ color: 'var(--border-strong)' }} />
-        <p>Todavia no hay conversaciones registradas</p>
-      </div>
-    )
-  }
 
   const selectConversation = (id) => {
     onSelectConversation(id)
@@ -63,11 +49,22 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   }
 
   if (!full) {
+    // Modo compacto (resumen)
+    if (conversaciones.length === 0) {
+      return (
+        <div className="empty-state">
+          <MessageCircleOff size={26} style={{ color: 'var(--border-strong)' }} />
+          <p>Sin conversaciones recientes</p>
+        </div>
+      )
+    }
     return (
       <div className="conv-list">
-        {conversaciones.map((c) => (
+        {conversaciones.slice(0, 4).map((c) => (
           <div key={c.id} className="conv-item" onClick={() => onSelectConversation(c.id)}>
-            <div className="avatar" style={{ background: colorFor(c.paciente) }}>{initials(c.paciente)}</div>
+            <div className="avatar" style={{ background: colorFor(c.paciente), width: 28, height: 28, fontSize: 10 }}>
+              {initials(c.paciente)}
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="conv-top">
                 <p className="conv-name">{c.paciente}</p>
@@ -82,8 +79,19 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     )
   }
 
+  // Vista completa
+  if (conversaciones.length === 0) {
+    return (
+      <div className="empty-state" style={{ marginTop: 60 }}>
+        <MessageCircleOff size={32} style={{ color: 'var(--border-strong)' }} />
+        <p>No hay conversaciones registradas</p>
+      </div>
+    )
+  }
+
   return (
     <div className="messages-grid-full">
+      {/* Lista de conversaciones */}
       <div className={`panel conv-panel ${mobileThreadOpen ? 'mobile-hide' : ''}`} style={{ padding: '0.6rem' }}>
         <div className="search-bar conv-search">
           <Search size={16} style={{ color: 'var(--ink-faint)' }} />
@@ -94,20 +102,20 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
             onChange={(e) => setQuery(e.target.value)}
           />
           {query && (
-            <button className="btn-icon-plain" onClick={() => setQuery('')} aria-label="Limpiar busqueda">
+            <button className="btn-icon-plain" onClick={() => setQuery('')}>
               <X size={15} />
             </button>
           )}
         </div>
 
-        {conversacionesFiltradas.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="empty-state">
             <Search size={22} style={{ color: 'var(--border-strong)' }} />
-            <p>Sin resultados para "{query}"</p>
+            <p>Sin resultados</p>
           </div>
         ) : (
-          <div className="conv-list">
-            {conversacionesFiltradas.map((c) => (
+          <div className="conv-list-scroll">
+            {filtered.map((c) => (
               <div
                 key={c.id}
                 className={`conv-item ${c.id === selected?.id ? 'selected' : ''}`}
@@ -128,29 +136,48 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
         )}
       </div>
 
+      {/* Hilo de conversación */}
       {selected && (
         <div className={`panel thread-panel ${!mobileThreadOpen ? 'mobile-hide' : ''}`}>
           <button className="mobile-back-btn" onClick={() => setMobileThreadOpen(false)}>
             <ChevronLeft size={15} />
             Conversaciones
           </button>
+
           <div className="thread-header">
             <div className="thread-header-info">
-              <div className="avatar" style={{ background: colorFor(selected.paciente) }}>{initials(selected.paciente)}</div>
+              <div className="avatar" style={{ background: colorFor(selected.paciente) }}>
+                {initials(selected.paciente)}
+              </div>
               <div>
                 <p className="thread-header-name">{selected.paciente}</p>
-                <p className="thread-header-phone">Conversación de WhatsApp</p>
+                <p className="thread-header-phone">WhatsApp</p>
               </div>
             </div>
             <span className="badge badge-muted">WhatsApp</span>
           </div>
+
           <div className="thread" ref={threadRef}>
-            {selected.mensajes.map((m, i) => (
-              <div key={i} className={`bubble ${m.de === 'paciente' ? 'in' : m.de === 'clinica' ? 'out' : 'bot'}`}>
-                {m.texto}
-                <div className="bubble-meta">{m.de === 'bot' ? 'Bot · ' : m.de === 'clinica' ? 'Vos · ' : ''}{m.hora}</div>
+            {selected.mensajes.length === 0 ? (
+              <div className="empty-state" style={{ padding: '1rem' }}>
+                <MessageCircleOff size={22} style={{ color: 'var(--border-strong)' }} />
+                <p>Sin mensajes en esta conversación</p>
               </div>
-            ))}
+            ) : (
+              selected.mensajes.map((m, i) => (
+                <div key={i} className={`bubble ${m.de === 'paciente' ? 'in' : m.de === 'clinica' ? 'out' : 'bot'}`}>
+                  <div className="bubble-header">
+                    {m.de === 'bot' && <Bot size={10} />}
+                    {m.de === 'clinica' && <User size={10} />}
+                  </div>
+                  <p className="bubble-text">{m.texto}</p>
+                  <div className="bubble-meta">
+                    {m.de === 'bot' ? 'Bot · ' : m.de === 'clinica' ? 'Vos · ' : ''}
+                    {m.hora}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {onSendMessage && (
@@ -168,8 +195,8 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                 className="btn btn-primary"
                 onClick={enviar}
                 disabled={!draft.trim() || sending}
-                aria-label="Enviar mensaje"
-                title="Enviar (apaga el bot automáticamente)"
+                aria-label="Enviar"
+                title="Enviar (desactiva el bot)"
               >
                 <Send size={14} strokeWidth={2.5} />
               </button>

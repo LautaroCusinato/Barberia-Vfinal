@@ -37,10 +37,6 @@ export default function Stats({ turnos, pacientes, conversaciones, todayKey, bar
 
   const maxIngresoBarbero = Math.max(1, ...ingresosPorBarbero.map((b) => b.total))
 
-  // Se cuenta por el estado ya normalizado (statusMeta), asi un turno
-  // viejo que haya quedado con un estado heredado del panel dental
-  // (pendiente, llego, en_atencion, cancelado) cae en uno de los 3
-  // baldes reales en vez de aparecer como una categoria aparte.
   const porEstado = useMemo(() => {
     const counts = {}
     for (const t of turnos) {
@@ -77,9 +73,6 @@ export default function Stats({ turnos, pacientes, conversaciones, todayKey, bar
   }))
   const maxDia = Math.max(1, ...porDia.map((d) => d.count))
 
-  // Ya no existe un estado "pendiente" separado: un turno recien
-  // agendado nace en "confirmado" y ese es el que todavia esta activo
-  // (no se resolvio como atendido o no_asistio).
   const confirmadosTotal = turnos.filter((t) => statusMeta(t.estado).value === 'confirmado').length
 
   return (
@@ -168,8 +161,8 @@ export default function Stats({ turnos, pacientes, conversaciones, todayKey, bar
                     <span>{o.label}</span>
                     <span style={{ color: 'var(--ink-faint)' }}>{o.count}</span>
                   </div>
-                  <div style={{ height: 7, borderRadius: 100, background: 'var(--surface-muted)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${(o.count / maxEstado) * 100}%`, background: o.color, borderRadius: 100 }} />
+                  <div className="stat-bar">
+                    <div className="stat-bar-fill" style={{ width: `${(o.count / maxEstado) * 100}%`, background: o.color }} />
                   </div>
                 </div>
               ))}
@@ -191,8 +184,8 @@ export default function Stats({ turnos, pacientes, conversaciones, todayKey, bar
                     <span style={{ textTransform: 'capitalize' }}>{m.label}</span>
                     <span style={{ color: 'var(--ink-faint)' }}>{m.count}</span>
                   </div>
-                  <div style={{ height: 7, borderRadius: 100, background: 'var(--surface-muted)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${(m.count / maxMotivo) * 100}%`, background: 'var(--accent)', borderRadius: 100 }} />
+                  <div className="stat-bar">
+                    <div className="stat-bar-fill" style={{ width: `${(m.count / maxMotivo) * 100}%`, background: 'var(--accent)' }} />
                   </div>
                 </div>
               ))}
@@ -213,8 +206,8 @@ export default function Stats({ turnos, pacientes, conversaciones, todayKey, bar
                   <span>{b.label} <span style={{ color: 'var(--ink-faint)' }}>({b.turnos} cortes)</span></span>
                   <span style={{ color: 'var(--ink-faint)' }}>{money(b.total)}</span>
                 </div>
-                <div style={{ height: 7, borderRadius: 100, background: 'var(--surface-muted)', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${(b.total / maxIngresoBarbero) * 100}%`, background: b.color, borderRadius: 100 }} />
+                <div className="stat-bar">
+                  <div className="stat-bar-fill" style={{ width: `${(b.total / maxIngresoBarbero) * 100}%`, background: b.color }} />
                 </div>
               </div>
             ))}
@@ -226,20 +219,18 @@ export default function Stats({ turnos, pacientes, conversaciones, todayKey, bar
         <p className="panel-title">
           <span className="panel-title-icon">Turnos de los ultimos 8 dias</span>
         </p>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 120, paddingTop: 8 }}>
+        <div className="bar-chart-row">
           {porDia.map((d) => (
-            <div key={d.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)' }}>{d.count}</span>
+            <div key={d.key} className="bar-chart-col">
+              <span className="bar-chart-value">{d.count}</span>
               <div
+                className="bar-chart-bar"
                 style={{
-                  width: '100%',
-                  maxWidth: 34,
                   height: `${Math.max(6, (d.count / maxDia) * 88)}px`,
                   background: d.key === todayKey ? 'var(--accent)' : 'var(--accent-soft-2)',
-                  borderRadius: 5,
                 }}
               />
-              <span style={{ fontSize: 10, color: 'var(--ink-faint)' }}>{d.key.slice(8, 10)}/{d.key.slice(5, 7)}</span>
+              <span className="bar-chart-label">{d.key.slice(8, 10)}/{d.key.slice(5, 7)}</span>
             </div>
           ))}
         </div>

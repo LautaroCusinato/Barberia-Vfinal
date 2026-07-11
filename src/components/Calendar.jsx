@@ -32,11 +32,6 @@ function timeSlots(startHour = 9, endHour = 18, stepMin = 30) {
   return slots
 }
 
-// La vista "Semana" antes mostraba siempre 9 a 18hs fijo. Como los
-// barberos reales trabajan en distintas franjas (algunos hasta las
-// 19 o 20hs), cualquier turno fuera de ese rango quedaba agendado en
-// la base pero invisible en la planilla. Esta funcion calcula el
-// rango real a mostrar en base a los horarios de los barberos visibles.
 function calcularRangoSemana(barberos) {
   let minMin = null
   let maxMin = null
@@ -66,14 +61,17 @@ function floorToSlot(hora, stepMin = 30) {
   return `${fh}:${fm}`
 }
 
-// Hora de fin de un turno, para mostrar "10:00–10:50" en los tooltips
-// y que quede claro cuanto tiempo real ocupa (no solo el bloque de grilla).
 function horaFin(hora, duracionMin) {
   const [h, m] = hora.split(':').map(Number)
   const total = h * 60 + m + (Number(duracionMin) || 30)
   const fh = String(Math.floor(total / 60) % 24).padStart(2, '0')
   const fm = String(total % 60).padStart(2, '0')
   return `${fh}:${fm}`
+}
+
+function toMinutes(hora) {
+  const [h, m] = hora.split(':').map(Number)
+  return h * 60 + m
 }
 
 export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, onNewTurno, barberos = [] }) {
@@ -84,16 +82,6 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   const [barberoFiltro, setBarberoFiltro] = useState('')
   const [barberoMenuOpen, setBarberoMenuOpen] = useState(false)
   const barberoMenuRef = useRef(null)
-  const dayListRef = useRef(null)
-  const [dayListScrollState, setDayListScrollState] = useState({ scrolled: false, hasMore: false })
-
-  const checkDayListScroll = () => {
-    const el = dayListRef.current
-    if (!el) return
-    const scrolled = el.scrollTop > 2
-    const hasMore = el.scrollTop + el.clientHeight < el.scrollHeight - 2
-    setDayListScrollState({ scrolled, hasMore })
-  }
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -148,15 +136,10 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
 
   const selectedKey = format(selected, 'yyyy-MM-dd')
   const barberoNombre = (id) => barberos.find((b) => String(b.id) === String(id))?.nombre || 'Sin barbero'
+
   const turnosDelDia = (byDate[selectedKey] || [])
     .slice()
     .sort((a, b) => a.hora.localeCompare(b.hora) || barberoNombre(a.barbero_id).localeCompare(barberoNombre(b.barbero_id)))
-
-  useEffect(() => {
-    checkDayListScroll()
-    window.addEventListener('resize', checkDayListScroll)
-    return () => window.removeEventListener('resize', checkDayListScroll)
-  }, [turnosDelDia])
 
   const goPrevious = () => {
     if (viewMode === 'mes') {
@@ -179,6 +162,25 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   const goToday = () => {
     setMonth(initial)
     setSelected(initial)
+  }
+
+  // ===== FUNCIÓN PARA AGRUPAR TURNOS POR HORA EN UN SLOT =====
+  const getTurnosAgrupadosPorHora = (eventos, slot) => {
+    const slotMin = toMinutes(slot)
+    // Filtrar turnos que ocupan este slot
+    const activos = eventos.filter(t => {
+      const tMin = toMinutes(t.hora)
+      const tFin = tMin + (t.duracion || 30)
+      return slotMin >= tMin && slotMin < tFin
+    })
+    // Agrupar por hora de inicio exacta
+    const grupos = {}
+    activos.forEach(t => {
+      const key = t.hora
+      if (!grupos[key]) grupos[key] = []
+      grupos[key].push(t)
+    })
+    return grupos
   }
 
   return (
@@ -294,8 +296,6 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                     <div className="calendar-day-dots">
                       {eventos.slice(0, 4).map((ev) => {
                         const barbero = barberos.find((b) => String(b.id) === String(ev.barbero_id))
-                        // Un no-show se marca en rojo para que se note de un
-                        // vistazo en el mes, sin importar el color del barbero.
                         const noAsistio = statusMeta(ev.estado).value === 'no_asistio'
                         return (
                           <span
@@ -343,11 +343,29 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                   <div className="week-cell week-time-label">{slot}</div>
                   {weekDays.map((day) => {
                     const key = format(day, 'yyyy-MM-dd')
-                    const eventos = (byDate[key] || [])
-                      .filter((t) => floorToSlot(t.hora) === slot)
-                      .sort((a, b) => barberoNombre(a.barbero_id).localeCompare(barberoNombre(b.barbero_id)))
+                    const eventos = byDate[key] || []
+                    
+                    // ===== OBTENER TURNOS AGRUPADOS POR HORA =====
+                    const grupos = getTurnosAgrupadosPorHora(eventos, slot)
+                    const totalTurnos = Object.values(grupos).reduce((acc, arr) => acc + arr.length, 0)
                     const barberoUnico = barberoFiltro ? barberosVisibles[0] : null
                     const noAtiende = barberoUnico && !parseHorarioBarbero(barberoUnico.horario)?.[day.getDay()]
+                    
+                    if (totalTurnos === 0) {
+                      return (
+                        <div
+                          key={key + slot}
+                          className={`week-cell week-slot ${noAtiende ? 'week-day-off' : ''}`}
+                          onClick={() => {
+                            if (noAtiende) return
+                            setSelected(day)
+                            onNewTurno?.(key)
+                          }}
+                          style={{ minHeight: '52px', padding: '3px' }}
+                        />
+                      )
+                    }
+                    
                     return (
                       <div
                         key={key + slot}
@@ -357,31 +375,84 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                           setSelected(day)
                           onNewTurno?.(key)
                         }}
+                        style={{ 
+                          minHeight: `${20 + totalTurnos * 28}px`,
+                          padding: '3px',
+                          display: 'flex',
+                          flexDirection: 'row',
+                          flexWrap: 'wrap',
+                          gap: '3px',
+                          alignItems: 'stretch',
+                          alignContent: 'flex-start'
+                        }}
                       >
-                        {eventos.map((t) => {
-                          const meta = statusMeta(t.estado)
-                          const span = slotsOcupados(t.duracion, 30)
-                          return (
-                            <button
-                              key={t.id}
-                              className={`week-chip ${span > 1 ? 'week-chip--largo' : ''}`}
-                              style={{ background: meta.bg, color: meta.color }}
-                              onClick={(e) => { e.stopPropagation(); onEditTurno(t) }}
-                              title={`${t.hora}–${horaFin(t.hora, t.duracion)} · ${t.paciente} (${t.motivo}) · ${t.duracion || 30} min`}
-                            >
-                              <span className="week-chip-time">{t.hora}</span>
-                              <span className="week-chip-name">{t.paciente}</span>
-                              <span className="week-chip-barber">{barberoNombre(t.barbero_id)}</span>
-                              {span > 1 && <span className="week-chip-dur">{t.duracion}min</span>}
-                            </button>
-                          )
+                        {Object.entries(grupos).map(([hora, turnos]) => {
+                          // Calcular ancho basado en el número total de turnos en este slot
+                          const count = turnos.length
+                          let widthPercent
+                          if (totalTurnos === 1) {
+                            widthPercent = 100
+                          } else if (totalTurnos === 2) {
+                            widthPercent = 48
+                          } else if (totalTurnos === 3) {
+                            widthPercent = 31
+                          } else {
+                            widthPercent = Math.min(100 / totalTurnos - 1, 48)
+                          }
+                          
+                          return turnos.map((t, idx) => {
+                            const meta = statusMeta(t.estado)
+                            const span = slotsOcupados(t.duracion, 30)
+                            
+                            return (
+                              <button
+                                key={t.id}
+                                className={`week-chip ${span > 1 ? 'week-chip--largo' : ''}`}
+                                style={{ 
+                                  background: meta.bg, 
+                                  color: meta.color,
+                                  flex: `0 0 ${widthPercent}%`,
+                                  maxWidth: `${widthPercent}%`,
+                                  minHeight: totalTurnos > 1 ? '24px' : '32px',
+                                  borderRadius: '6px',
+                                  padding: totalTurnos > 1 ? '2px 4px' : '4px 8px',
+                                  fontSize: totalTurnos > 1 ? '9px' : '10px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  border: '1px solid rgba(0,0,0,0.08)',
+                                  transition: 'all 0.15s ease',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  justifyContent: 'center',
+                                  lineHeight: '1.2',
+                                  position: 'relative',
+                                  zIndex: 5,
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                }}
+                                onClick={(e) => { e.stopPropagation(); onEditTurno(t) }}
+                                title={`${t.hora}–${horaFin(t.hora, t.duracion)} · ${t.paciente} (${t.motivo}) · ${t.duracion || 30} min`}
+                              >
+                                <span className="week-chip-time" style={{ fontSize: totalTurnos > 1 ? '8px' : '10px', opacity: 0.8 }}>
+                                  {t.hora}
+                                </span>
+                                <span className="week-chip-name" style={{ fontSize: totalTurnos > 1 ? '9px' : '12px', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {t.paciente}
+                                </span>
+                                <span className="week-chip-barber" style={{ fontSize: totalTurnos > 1 ? '7px' : '10px', opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {barberoNombre(t.barbero_id)}
+                                </span>
+                                {span > 1 && <span className="week-chip-dur" style={{ fontSize: totalTurnos > 1 ? '7px' : '9px' }}>{t.duracion}min</span>}
+                              </button>
+                            )
+                          })
                         })}
                       </div>
                     )
                   })}
                 </div>
               ))}
-
             </div>
           </div>
         )}
@@ -410,21 +481,19 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               <p>No hay turnos para este dia</p>
             </div>
           ) : (
-            <div className={`day-side-list-wrap ${dayListScrollState.scrolled ? 'is-scrolled' : ''} ${dayListScrollState.hasMore ? 'has-more' : ''}`}>
-              <div className="day-side-list" ref={dayListRef} onScroll={checkDayListScroll}>
-                {turnosDelDia.map((t) => (
-                  <TurnoRow
-                    key={t.id}
-                    turno={t}
-                    onChangeEstado={onChangeEstado}
-                    onDeleteTurno={onDeleteTurno}
-                    onEditTurno={onEditTurno}
-                    notas={notas}
-                    onAddNota={onAddNota}
-                    barberos={barberos}
-                  />
-                ))}
-              </div>
+            <div className="day-side-list">
+              {turnosDelDia.map((t) => (
+                <TurnoRow
+                  key={t.id}
+                  turno={t}
+                  onChangeEstado={onChangeEstado}
+                  onDeleteTurno={onDeleteTurno}
+                  onEditTurno={onEditTurno}
+                  notas={notas}
+                  onAddNota={onAddNota}
+                  barberos={barberos}
+                />
+              ))}
             </div>
           )}
         </div>

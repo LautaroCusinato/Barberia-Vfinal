@@ -45,7 +45,7 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
         )}
       </div>
 
-      <div className="agenda-actions">
+      <div className="agenda-actions" style={{ flexShrink: 0 }}>
         <button
           className={`btn-icon-plain ${notasPaciente.length > 0 ? 'has-notes' : ''}`}
           onClick={() => { setNotesOpen((v) => !v); setConfirmDelete(false) }}

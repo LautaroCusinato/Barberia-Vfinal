@@ -33,40 +33,46 @@ export default function PatientDetailModal({ paciente, turnos, notas, onClose })
           </p>
         )}
 
-        <p className="panel-title" style={{ fontSize: 13, marginBottom: 8 }}>
-          <span className="panel-title-icon"><CalendarDays size={15} style={{ color: 'var(--accent)' }} />Turnos ({turnosDelPaciente.length})</span>
-        </p>
-        <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 18 }}>
-          {turnosDelPaciente.length === 0 ? (
-            <p className="note-popover-empty">Sin turnos registrados</p>
-          ) : (
-            turnosDelPaciente.map((t) => {
-              const meta = statusMeta(t.estado)
-              return (
-                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 2px', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 12, color: 'var(--ink-faint)', width: 88, flexShrink: 0 }}>{t.fecha} {t.hora}</span>
-                  <span style={{ fontSize: 12.5, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.motivo}</span>
-                  <span className="badge" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
-                </div>
-              )
-            })
-          )}
+        <div className="detail-section">
+          <p className="detail-section-title">
+            <CalendarDays size={14} />
+            Turnos ({turnosDelPaciente.length})
+          </p>
+          <div className="detail-scroll">
+            {turnosDelPaciente.length === 0 ? (
+              <p className="detail-empty">Sin turnos registrados</p>
+            ) : (
+              turnosDelPaciente.map((t) => {
+                const meta = statusMeta(t.estado)
+                return (
+                  <div key={t.id} className="detail-row">
+                    <span className="detail-date">{t.fecha} {t.hora}</span>
+                    <span className="detail-desc">{t.motivo}</span>
+                    <span className="badge" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
+                  </div>
+                )
+              })
+            )}
+          </div>
         </div>
 
-        <p className="panel-title" style={{ fontSize: 13, marginBottom: 8 }}>
-          <span className="panel-title-icon"><StickyNote size={15} style={{ color: 'var(--accent)' }} />Notas ({notasDelPaciente.length})</span>
-        </p>
-        <div style={{ maxHeight: 160, overflowY: 'auto' }}>
-          {notasDelPaciente.length === 0 ? (
-            <p className="note-popover-empty">Sin notas registradas</p>
-          ) : (
-            notasDelPaciente.map((n) => (
-              <div className="note-popover-item" key={n.id} style={{ marginBottom: 6 }}>
-                <p className="note-meta">{n.fecha}</p>
-                <p className="note-text">{n.texto}</p>
-              </div>
-            ))
-          )}
+        <div className="detail-section">
+          <p className="detail-section-title">
+            <StickyNote size={14} />
+            Notas ({notasDelPaciente.length})
+          </p>
+          <div className="detail-scroll">
+            {notasDelPaciente.length === 0 ? (
+              <p className="detail-empty">Sin notas registradas</p>
+            ) : (
+              notasDelPaciente.map((n) => (
+                <div className="detail-note" key={n.id}>
+                  <p className="note-meta">{n.fecha}</p>
+                  <p className="note-text">{n.texto}</p>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

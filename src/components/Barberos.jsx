@@ -33,13 +33,8 @@ export default function Barberos({
     return barberos.map((b) => {
       const mios = turnos.filter((t) => String(t.barbero_id) === String(b.id))
       const hoy = mios.filter((t) => t.fecha === todayKey)
-      // Solo se factura lo que ya se cobró: turnos que efectivamente se atendieron.
-      // Antes esto sumaba tambien pendientes/confirmados/en atencion, mostrando
-      // plata "cobrada" por turnos que todavia ni pasaron por el sillon.
       const atendidosHoy = hoy.filter((t) => statusMeta(t.estado).value === 'atendido')
       const ingresosHoy = atendidosHoy.reduce((acc, t) => acc + (Number(t.precio) || 0), 0)
-      // "Confirmados de hoy": turnos de hoy que todavia estan activos,
-      // ni atendidos ni marcados como no_asistio.
       const confirmadosHoy = hoy.filter((t) => statusMeta(t.estado).value === 'confirmado').length
 
       const futuros = mios
@@ -85,7 +80,7 @@ export default function Barberos({
   }, [seleccionado])
 
   return (
-    <div>
+    <div className="equipo-container">
       <div className="stats-row">
         <div className="stat-card">
           <div>
@@ -174,44 +169,51 @@ export default function Barberos({
       </div>
 
       {seleccionado && (
-        <div className="panel" style={{ marginTop: '1.15rem' }}>
-          <div className="day-panel-header">
-            <span className="day-panel-date">Agenda de {seleccionado.barbero.nombre}</span>
+        <div className="panel equipo-detalle">
+          <div className="equipo-detalle-header">
+            <span className="equipo-detalle-titulo">
+              <span className="ops-avatar" style={{ background: seleccionado.barbero.color }}>
+                {seleccionado.barbero.nombre.slice(0, 2).toUpperCase()}
+              </span>
+              Agenda de {seleccionado.barbero.nombre}
+            </span>
             <button className="link-btn" onClick={() => setSelectedId(null)}>
               <X size={13} strokeWidth={2.5} />
               Cerrar
             </button>
           </div>
-          <p className="day-panel-sub">
+          <p className="equipo-detalle-sub">
             {seleccionado.agenda.length === 0
               ? 'Sin turnos pendientes o futuros'
               : `${seleccionado.agenda.length} turno${seleccionado.agenda.length > 1 ? 's' : ''} por delante · ${seleccionado.totalAtendidos} atendidos en total · ${money(seleccionado.totalIngresos)} facturados`}
           </p>
 
-          {agendaAgrupada.length === 0 ? (
-            <div className="empty-state">
-              <CalendarCheck size={26} style={{ color: 'var(--border-strong)' }} />
-              <p>No hay turnos agendados para este barbero</p>
-            </div>
-          ) : (
-            agendaAgrupada.map(([fecha, items]) => (
-              <div key={fecha} style={{ marginBottom: 14 }}>
-                <p className="barbero-fecha-label">{fechaLegible(fecha, todayKey)}</p>
-                {items.map((t) => (
-                  <TurnoRow
-                    key={t.id}
-                    turno={t}
-                    onChangeEstado={onChangeEstado}
-                    onDeleteTurno={onDeleteTurno}
-                    onEditTurno={onEditTurno}
-                    notas={notas}
-                    onAddNota={onAddNota}
-                    barberos={barberos}
-                  />
-                ))}
+          <div className="equipo-detalle-lista">
+            {agendaAgrupada.length === 0 ? (
+              <div className="empty-state">
+                <CalendarCheck size={26} style={{ color: 'var(--border-strong)' }} />
+                <p>No hay turnos agendados para este barbero</p>
               </div>
-            ))
-          )}
+            ) : (
+              agendaAgrupada.map(([fecha, items]) => (
+                <div key={fecha} className="equipo-fecha-grupo">
+                  <p className="barbero-fecha-label">{fechaLegible(fecha, todayKey)}</p>
+                  {items.map((t) => (
+                    <TurnoRow
+                      key={t.id}
+                      turno={t}
+                      onChangeEstado={onChangeEstado}
+                      onDeleteTurno={onDeleteTurno}
+                      onEditTurno={onEditTurno}
+                      notas={notas}
+                      onAddNota={onAddNota}
+                      barberos={barberos}
+                    />
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>

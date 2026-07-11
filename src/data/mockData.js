@@ -35,9 +35,9 @@ export const mockServicios = [
 ]
 
 export const mockBarberos = [
-  { id: 1, nombre: 'Tomas Vega', rol: 'Barbero senior', color: '#9B6A2F', horario: 'Lun, Mar, Mié, Jue, Vie y Sáb 09:00-17:00', activo: true },
-  { id: 2, nombre: 'Mauro Silva', rol: 'Color y tijera', color: '#3E6F87', horario: 'Mar, Mié, Jue, Vie y Sáb 10:00-19:00', activo: true },
-  { id: 3, nombre: 'Diego Ramos', rol: 'Fade specialist', color: '#756080', horario: 'Lun, Mar, Mié, Jue y Vie 12:00-20:00', activo: true },
+  { id: 1, nombre: 'Tomas Vega', rol: 'Barbero senior', color: '#9B6A2F', horario: 'Lun, Mar, Mié, Jue, Vie y Sáb 09:00-17:00', activo: true, habilidades: ['corte_clasico', 'barba', 'fade'] },
+  { id: 2, nombre: 'Mauro Silva', rol: 'Color y tijera', color: '#3E6F87', horario: 'Mar, Mié, Jue, Vie y Sáb 10:00-19:00', activo: true, habilidades: ['corte_clasico', 'color', 'peinado'] },
+  { id: 3, nombre: 'Diego Ramos', rol: 'Fade specialist', color: '#756080', horario: 'Lun, Mar, Mié, Jue y Vie 12:00-20:00', activo: true, habilidades: ['fade', 'corte_barba', 'barba'] },
 ]
 
 export const mockBarberiaConfig = {

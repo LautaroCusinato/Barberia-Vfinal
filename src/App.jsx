@@ -29,33 +29,24 @@ import {
 const CLINIC_NAME = 'Barberia Central'
 const TZ = 'America/Argentina/Buenos_Aires'
 const THEME_KEY = 'barberia-central-theme'
-
-// Es una demo compartida: todos los que la prueban leen y escriben sobre
-// la MISMA fila de barberias. Si en algun momento hace falta separar por
-// cliente, esto pasa a resolverse por sesion/subdominio en vez de una
-// constante fija.
 const BARBERIA_ID = Number(import.meta.env.VITE_BARBERIA_ID) || 1
 
 function nextLocalId(items) {
   return Math.max(0, ...items.map((item) => Number(item.id) || 0)) + 1
 }
 
-// El schema real en Supabase usa nombres distintos a los que el panel
-// venia usando desde el mock (duracion_min, horario_texto, especialidad).
-// Estas funciones traducen en el borde entre la base y los componentes,
-// asi los componentes de UI no se enteran del detalle.
 function servicioFromDb(row) {
   return { ...row, duracion: row.duracion_min }
 }
+
 function barberoFromDb(row) {
   return { ...row, horario: row.horario_texto, rol: row.especialidad }
 }
+
 function turnoFromDb(row) {
   return { ...row, duracion: row.duracion_min }
 }
 
-// Fecha de "hoy" calculada siempre en el huso horario de la clínica,
-// sin importar en qué zona horaria esté el navegador de quien mira el panel.
 function todayInClinicTZ() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date())
 }
@@ -88,9 +79,6 @@ export default function App() {
   const [botActivo, setBotActivo] = useState(true)
   const [dbError, setDbError] = useState('')
 
-  // Cualquier operacion que falle contra Supabase queda visible en un
-  // banner en vez de desaparecer en silencio (antes ningun `await
-  // supabase...` revisaba `error`).
   const reportError = (mensaje, error) => {
     console.error(mensaje, error)
     setDbError(`${mensaje}: ${error?.message || 'error desconocido'}`)
@@ -121,8 +109,6 @@ export default function App() {
     setView('notas')
   }
 
-  // Cuando se navega desde el menú (no desde "ver notas" de un paciente
-  // puntual), limpiamos el filtro para no arrastrarlo de una visita anterior.
   const navigateFromMenu = (v) => {
     setNotasFiltro('')
     setView(v)
@@ -162,7 +148,13 @@ export default function App() {
       const { data, error } = await supabase
         .from('barberos').select('*').eq('barberia_id', BARBERIA_ID).order('nombre')
       if (error) reportError('No se pudieron cargar los barberos', error)
-      if (data) setBarberos(data.map(barberoFromDb))
+      if (data) {
+        const barberosConHabilidades = data.map(b => ({
+          ...barberoFromDb(b),
+          habilidades: b.habilidades ? JSON.parse(b.habilidades) : []
+        }))
+        setBarberos(barberosConHabilidades)
+      }
     }
 
     async function cargarConfig() {
@@ -206,11 +198,6 @@ export default function App() {
 
     cargarTodo()
 
-    // Cada tabla refresca solo su propio estado cuando cambia, en vez de
-    // volver a pedir las 5 tablas ante cualquier evento. Con varias
-    // personas probando la demo al mismo tiempo esto evita, por ejemplo,
-    // que un mensaje de WhatsApp entrante dispare tambien una relectura
-    // de turnos, notas y clientes que no cambiaron.
     const channel = supabase
       .channel('dashboard-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mensajes' }, () => cargarMensajes())
@@ -236,7 +223,6 @@ export default function App() {
     setNotas((prev) => [{ id: nextLocalId(prev), ...conFecha }, ...prev])
   }
 
-  // Marca como leída una conversación al abrirla.
   const openConversation = async (convId) => {
     setSelectedConversationId(convId)
     setView('mensajes')
@@ -256,7 +242,6 @@ export default function App() {
     }
   }
 
-  // El dueño de la clínica actualiza el estado de asistencia del turno.
   const updateTurnoEstado = async (turnoId, nuevoEstado) => {
     setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, estado: nuevoEstado } : t)))
     if (isSupabaseConfigured) {
@@ -265,7 +250,6 @@ export default function App() {
     }
   }
 
-  // Elimina un turno (con confirmación ya resuelta en el componente que llama esto).
   const deleteTurno = async (turnoId) => {
     setTurnos((prev) => prev.filter((t) => t.id !== turnoId))
     if (isSupabaseConfigured) {
@@ -274,11 +258,8 @@ export default function App() {
     }
   }
 
-  // El dueño agenda o edita un turno manualmente desde el dashboard.
   const saveTurno = async ({ paciente, telefono, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }, existingId) => {
     const payload = { paciente, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }
-    // `duracion` es como lo conocen los componentes; en la tabla real la
-    // columna se llama `duracion_min`, asi que se traduce aca antes de escribir.
     const dbPayload = { paciente, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion_min: duracion }
 
     if (existingId) {
@@ -318,7 +299,6 @@ export default function App() {
   const openEditTurno = (turno) => { setEditingTurno(turno); setTurnoFechaPrefijada(null); setNewTurnoOpen(true) }
   const closeTurnoModal = () => { setNewTurnoOpen(false); setEditingTurno(null); setTurnoFechaPrefijada(null) }
 
-  // El dueño edita el nombre o teléfono de un paciente ya cargado.
   const updatePaciente = async (id, cambios) => {
     setPacientes((prev) => prev.map((p) => (p.id === id ? { ...p, ...cambios } : p)))
     if (isSupabaseConfigured) {
@@ -327,7 +307,6 @@ export default function App() {
     }
   }
 
-  // Elimina un paciente del listado (no borra sus turnos/notas históricas).
   const deletePaciente = async (id) => {
     setPacientes((prev) => prev.filter((p) => p.id !== id))
     if (isSupabaseConfigured) {
@@ -352,11 +331,6 @@ export default function App() {
     }
   }
 
-  // El dueño (o quien atiende) manda un mensaje manual desde el panel.
-  // Al mandarlo, se apaga el bot automáticamente para que no se pise con
-  // la respuesta manual (el dueño lo puede reactivar cuando quiera desde
-  // el interruptor del menú). Esto queda GLOBAL a proposito (una sola
-  // barberia compartida): apaga el bot para todos, no solo esa conversación.
   const sendMensaje = async (paciente, texto) => {
     const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
     const nuevoMensaje = { paciente, texto, de: 'clinica', hora: horaActual, leido: true }
@@ -381,8 +355,6 @@ export default function App() {
     }
   }
 
-  // --- Servicios: antes esto solo tocaba estado local (setServicios) y
-  // nunca llegaba a Supabase. Ahora persiste, con el mapeo duracion -> duracion_min.
   const addServicio = async () => {
     const base = { nombre: 'Nuevo servicio', precio: 0, duracion: 30, activo: true }
     if (isSupabaseConfigured) {
@@ -415,7 +387,6 @@ export default function App() {
     }
   }
 
-  // --- Barberos: mismo problema, mismo arreglo (rol -> especialidad, horario -> horario_texto).
   const addBarbero = async () => {
     const base = { nombre: `Barbero ${barberos.length + 1}`, rol: 'Barbero', color: '#9B6A2F', horario: 'Lun, Mar, Mié, Jue y Vie 09:00-18:00', activo: true }
     if (isSupabaseConfigured) {
@@ -433,7 +404,7 @@ export default function App() {
   const updateBarbero = async (id, field, value) => {
     setBarberos((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)))
     if (isSupabaseConfigured) {
-      const dbFieldMap = { rol: 'especialidad', horario: 'horario_texto' }
+      const dbFieldMap = { rol: 'especialidad', horario: 'horario_texto', habilidades: 'habilidades' }
       const dbField = dbFieldMap[field] || field
       const { error } = await supabase.from('barberos').update({ [dbField]: value }).eq('id', id)
       if (error) reportError('No se pudo actualizar el barbero', error)
@@ -454,7 +425,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-        <Sidebar
+      <Sidebar
         view={view}
         setView={navigateFromMenu}
         clinicName={CLINIC_NAME}
@@ -524,15 +495,15 @@ export default function App() {
                         Nuevo
                       </button>
                     </p>
-                <Agenda
-                  turnos={turnosHoy}
-                  onChangeEstado={updateTurnoEstado}
-                  onDeleteTurno={deleteTurno}
-                  onEditTurno={openEditTurno}
-                  notas={notas}
-                  onAddNota={addNota}
-                  barberos={barberos}
-                />
+                    <Agenda
+                      turnos={turnosHoy}
+                      onChangeEstado={updateTurnoEstado}
+                      onDeleteTurno={deleteTurno}
+                      onEditTurno={openEditTurno}
+                      notas={notas}
+                      onAddNota={addNota}
+                      barberos={barberos}
+                    />
                   </div>
                   <div className="panel">
                     <p className="panel-title">

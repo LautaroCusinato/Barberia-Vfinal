@@ -78,10 +78,6 @@
 
 * { box-sizing: border-box; }
 
-/* min-height (no height fija): si el contenido es mas alto que la
-   pantalla, el fondo tiene que seguir cubriendo todo lo que se scrollea.
-   Con "height: 100%" el fondo se cortaba justo a 1 pantalla de alto y
-   al bajar se veia un salto de color donde terminaba ese bloque. */
 html, body, #root { min-height: 100%; margin: 0; }
 
 body {
@@ -94,9 +90,6 @@ body {
   transition: background-color 0.25s var(--ease), color 0.25s var(--ease);
 }
 
-/* El degrade decorativo va fijo a la ventana (no al documento), asi
-   nunca se corta ni se repite al scrollear, sin importar que tan
-   largo sea el contenido. */
 body::before {
   content: '';
   position: fixed;
@@ -248,7 +241,6 @@ a { color: inherit; }
   animation: pulseDot 2s ease-in-out infinite;
 }
 
-/* Theme toggle */
 .theme-toggle {
   display: flex;
   align-items: center;
@@ -298,7 +290,6 @@ a { color: inherit; }
 .page-title { font-family: var(--font-display); font-size: 27px; font-weight: 500; margin: 0; letter-spacing: -0.01em; }
 .page-date { font-size: 13px; color: var(--ink-faint); }
 
-/* Stat cards */
 .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 1.75rem; }
 
 .stat-card {
@@ -330,7 +321,6 @@ a { color: inherit; }
   font-size: 16px;
 }
 
-/* Cards / panels */
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -374,7 +364,6 @@ a { color: inherit; }
 .empty-state svg { margin: 0 auto 8px; display: block; }
 .empty-state p { font-size: 13px; margin: 0; }
 
-/* Search bar */
 .search-bar {
   display: flex;
   align-items: center;
@@ -437,7 +426,6 @@ a { color: inherit; }
   line-height: 1;
 }
 
-/* Agenda list */
 .agenda-item {
   display: flex;
   align-items: center;
@@ -517,7 +505,6 @@ a { color: inherit; }
 .badge-amber { background: var(--amber-soft); color: var(--amber-text); }
 .badge-muted { background: var(--surface-muted); color: var(--ink-soft); }
 
-/* Status select (estado de asistencia, editable por el dueño) */
 .status-select-wrap {
   display: inline-flex;
   align-items: center;
@@ -548,7 +535,6 @@ a { color: inherit; }
 .status-select-wrap svg { pointer-events: none; opacity: 0.75; flex-shrink: 0; }
 .status-select option { color: var(--ink); background: var(--surface); text-transform: none; letter-spacing: normal; font-weight: 500; }
 
-/* Note popover (notas rápidas por paciente, desde la agenda/calendario) */
 .note-popover {
   position: absolute;
   top: calc(100% + 6px);
@@ -568,7 +554,6 @@ a { color: inherit; }
 .note-popover-list { max-height: 140px; overflow-y: auto; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
 .note-popover-item { border-left: 2px solid var(--accent); padding: 5px 8px; background: var(--surface-muted); border-radius: 4px; }
 
-/* Messages */
 .conv-search { margin: 0.4rem 0.4rem 0.7rem; }
 .conv-list { display: flex; flex-direction: column; }
 
@@ -629,7 +614,6 @@ a { color: inherit; }
   margin-bottom: 2px;
 }
 
-/* Chat thread */
 .thread { display: flex; flex-direction: column; gap: 9px; max-height: 460px; overflow-y: auto; padding: 4px 4px 4px 2px; }
 .bubble { max-width: 78%; padding: 9px 13px; border-radius: 13px; font-size: 13px; line-height: 1.5; box-shadow: var(--shadow-xs); }
 .bubble.in { background: var(--surface-muted); align-self: flex-start; border-bottom-left-radius: 4px; }
@@ -660,7 +644,6 @@ a { color: inherit; }
 }
 .thread-composer .btn { flex-shrink: 0; padding: 9px 11px; }
 
-/* Table */
 .table-scroll { width: 100%; overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table th { text-align: left; color: var(--ink-faint); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -670,7 +653,6 @@ a { color: inherit; }
 .table tbody tr:hover { background: var(--surface-muted); }
 .table-name-cell { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 
-/* Notes */
 .note-card {
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
@@ -730,7 +712,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   gap: 8px;
 }
 
-/* ===== Modal (nuevo turno) ===== */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -799,7 +780,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   .modal-row { grid-template-columns: 1fr; }
 }
 
-/* ===== Login ===== */
 .login-shell {
   min-height: 100vh;
   display: flex;
@@ -830,7 +810,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   margin: 2px 0 4px;
 }
 
-/* ===== Calendar ===== */
 .calendar-wrap { display: grid; grid-template-columns: 1.55fr 1fr; gap: 1.15rem; align-items: start; }
 .calendar-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
@@ -841,10 +820,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   margin-right: auto;
 }
 
-/* Antes esto era un <select> nativo: el navegador dibujaba su lista
-   con estilo de sistema operativo (blanco/azul) por encima de todo,
-   tapando los botones de Mes/Semana y de navegación. Con un dropdown
-   propio controlamos el tema y donde aparece la lista. */
 .barbero-filter-trigger {
   display: inline-flex;
   align-items: center;
@@ -1060,8 +1035,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   letter-spacing: 0.2px;
 }
 
-/* Barra angosta que marca, en las filas siguientes de la grilla, que un
-   turno largo sigue ocupando ese horario (ej: 50 min = 2 bloques). */
 .week-continuation {
   width: 4px;
   border-radius: 3px;
@@ -1070,7 +1043,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   opacity: 0.55;
 }
 
-/* ===== Operations ===== */
 .operations { display: flex; flex-direction: column; gap: 1.15rem; }
 
 .ops-config-hero {
@@ -1299,8 +1271,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   color: var(--ink-faint);
 }
 
-
-/* Vista Equipo / Barberos */
 .barberos-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -1530,7 +1500,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 
 .readiness-list span.done { color: var(--blue-text); font-weight: 700; }
 
-/* ===== Mobile bottom tab bar ===== */
 .mobile-tabbar {
   display: none;
   position: fixed;
@@ -1613,7 +1582,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   .agenda-actions { gap: 3px; }
 }
 
-/* ===== Nuevo turno (modal rediseñado) ===== */
 .new-turno-box { max-width: 560px; }
 
 .barbero-schedule-hint {
@@ -1624,7 +1592,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   color: var(--ink-faint);
 }
 
-/* --- Grilla de horarios --- */
 .slot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
@@ -1694,7 +1661,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   padding: 9px 11px;
 }
 
-/* --- Grilla de servicios (chips) --- */
 .service-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1705,9 +1671,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 .service-chip {
   border: 1px solid var(--border);
   background: var(--surface);
-  /* Sin esto, el <button> usa el color de texto por defecto del
-     navegador (negro) en vez de heredar el tema, y en modo oscuro
-     el nombre del servicio quedaba casi invisible. */
   color: var(--ink);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
@@ -1733,7 +1696,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 .service-name { font-size: 12.5px; font-weight: 600; }
 .service-meta { font-size: 11px; color: var(--ink-faint); font-weight: 500; }
 
-/* --- Selector de cliente --- */
 .client-search {
   position: relative;
 }
@@ -1747,11 +1709,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   pointer-events: none;
 }
 
-/* input.text-input trae "padding: 10px 12px" con más especificidad
-   (elemento + clase) que ".client-search-input", asi que ganaba esa
-   regla y el padding-izquierdo real quedaba en 12px en vez de 30px,
-   solapando el icono de la lupa con el placeholder. Usamos la misma
-   especificidad para que gane esta. */
 input.client-search-input {
   width: 100%;
   padding-left: 32px;
@@ -1818,7 +1775,6 @@ input.client-search-input {
 }
 .client-dropdown-create:hover { background: var(--accent-soft); }
 
-/* Chip de cliente ya elegido */
 .client-chip {
   display: flex;
   align-items: center;
@@ -1850,10 +1806,8 @@ input.client-search-input {
 .client-chip-name { font-size: 13px; font-weight: 600; margin: 0; color: var(--ink); }
 .client-chip-phone { font-size: 11.5px; color: var(--ink-faint); margin: 1px 0 0; }
 
-/* Form inline para crear cliente nuevo */
 .client-new { margin-top: 4px; }
 
-/* Teléfono con prefijo como pildora no editable */
 .phone-field {
   display: flex;
   align-items: stretch;
@@ -1897,7 +1851,6 @@ input.client-search-input {
 }
 .phone-input::placeholder { color: var(--ink-faint); font-weight: 400; }
 
-/* ===== Professional UI pass ===== */
 :root {
   --bg: #F4F1EA;
   --surface: #FFFFFF;
@@ -2487,15 +2440,14 @@ input.client-search-input {
   }
 }
 
-/* ===== Agenda desktop rebuild ===== */
 .calendar-board {
   display: grid;
   gap: 1rem;
 }
 
-/* .calendar-wrap-modern: ver definicion unificada mas abajo, seccion
-   'Agenda stability pass' (antes esto estaba duplicado en dos lugares
-   con valores distintos, lo que hacia el layout impredecible). */
+.calendar-wrap-modern {
+  grid-template-columns: minmax(0, 1.72fr) minmax(330px, 0.86fr);
+}
 
 .calendar-toolbar {
   display: flex;
@@ -2671,11 +2623,6 @@ input.client-search-input {
   position: sticky;
   top: 1rem;
   align-self: start;
-  /* Alto acotado + scroll interno de la lista: asi "Agendar en este
-     dia" queda siempre visible arriba y nunca se ve un turno (ni su
-     estado confirmado/no confirmado) asomando por detras al bajar.
-     Usamos max-height (no height fija) para que se adapte a la
-     altura real disponible en cualquier zoom o resolucion. */
   max-height: calc(100vh - 2rem);
   overflow: hidden;
   display: flex;
@@ -2691,54 +2638,6 @@ input.client-search-input {
 
 .day-panel-sub { flex-shrink: 0; }
 
-.day-side-list-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Sombra sutil arriba: aparece solo cuando ya bajaste el scroll,
-   asi se nota que hay turnos anteriores por encima. */
-.day-side-list-wrap::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 2px;
-  height: 18px;
-  z-index: 2;
-  pointer-events: none;
-  background: linear-gradient(to bottom, var(--surface), transparent);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.day-side-list-wrap.is-scrolled::before {
-  opacity: 1;
-}
-
-/* Degradado abajo: solo se muestra cuando falta contenido por ver,
-   asi el corte se lee como "hay mas, baja" y no como algo roto. */
-.day-side-list-wrap::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 2px;
-  height: 28px;
-  z-index: 2;
-  pointer-events: none;
-  background: linear-gradient(to top, var(--surface), transparent);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.day-side-list-wrap.has-more::after {
-  opacity: 1;
-}
-
 .day-side-list {
   display: flex;
   flex-direction: column;
@@ -2747,32 +2646,21 @@ input.client-search-input {
   min-height: 0;
   overflow-y: auto;
   padding-right: 2px;
-  /* El scroll siempre "encastra" en una tarjeta completa: nunca
-     vas a quedarte con un turno cortado a la mitad. */
-  scroll-snap-type: y proximity;
-  scroll-padding-top: 4px;
-  scroll-padding-bottom: 4px;
 }
 
 .day-side-list .agenda-item {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: start;
   gap: 6px 9px;
   padding: 12px;
   margin-top: 0;
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
 }
 
 .day-side-list .agenda-item:hover {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-}
-
-.day-side-list .agenda-info {
-  min-width: 0;
 }
 
 .day-side-list .agenda-actions {
@@ -2972,7 +2860,6 @@ input.client-search-input {
   border-radius: 999px;
 }
 
-/* ===== Agenda stability pass ===== */
 .calendar-wrap-modern {
   grid-template-columns: minmax(0, 1fr) 360px;
   align-items: stretch;
@@ -3064,6 +2951,32 @@ input.client-search-input {
   line-height: 1.2;
 }
 
+.day-side-panel {
+  height: calc(100vh - 168px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.day-panel-header,
+.day-panel-sub {
+  flex-shrink: 0;
+}
+
+.day-side-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.day-side-list .agenda-item {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 10px;
+  padding: 11px;
+}
+
 .day-side-list .agenda-time {
   width: auto;
 }
@@ -3148,10 +3061,7 @@ input.client-search-input {
   background: var(--surface-muted);
 }
 
-.week-slot.week-day-off {
-  background: var(--surface);
-}
-
+.week-slot.week-day-off,
 .week-slot.week-day-off:hover {
   background: var(--surface);
 }
@@ -3166,9 +3076,1544 @@ input.client-search-input {
   white-space: nowrap;
 }
 
-/* Antes esto forzaba una sola linea a partir de 1120px de viewport,
-   pero el panel del calendario en la vista mensual ocupa solo ~60% del
-   ancho (comparte grid con el panel lateral del dia), asi que a esos
-   anchos el boton "Siguiente" no entraba y quedaba cortado, tapado por
-   el panel de al lado. Dejamos que .calendar-actions se comporte con
-   su wrap por defecto (ver regla base), para que nunca se desborde. */
+/* ===== NUEVOS ESTILOS AGREGADOS ===== */
+
+/* Habilidades tipo tags */
+.habilidades-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.habilidad-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  transition: all 0.15s var(--ease);
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.habilidad-tag:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.habilidad-tag.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.habilidad-tag.active .habilidad-check {
+  color: #fff;
+}
+
+.habilidad-check {
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+/* Fechas grid mejorado */
+.fechas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  gap: 10px;
+}
+
+.fecha-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.7, 0.3, 1);
+  position: relative;
+  min-height: 80px;
+  gap: 2px;
+}
+
+.fecha-card.no-disponible {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--surface-sunken);
+  border-color: var(--border);
+  filter: grayscale(0.4);
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.fecha-card.active {
+  border-color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 4px 16px rgba(155, 106, 47, 0.2) !important;
+  transform: translateY(-3px);
+}
+
+.fecha-no-disponible {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  color: var(--rose-text);
+  background: var(--rose-soft);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border: 2px solid var(--surface);
+}
+
+.fecha-seleccionada-check {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  color: var(--accent-strong);
+  background: var(--surface);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--accent);
+}
+
+.fechas-leyenda {
+  display: flex;
+  gap: 20px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.leyenda-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.leyenda-color {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  flex-shrink: 0;
+}
+
+.leyenda-color.disponible {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.leyenda-color.no-disponible {
+  background: var(--surface-sunken);
+  border-color: var(--border);
+  opacity: 0.4;
+}
+
+.leyenda-color.seleccionado {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Notas rediseñadas */
+.notas-group {
+  margin-top: 4px;
+}
+
+.notas-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+
+.notas-hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.notas-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  line-height: 1.5;
+}
+
+.notas-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.notas-textarea::placeholder {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* Slots picker */
+.slot-grid-public {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.slot-chip-public {
+  padding: 10px 8px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  transition: all 0.2s ease;
+  font: inherit;
+  position: relative;
+}
+
+.slot-chip-public:hover:not(.ocupado) {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.slot-chip-public.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.slot-chip-public.ocupado {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+  color: var(--ink-faint);
+  cursor: not-allowed;
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.slot-ocupado-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--rose);
+  color: #fff;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+}
+
+.slot-cantidad-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.slot-leyenda {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  justify-content: center;
+}
+
+.no-slots {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: var(--ink-faint);
+  text-align: center;
+  gap: 8px;
+}
+
+.no-slots .hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* Barbero habilidades mini en reservas */
+.habilidad-tag-mini {
+  font-size: 9px;
+  background: var(--surface-muted);
+  padding: 1px 6px;
+  border-radius: 100px;
+  color: var(--ink-soft);
+  text-transform: capitalize;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ===== EQUIPO - SECCIÓN MEJORADA ===== */
+
+.equipo-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+/* Grid de barberos - más espaciado y responsive */
+.barberos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+/* Tarjetas de barbero - más limpias */
+.barbero-card {
+  text-align: left;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 16px 16px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: all 0.2s cubic-bezier(0.2, 0.7, 0.3, 1);
+  position: relative;
+  box-shadow: var(--shadow-xs);
+}
+
+.barbero-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+}
+
+.barbero-card.active {
+  border-color: var(--barbero-color, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--barbero-color, var(--accent)) 25%, transparent), var(--shadow-md);
+  transform: translateY(-3px);
+}
+
+.barbero-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.barbero-card-top .ops-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.barbero-card-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.barbero-card-name p {
+  margin: 0;
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
+.barbero-card-name span {
+  font-size: 12px;
+  color: var(--ink-faint);
+  display: block;
+  margin-top: 1px;
+}
+
+.barbero-card-chevron {
+  color: var(--ink-faint);
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease);
+}
+
+.barbero-card.active .barbero-card-chevron {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.barbero-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.barbero-card-metrics > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.barbero-metric-value {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+
+.barbero-metric-label {
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+
+.barbero-card-next {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.barbero-card-inactive {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rose-text);
+  background: var(--rose-soft);
+  padding: 2px 10px;
+  border-radius: 100px;
+}
+
+/* ===== DETALLE DEL BARBERO SELECCIONADO ===== */
+
+.equipo-detalle {
+  margin-top: 0.5rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  animation: fadeInUp 0.25s var(--ease) both;
+}
+
+.equipo-detalle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.equipo-detalle-titulo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.equipo-detalle-titulo .ops-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.equipo-detalle-sub {
+  font-size: 13px;
+  color: var(--ink-faint);
+  margin: 4px 0 16px 0;
+  padding-left: 48px;
+}
+
+.equipo-detalle-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.equipo-detalle-lista::-webkit-scrollbar {
+  width: 4px;
+}
+
+.equipo-detalle-lista::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.equipo-detalle-lista::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+}
+
+.equipo-fecha-grupo {
+  margin-bottom: 8px;
+}
+
+.equipo-fecha-grupo .barbero-fecha-label {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--ink-faint);
+  letter-spacing: 0.3px;
+}
+
+.equipo-fecha-grupo .agenda-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.equipo-fecha-grupo .agenda-item:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+/* ===== RESPONSIVE EQUIPO ===== */
+
+@media (max-width: 860px) {
+  .barberos-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .equipo-detalle-titulo {
+    font-size: 16px;
+  }
+
+  .equipo-detalle-sub {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .barberos-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .barbero-card {
+    padding: 14px 12px 12px;
+  }
+
+  .barbero-card-top .ops-avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 11px;
+  }
+
+  .barbero-card-name p {
+    font-size: 13px;
+  }
+
+  .barbero-card-name span {
+    font-size: 10px;
+  }
+
+  .barbero-metric-value {
+    font-size: 15px;
+  }
+
+  .barbero-metric-label {
+    font-size: 8px;
+  }
+
+  .equipo-detalle {
+    padding: 1rem;
+  }
+
+  .equipo-detalle-titulo {
+    font-size: 14px;
+  }
+}
+/* ===== VISTA SEMANAL - MEJORA DE TURNOS SUPERPUESTOS ===== */
+
+.week-cell {
+  position: relative;
+  min-height: 56px;
+}
+
+.week-slot {
+  position: relative;
+  min-height: 52px;
+}
+
+.week-chip {
+  position: relative;
+  z-index: 5;
+  margin-bottom: 2px;
+  font-size: 10px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 0.15s ease;
+  cursor: pointer;
+  min-height: 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.week-chip:hover {
+  transform: scale(1.02);
+  z-index: 20;
+  box-shadow: var(--shadow-md);
+}
+
+.week-chip--largo {
+  min-height: 44px;
+  border-left: 3px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Cuando hay múltiples turnos en el mismo slot, se apilan horizontalmente */
+.week-slot .week-chip {
+  position: absolute;
+  top: 2px;
+  border-radius: 4px;
+}
+
+/* Indicador de que hay múltiples turnos en el slot */
+.week-slot-multiple {
+  position: relative;
+}
+
+.week-slot-multiple::after {
+  content: attr(data-count);
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+/* Ajuste de altura para slots con múltiples turnos */
+.week-cell .week-chip:only-child {
+  position: relative;
+  top: auto;
+}
+
+/* ===== VISTA SEMANAL - MEJORA DE TURNOS SUPERPUESTOS ===== */
+
+.week-cell {
+  position: relative;
+  min-height: 56px;
+}
+
+.week-slot {
+  position: relative;
+  min-height: 52px;
+}
+
+.week-chip {
+  position: relative;
+  z-index: 5;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 0.15s ease;
+  cursor: pointer;
+  min-height: 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.week-chip:hover {
+  transform: scale(1.02);
+  z-index: 20;
+  box-shadow: var(--shadow-md);
+}
+
+.week-chip--largo {
+  min-height: 44px;
+  border-left: 3px solid rgba(0, 0, 0, 0.1);
+}
+
+.week-slot .week-chip[style*="position: absolute"] {
+  margin-bottom: 0;
+  border-radius: 4px;
+}
+
+.week-slot .week-chip[style*="position: absolute"]:nth-child(1) {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.week-slot .week-chip[style*="position: absolute"]:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+
+/* ===== VISTA SEMANAL - APILAMIENTO DE TURNOS ===== */
+
+.week-slot {
+  position: relative;
+  min-height: 52px;
+  padding: 3px;
+}
+
+/* Cuando hay múltiples turnos, la celda se expande */
+.week-slot:has(.week-chip[style*="position: absolute"]) {
+  min-height: 60px;
+}
+
+.week-chip[style*="position: absolute"] {
+  border-radius: 4px;
+  font-size: 9px;
+  padding: 3px 4px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.15s ease;
+}
+
+.week-chip[style*="position: absolute"]:hover {
+  transform: scale(1.04);
+  z-index: 30 !important;
+  box-shadow: var(--shadow-md);
+}
+
+.week-chip[style*="position: absolute"] .week-chip-time {
+  font-size: 8px;
+  opacity: 0.8;
+}
+
+.week-chip[style*="position: absolute"] .week-chip-name {
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.week-chip[style*="position: absolute"] .week-chip-barber {
+  font-size: 8px;
+  opacity: 0.7;
+}
+
+.week-chip[style*="position: absolute"] .week-chip-dur {
+  font-size: 7px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 860px) {
+  .week-chip[style*="position: absolute"] {
+    font-size: 8px;
+    padding: 2px 3px;
+  }
+  
+  .week-chip[style*="position: absolute"] .week-chip-name {
+    font-size: 9px;
+  }
+  
+  .week-chip[style*="position: absolute"] .week-chip-time,
+  .week-chip[style*="position: absolute"] .week-chip-barber {
+    font-size: 7px;
+  }
+}
+
+@media (max-width: 480px) {
+  .week-chip[style*="position: absolute"] {
+    font-size: 7px;
+    padding: 2px 2px;
+    min-height: 20px;
+  }
+  
+  .week-chip[style*="position: absolute"] .week-chip-name {
+    font-size: 8px;
+  }
+  
+  .week-chip[style*="position: absolute"] .week-chip-time,
+  .week-chip[style*="position: absolute"] .week-chip-barber {
+    display: none;
+  }
+}
+
+/* ===== VISTA SEMANAL - APILAMIENTO DE TURNOS ===== */
+
+/* Asegurar que la celda tenga posición relativa para el posicionamiento absoluto de los turnos */
+.week-slot {
+  position: relative;
+  min-height: 52px;
+  padding: 3px;
+}
+
+/* Cuando hay múltiples turnos, la celda se expande verticalmente */
+.week-slot:has(.week-chip[style*="position: absolute"]) {
+  min-height: 60px;
+}
+
+/* Estilos para turnos apilados horizontalmente */
+.week-chip[style*="position: absolute"] {
+  border-radius: 4px;
+  font-size: 9px;
+  padding: 2px 4px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.week-chip[style*="position: absolute"]:hover {
+  transform: scale(1.04);
+  z-index: 30 !important;
+  box-shadow: var(--shadow-md);
+}
+
+.week-chip[style*="position: absolute"] .week-chip-time {
+  font-size: 8px;
+  opacity: 0.8;
+  display: block;
+}
+
+.week-chip[style*="position: absolute"] .week-chip-name {
+  font-size: 10px;
+  font-weight: 800;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-chip[style*="position: absolute"] .week-chip-barber {
+  font-size: 8px;
+  opacity: 0.7;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-chip[style*="position: absolute"] .week-chip-dur {
+  font-size: 7px;
+  display: block;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 860px) {
+  .week-chip[style*="position: absolute"] {
+    font-size: 8px;
+    padding: 2px 3px;
+  }
+  
+  .week-chip[style*="position: absolute"] .week-chip-name {
+    font-size: 9px;
+  }
+  
+  .week-chip[style*="position: absolute"] .week-chip-time,
+  .week-chip[style*="position: absolute"] .week-chip-barber {
+    font-size: 7px;
+  }
+}
+
+@media (max-width: 480px) {
+  .week-chip[style*="position: absolute"] {
+    font-size: 7px;
+    padding: 2px 2px;
+    min-height: 20px;
+  }
+  
+  .week-chip[style*="position: absolute"] .week-chip-name {
+    font-size: 8px;
+  }
+  
+  .week-chip[style*="position: absolute"] .week-chip-time,
+  .week-chip[style*="position: absolute"] .week-chip-barber {
+    display: none;
+  }
+}
+
+/* ============================================
+   EQUIPO - SECCIÓN MEJORADA
+   ============================================ */
+
+.equipo-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.barberos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+.barbero-card {
+  text-align: left;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 16px 16px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: all 0.2s cubic-bezier(0.2, 0.7, 0.3, 1);
+  position: relative;
+  box-shadow: var(--shadow-xs);
+}
+
+.barbero-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+}
+
+.barbero-card.active {
+  border-color: var(--barbero-color, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--barbero-color, var(--accent)) 25%, transparent), var(--shadow-md);
+  transform: translateY(-3px);
+}
+
+.barbero-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.barbero-card-top .ops-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.barbero-card-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.barbero-card-name p {
+  margin: 0;
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
+.barbero-card-name span {
+  font-size: 12px;
+  color: var(--ink-faint);
+  display: block;
+  margin-top: 1px;
+}
+
+.barbero-card-chevron {
+  color: var(--ink-faint);
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease);
+}
+
+.barbero-card.active .barbero-card-chevron {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.barbero-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.barbero-card-metrics > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.barbero-metric-value {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+
+.barbero-metric-label {
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+
+.barbero-card-next {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.barbero-card-inactive {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rose-text);
+  background: var(--rose-soft);
+  padding: 2px 10px;
+  border-radius: 100px;
+}
+
+/* ===== DETALLE DEL BARBERO ===== */
+
+.equipo-detalle {
+  margin-top: 0.5rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  animation: fadeInUp 0.25s var(--ease) both;
+}
+
+.equipo-detalle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.equipo-detalle-titulo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.equipo-detalle-titulo .ops-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.equipo-detalle-sub {
+  font-size: 13px;
+  color: var(--ink-faint);
+  margin: 4px 0 16px 0;
+  padding-left: 48px;
+}
+
+.equipo-detalle-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.equipo-detalle-lista::-webkit-scrollbar {
+  width: 4px;
+}
+
+.equipo-detalle-lista::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.equipo-detalle-lista::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+}
+
+.equipo-fecha-grupo {
+  margin-bottom: 8px;
+}
+
+.equipo-fecha-grupo .barbero-fecha-label {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--ink-faint);
+  letter-spacing: 0.3px;
+}
+
+.equipo-fecha-grupo .agenda-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.equipo-fecha-grupo .agenda-item:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+/* ============================================
+   VISTA SEMANAL - APILAMIENTO DE TURNOS
+   ============================================ */
+
+.week-slot {
+  position: relative;
+  min-height: 52px;
+  padding: 2px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.week-chip {
+  flex: 0 0 auto;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(0,0,0,0.06);
+  transition: all 0.15s ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.2;
+  position: relative;
+  z-index: 5;
+  min-height: 24px;
+}
+
+.week-chip:hover {
+  transform: scale(1.04);
+  z-index: 20 !important;
+  box-shadow: var(--shadow-md);
+}
+
+.week-chip--largo {
+  min-height: 36px;
+  border-left: 3px solid rgba(0,0,0,0.1);
+}
+
+.week-chip-time {
+  font-size: 8px;
+  opacity: 0.8;
+}
+
+.week-chip-name {
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.week-chip-barber {
+  font-size: 7px;
+  opacity: 0.7;
+}
+
+.week-chip-dur {
+  font-size: 7px;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 860px) {
+  .barberos-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .equipo-detalle-titulo {
+    font-size: 16px;
+  }
+
+  .equipo-detalle-sub {
+    padding-left: 0;
+  }
+  
+  .week-chip {
+    font-size: 8px;
+    padding: 2px 3px;
+    min-height: 20px;
+  }
+  
+  .week-chip-name {
+    font-size: 8px;
+  }
+  
+  .week-chip-time,
+  .week-chip-barber {
+    font-size: 7px;
+  }
+}
+
+@media (max-width: 480px) {
+  .barberos-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .barbero-card {
+    padding: 14px 12px 12px;
+  }
+
+  .barbero-card-top .ops-avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 11px;
+  }
+
+  .barbero-card-name p {
+    font-size: 13px;
+  }
+
+  .barbero-card-name span {
+    font-size: 10px;
+  }
+
+  .barbero-metric-value {
+    font-size: 15px;
+  }
+
+  .barbero-metric-label {
+    font-size: 8px;
+  }
+
+  .equipo-detalle {
+    padding: 1rem;
+  }
+
+  .equipo-detalle-titulo {
+    font-size: 14px;
+  }
+  
+  .week-chip {
+    font-size: 7px;
+    padding: 2px 2px;
+    min-height: 18px;
+  }
+  
+  .week-chip-name {
+    font-size: 7px;
+  }
+  
+  .week-chip-time,
+  .week-chip-barber {
+    display: none;
+  }
+}
+
+/* ============================================
+   VISTA SEMANAL - APILAMIENTO DE TURNOS (FIX)
+   ============================================ */
+
+.week-slot {
+  min-height: 52px;
+  padding: 3px;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  gap: 3px !important;
+  align-items: stretch !important;
+  align-content: flex-start !important;
+}
+
+.week-chip {
+  flex: 0 0 auto !important;
+  border-radius: 6px !important;
+  padding: 3px 5px !important;
+  font-size: 9px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  line-height: 1.2 !important;
+  position: relative !important;
+  z-index: 5 !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+  min-height: 26px !important;
+}
+
+.week-chip:hover {
+  transform: scale(1.04) !important;
+  z-index: 20 !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.week-chip--largo {
+  min-height: 36px !important;
+  border-left: 3px solid rgba(0,0,0,0.1) !important;
+}
+
+.week-chip-time {
+  font-size: 8px !important;
+  opacity: 0.8 !important;
+  display: block !important;
+}
+
+.week-chip-name {
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  display: block !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.week-chip-barber {
+  font-size: 7px !important;
+  opacity: 0.7 !important;
+  display: block !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.week-chip-dur {
+  font-size: 7px !important;
+  display: block !important;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 860px) {
+  .week-chip {
+    font-size: 8px !important;
+    padding: 2px 4px !important;
+    min-height: 22px !important;
+  }
+  
+  .week-chip-name {
+    font-size: 8px !important;
+  }
+  
+  .week-chip-time,
+  .week-chip-barber {
+    font-size: 7px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .week-chip {
+    font-size: 7px !important;
+    padding: 2px 3px !important;
+    min-height: 20px !important;
+    border-radius: 4px !important;
+  }
+  
+  .week-chip-name {
+    font-size: 7px !important;
+  }
+  
+  .week-chip-time,
+  .week-chip-barber,
+  .week-chip-dur {
+    display: none !important;
+  }
+}
+
+
+/* ===== Panel lateral con scroll ===== */
+.day-side-panel {
+  height: calc(100vh - 180px) !important;
+  max-height: calc(100vh - 180px) !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.day-panel-header {
+  flex-shrink: 0 !important;
+}
+
+.day-panel-sub {
+  flex-shrink: 0 !important;
+}
+
+.day-side-list {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding-right: 4px !important;
+}
+
+.day-side-list .agenda-item {
+  flex-shrink: 0 !important;
+}
+
+/* Scrollbar personalizada */
+.day-side-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.day-side-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.day-side-list::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+}
+
+.day-side-list::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faint);
+}
+
+
+/* ============================================
+   PANEL LATERAL CON SCROLL (VISTA MENSUAL)
+   ============================================ */
+
+.day-side-panel {
+  height: calc(100vh - 180px) !important;
+  max-height: calc(100vh - 180px) !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.day-panel-header {
+  flex-shrink: 0 !important;
+}
+
+.day-panel-sub {
+  flex-shrink: 0 !important;
+}
+
+.day-side-list {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding-right: 4px !important;
+}
+
+.day-side-list .agenda-item {
+  flex-shrink: 0 !important;
+}
+
+/* Scrollbar personalizada */
+.day-side-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.day-side-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.day-side-list::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+}
+
+.day-side-list::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faint);
+}
