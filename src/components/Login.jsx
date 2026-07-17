@@ -1,32 +1,41 @@
 import { useState } from 'react'
-import { Lock, User, KeyRound, Scissors } from 'lucide-react'
+import { Lock, Mail, KeyRound, Scissors } from 'lucide-react'
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 
-const ADMIN_USER = import.meta.env.VITE_ADMIN_USER || 'admin'
-const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASS || 'barberia2026'
-const AUTH_KEY = 'barberia-central-auth'
-
-export function isAuthenticated() {
-  return localStorage.getItem(AUTH_KEY) === 'true'
-}
-
-export function logout() {
-  localStorage.removeItem(AUTH_KEY)
-  window.location.reload()
+export async function logout() {
+  if (isSupabaseConfigured) {
+    await supabase.auth.signOut()
+  }
 }
 
 export default function Login({ onSuccess }) {
-  const [user, setUser] = useState('')
+  const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
-    if (user === ADMIN_USER && pass === ADMIN_PASS) {
-      localStorage.setItem(AUTH_KEY, 'true')
-      onSuccess()
-    } else {
-      setError('Usuario o contrasena incorrectos')
+    setError('')
+
+    if (!isSupabaseConfigured) {
+      setError('Supabase no esta configurado (faltan variables de entorno).')
+      return
     }
+
+    setLoading(true)
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password: pass,
+    })
+    setLoading(false)
+
+    if (authError) {
+      setError('Email o contrasena incorrectos')
+      return
+    }
+
+    onSuccess()
   }
 
   return (
@@ -42,17 +51,17 @@ export default function Login({ onSuccess }) {
 
         <form onSubmit={submit}>
           <div className="modal-field">
-            <label className="modal-label"><User size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Usuario</label>
-            <input className="text-input" value={user} onChange={(e) => setUser(e.target.value)} autoFocus />
+            <label className="modal-label"><Mail size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Email</label>
+            <input className="text-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
           </div>
           <div className="modal-field">
             <label className="modal-label"><KeyRound size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Contrasena</label>
             <input className="text-input" type="password" value={pass} onChange={(e) => setPass(e.target.value)} />
           </div>
           {error && <p className="login-error">{error}</p>}
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }}>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }} disabled={loading}>
             <Lock size={14} />
-            Entrar
+            {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
       </div>
