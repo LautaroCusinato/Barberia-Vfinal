@@ -4,7 +4,6 @@ import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
 import {
   PREFIJO_AR,
   formatTelefonoAR,
-  telefonoSinPrefijo,
   normalizar,
   parseHorarioBarbero,
   barberoDisponible,
@@ -137,8 +136,17 @@ export default function NewTurnoModal({
     const [y, m, d] = fecha.split('-').map(Number)
     const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
     const bloques = mapa[dow] || []
+    const trabajo = bloques.filter((b) => !b.break)
+    const breaks = bloques.filter((b) => b.break)
     const all = []
-    for (const b of bloques) all.push(...generarSlots(b.ini, b.fin, 15))
+    for (const b of trabajo) {
+      for (const slot of generarSlots(b.ini, b.fin, 15)) {
+        const [hh, mm] = slot.split(':').map(Number)
+        const minutos = hh * 60 + mm
+        const enBreak = breaks.some((br) => minutos >= br.ini && minutos < br.fin)
+        if (!enBreak) all.push(slot)
+      }
+    }
     return { slots: all, source: 'mapa' }
   }, [barberoSeleccionado, fecha])
 
@@ -201,7 +209,7 @@ export default function NewTurnoModal({
     }
     if (crearNuevo) {
       const nombre = `${nuevoNombre.trim()} ${nuevoApellido.trim()}`.trim()
-      const telefono = telefonoSinPrefijo(nuevoTelefono)
+      const telefono = nuevoTelefono.trim()
       return { nombre, telefono }
     }
     return { nombre: '', telefono: '' }
