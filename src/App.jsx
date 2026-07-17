@@ -379,12 +379,47 @@ export default function App() {
     }
   }
 
-  const deleteServicio = async (id) => {
-    setServicios((prev) => prev.filter((s) => s.id !== id))
+  const reactivarServicio = async (id) => {
+    setServicios((prev) => prev.map((s) => (s.id === id ? { ...s, activo: true } : s)))
     if (isSupabaseConfigured) {
-      const { error } = await supabase.from('servicios').delete().eq('id', id)
-      if (error) reportError('No se pudo eliminar el servicio', error)
+      const { error } = await supabase.from('servicios').update({ activo: true }).eq('id', id)
+      if (error) reportError('No se pudo reactivar el servicio', error)
     }
+  }
+
+  const deleteServicio = async (id) => {
+    if (!isSupabaseConfigured) {
+      setServicios((prev) => prev.filter((s) => s.id !== id))
+      return
+    }
+
+    const { error } = await supabase.from('servicios').delete().eq('id', id)
+
+    if (!error) {
+      setServicios((prev) => prev.filter((s) => s.id !== id))
+      return
+    }
+
+    // Si el error es porque hay turnos que usan este servicio (foreign key),
+    // no se puede borrar sin romper el historial. En vez de fallar feo,
+    // lo desactivamos: deja de aparecer para agendar turnos nuevos pero
+    // no rompe los turnos ya existentes que lo referencian.
+    if (error.code === '23503') {
+      const { data, error: updateError } = await supabase
+        .from('servicios')
+        .update({ activo: false })
+        .eq('id', id)
+        .select()
+      if (updateError) {
+        reportError('No se pudo desactivar el servicio', updateError)
+        return
+      }
+      if (data?.[0]) setServicios((prev) => prev.map((s) => (s.id === id ? servicioFromDb(data[0]) : s)))
+      setDbError('Este servicio tiene turnos asociados, asi que no se puede borrar sin perder ese historial. Lo desactivamos: ya no va a aparecer para agendar turnos nuevos.')
+      return
+    }
+
+    reportError('No se pudo eliminar el servicio', error)
   }
 
   const addBarbero = async () => {
@@ -487,7 +522,7 @@ export default function App() {
               <>
                 <StatsCards turnos={turnosHoy} conversaciones={conversaciones} todayKey={todayKey} />
                 <div className="two-col">
-                  <div className="panel">
+                  <div className="panel resumen-agenda-panel">
                     <p className="panel-title">
                       <span className="panel-title-icon"><CalendarCheck size={16} style={{ color: 'var(--accent)' }} />Agenda de hoy</span>
                       <button className="link-btn" onClick={openNewTurno}>
@@ -495,15 +530,17 @@ export default function App() {
                         Nuevo
                       </button>
                     </p>
-                    <Agenda
-                      turnos={turnosHoy}
-                      onChangeEstado={updateTurnoEstado}
-                      onDeleteTurno={deleteTurno}
-                      onEditTurno={openEditTurno}
-                      notas={notas}
-                      onAddNota={addNota}
-                      barberos={barberos}
-                    />
+                    <div className="resumen-agenda-scroll">
+                      <Agenda
+                        turnos={turnosHoy}
+                        onChangeEstado={updateTurnoEstado}
+                        onDeleteTurno={deleteTurno}
+                        onEditTurno={openEditTurno}
+                        notas={notas}
+                        onAddNota={addNota}
+                        barberos={barberos}
+                      />
+                    </div>
                   </div>
                   <div className="panel">
                     <p className="panel-title">
@@ -683,6 +720,7 @@ export default function App() {
                 onAddServicio={addServicio}
                 onUpdateServicio={updateServicio}
                 onDeleteServicio={deleteServicio}
+                onReactivarServicio={reactivarServicio}
                 barberos={barberos}
                 onAddBarbero={addBarbero}
                 onUpdateBarbero={updateBarbero}

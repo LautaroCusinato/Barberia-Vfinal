@@ -112,6 +112,7 @@ export default function Operations({
   onAddServicio,
   onUpdateServicio,
   onDeleteServicio,
+  onReactivarServicio,
   barberos,
   onAddBarbero,
   onUpdateBarbero,
@@ -208,13 +209,34 @@ export default function Operations({
                 <div className="ops-edit-main">
                   <label>
                     Nombre del servicio *
-                    <input
-                      className="text-input"
-                      value={servicio.nombre}
-                      onChange={(e) => onUpdateServicio(servicio.id, 'nombre', e.target.value)}
-                      placeholder="Ej: Corte clásico"
-                    />
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        className="text-input"
+                        value={servicio.nombre}
+                        onChange={(e) => onUpdateServicio(servicio.id, 'nombre', e.target.value)}
+                        placeholder="Ej: Corte clásico"
+                      />
+                      {servicio.activo === false && (
+                        <span className="badge" style={{ background: 'var(--border)', color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>
+                          Inactivo
+                        </span>
+                      )}
+                    </span>
                   </label>
+
+                  {servicio.activo === false && (
+                    <p style={{ fontSize: 11.5, color: 'var(--ink-faint)', margin: '-4px 0 4px' }}>
+                      No aparece para agendar turnos nuevos porque tiene turnos asociados.{' '}
+                      <button
+                        type="button"
+                        className="link-btn"
+                        style={{ display: 'inline', fontSize: 11.5, padding: 0 }}
+                        onClick={() => onReactivarServicio(servicio.id)}
+                      >
+                        Reactivar
+                      </button>
+                    </p>
+                  )}
 
                   <label>
                     Descripción (opcional)

@@ -360,6 +360,21 @@ a { color: inherit; }
 
 .two-col { display: grid; grid-template-columns: 1.3fr 1fr; gap: 1.15rem; align-items: start; }
 
+.resumen-agenda-panel {
+  max-height: calc(100vh - 260px);
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.resumen-agenda-panel .panel-title { flex-shrink: 0; }
+.resumen-agenda-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
 .stat-bar {
   width: 100%;
   height: 7px;
@@ -2324,6 +2339,20 @@ input.client-search-input {
   max-width: 640px;
 }
 
+.new-turno-box-fixed {
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  max-height: calc(100vh - 2.4rem);
+}
+
+.modal-scroll-body {
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  padding: 1.4rem 1.5rem 1.6rem;
+}
+
 .modal-overlay {
   background: rgba(8, 13, 12, 0.52);
   backdrop-filter: blur(5px);
@@ -2339,8 +2368,9 @@ input.client-search-input {
   top: 0;
   z-index: 2;
   background: var(--surface);
-  margin: -0.2rem -0.1rem 0.9rem;
-  padding-bottom: 0.75rem;
+  margin: -1.4rem -1.5rem 0.9rem;
+  padding: 1.4rem 1.5rem 0.75rem;
+  border-radius: 14px 14px 0 0;
 }
 
 .modal-section {
@@ -2371,11 +2401,9 @@ input.client-search-input {
   bottom: 0;
   z-index: 2;
   background: var(--surface);
-  padding-top: 18px;
-  padding-bottom: 2px;
-  margin: 0 -0.1rem;
-  padding-left: 0.1rem;
-  padding-right: 0.1rem;
+  margin: 0 -1.5rem -1.6rem;
+  padding: 18px 1.5rem 1.6rem;
+  border-radius: 0 0 14px 14px;
 }
 
 .slot-grid {

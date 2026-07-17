@@ -276,7 +276,8 @@ export default function NewTurnoModal({
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal-box new-turno-box">
+      <div className="modal-box new-turno-box new-turno-box-fixed">
+        <div className="modal-scroll-body">
         <div className="modal-header">
           <span className="panel-title-icon">
             <CalendarPlus size={17} style={{ color: 'var(--accent)' }} />
@@ -573,6 +574,7 @@ export default function NewTurnoModal({
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   )
