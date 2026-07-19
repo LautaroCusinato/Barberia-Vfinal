@@ -659,7 +659,39 @@ a { color: inherit; }
 
 .unread-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rose); flex-shrink: 0; margin-top: 4px; }
 
-.messages-grid-full { display: grid; grid-template-columns: 290px 1fr; gap: 1.15rem; }
+.messages-grid-full {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  gap: 1.15rem;
+  height: calc(100vh - 220px);
+  min-height: 420px;
+}
+
+.conv-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.conv-search { flex-shrink: 0; }
+
+.conv-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 2px;
+}
+
+.thread-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
 
 .mobile-back-btn {
   display: none;
@@ -674,7 +706,16 @@ a { color: inherit; }
   margin-bottom: 2px;
 }
 
-.thread { display: flex; flex-direction: column; gap: 9px; max-height: 460px; overflow-y: auto; padding: 4px 4px 4px 2px; }
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  padding: 4px 4px 4px 2px;
+}
 .bubble { max-width: 78%; padding: 9px 13px; border-radius: 13px; font-size: 13px; line-height: 1.5; box-shadow: var(--shadow-xs); }
 .bubble.in { background: var(--surface-muted); align-self: flex-start; border-bottom-left-radius: 4px; }
 .bubble.out { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
@@ -688,6 +729,7 @@ a { color: inherit; }
   margin-bottom: 1rem;
   padding-bottom: 0.9rem;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .thread-header-info { display: flex; align-items: center; gap: 10px; }
@@ -701,8 +743,10 @@ a { color: inherit; }
   margin-top: 0.9rem;
   padding-top: 0.9rem;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .thread-composer .btn { flex-shrink: 0; padding: 9px 11px; }
+
 
 .table-scroll { width: 100%; overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -2274,7 +2318,7 @@ input.client-search-input {
 }
 
 .thread {
-  min-height: 440px;
+  min-height: 0;
 }
 
 .bubble {
@@ -2343,14 +2387,39 @@ input.client-search-input {
   overflow: hidden;
   padding: 0;
   display: flex;
+  flex-direction: column;
   max-height: calc(100vh - 2.4rem);
+}
+
+.new-turno-box-fixed .modal-header {
+  position: static;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 1.4rem 1.5rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.new-turno-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
 }
 
 .modal-scroll-body {
   overflow-y: auto;
   overflow-x: hidden;
-  width: 100%;
-  padding: 1.4rem 1.5rem 1.6rem;
+  min-height: 0;
+  flex: 1;
+  padding: 1rem 1.5rem;
+}
+
+.new-turno-form .modal-actions {
+  position: static;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 1rem 1.5rem 1.4rem;
+  border-top: 1px solid var(--border);
 }
 
 .modal-overlay {
@@ -2569,6 +2638,15 @@ input.client-search-input {
   .modal-box {
     width: min(100%, calc(100vw - 18px));
     max-height: calc(100vh - 18px);
+    padding: 1rem;
+  }
+
+  .new-turno-box-fixed {
+    max-height: calc(100vh - 18px);
+    padding: 0;
+  }
+
+  .modal-scroll-body {
     padding: 1rem;
   }
 

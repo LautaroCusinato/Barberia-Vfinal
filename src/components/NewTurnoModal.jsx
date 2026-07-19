@@ -277,7 +277,6 @@ export default function NewTurnoModal({
   return (
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal-box new-turno-box new-turno-box-fixed">
-        <div className="modal-scroll-body">
         <div className="modal-header">
           <span className="panel-title-icon">
             <CalendarPlus size={17} style={{ color: 'var(--accent)' }} />
@@ -288,7 +287,8 @@ export default function NewTurnoModal({
           </button>
         </div>
 
-        <form onSubmit={submit}>
+        <form onSubmit={submit} className="new-turno-form">
+          <div className="modal-scroll-body">
           <section className="modal-section">
             <p className="modal-section-title">Fecha y profesional</p>
             <div className="modal-row">
@@ -561,6 +561,7 @@ export default function NewTurnoModal({
               {barberoSeleccionado?.nombre || 'Ese barbero'} ya tiene un turno de {superpuesto.paciente} a las {superpuesto.hora} que se superpone con este horario.
             </p>
           )}
+          </div>
 
           {/* ====== Acciones ====== */}
           <div className="modal-actions">
@@ -574,7 +575,6 @@ export default function NewTurnoModal({
             </button>
           </div>
         </form>
-        </div>
       </div>
     </div>
   )
