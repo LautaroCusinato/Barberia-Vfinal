@@ -25,7 +25,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   const enviar = async () => {
     if (!draft.trim() || sending || !selected) return
     setSending(true)
-    await onSendMessage?.(selected.paciente, draft.trim())
+    await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
     setDraft('')
     setSending(false)
   }

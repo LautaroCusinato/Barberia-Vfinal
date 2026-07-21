@@ -30,6 +30,7 @@ const CLINIC_NAME = 'Barberia Central'
 const TZ = 'America/Argentina/Buenos_Aires'
 const THEME_KEY = 'barberia-central-theme'
 const BARBERIA_ID = Number(import.meta.env.VITE_BARBERIA_ID) || 1
+const N8N_SEND_WEBHOOK_URL = import.meta.env.VITE_N8N_SEND_WEBHOOK_URL || ''
 
 function nextLocalId(items) {
   return Math.max(0, ...items.map((item) => Number(item.id) || 0)) + 1
@@ -170,13 +171,18 @@ export default function App() {
         const agrupados = {}
         for (const m of data) {
           if (!agrupados[m.paciente]) {
-            agrupados[m.paciente] = { id: m.paciente, paciente: m.paciente, ultimaHora: m.hora, noLeido: false, mensajes: [] }
+            agrupados[m.paciente] = { id: m.paciente, paciente: m.paciente, clienteId: m.cliente_id ?? null, ultimaHora: m.hora, ultimoCreatedAt: m.created_at, noLeido: false, mensajes: [] }
           }
           agrupados[m.paciente].mensajes.push(m)
           agrupados[m.paciente].ultimaHora = m.hora
+          agrupados[m.paciente].ultimoCreatedAt = m.created_at
+          if (m.cliente_id) agrupados[m.paciente].clienteId = m.cliente_id
           if (!m.leido) agrupados[m.paciente].noLeido = true
         }
-        setConversaciones(Object.values(agrupados))
+        const lista = Object.values(agrupados).sort(
+          (a, b) => new Date(b.ultimoCreatedAt) - new Date(a.ultimoCreatedAt)
+        )
+        setConversaciones(lista)
       } else {
         setConversaciones([])
       }
@@ -331,17 +337,39 @@ export default function App() {
     }
   }
 
-  const sendMensaje = async (paciente, texto) => {
+  const sendMensaje = async (paciente, texto, clienteId) => {
     const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
-    const nuevoMensaje = { paciente, texto, de: 'clinica', hora: horaActual, leido: true }
+    const nuevoMensaje = { paciente, texto, de: 'clinica', hora: horaActual, leido: true, cliente_id: clienteId ?? null }
 
-    setConversaciones((prev) =>
-      prev.map((c) => (c.paciente === paciente ? { ...c, mensajes: [...c.mensajes, nuevoMensaje], ultimaHora: horaActual } : c))
-    )
+    setConversaciones((prev) => {
+      const actualizadas = prev.map((c) =>
+        c.paciente === paciente ? { ...c, mensajes: [...c.mensajes, nuevoMensaje], ultimaHora: horaActual } : c
+      )
+      const idx = actualizadas.findIndex((c) => c.paciente === paciente)
+      if (idx <= 0) return actualizadas
+      const [conv] = actualizadas.splice(idx, 1)
+      return [conv, ...actualizadas]
+    })
 
     if (isSupabaseConfigured) {
       const { error } = await supabase.from('mensajes').insert({ ...nuevoMensaje, barberia_id: BARBERIA_ID })
       if (error) reportError('No se pudo enviar el mensaje', error)
+    }
+
+    const telefono = clienteId ? pacientes.find((p) => p.id === clienteId)?.telefono : null
+    if (telefono && N8N_SEND_WEBHOOK_URL) {
+      try {
+        const res = await fetch(N8N_SEND_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telefono, texto }),
+        })
+        if (!res.ok) reportError('El mensaje se guardo pero no se pudo enviar por WhatsApp', new Error(`HTTP ${res.status}`))
+      } catch (err) {
+        reportError('El mensaje se guardo pero no se pudo enviar por WhatsApp', err)
+      }
+    } else if (!telefono) {
+      reportError('No se pudo enviar por WhatsApp', new Error('Este cliente no tiene un telefono cargado en su ficha'))
     }
 
     if (botActivo) {
