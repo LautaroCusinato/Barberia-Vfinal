@@ -2226,10 +2226,11 @@ input.client-search-input {
 .service-chip:focus-visible,
 .day-toggle:focus-visible,
 .text-input:focus-visible,
-.search-input:focus-visible,
 .note-input:focus-visible {
   outline: 2px solid var(--accent);
 }
+
+.search-input:focus-visible { outline: none; }
 
 .btn {
   min-height: 36px;
