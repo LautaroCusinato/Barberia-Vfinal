@@ -70,7 +70,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                 <p className="conv-name">{c.paciente}</p>
                 <span className="conv-time">{c.ultimaHora}</span>
               </div>
-              <p className="conv-preview">{c.mensajes[c.mensajes.length - 1]?.texto}</p>
+              <p className="conv-preview">{c.mensajes[c.mensajes.length - 1]?.texto || 'Sin mensajes todavía'}</p>
             </div>
             {c.noLeido && <div className="unread-dot" />}
           </div>
@@ -127,7 +127,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                     <p className="conv-name">{c.paciente}</p>
                     <span className="conv-time">{c.ultimaHora}</span>
                   </div>
-                  <p className="conv-preview">{c.mensajes[c.mensajes.length - 1]?.texto}</p>
+                  <p className="conv-preview">{c.mensajes[c.mensajes.length - 1]?.texto || 'Sin mensajes todavía'}</p>
                 </div>
                 {c.noLeido && <div className="unread-dot" />}
               </div>

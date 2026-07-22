@@ -165,27 +165,51 @@ export default function App() {
     }
 
     async function cargarMensajes() {
-      const { data } = await supabase
-        .from('mensajes').select('*').eq('barberia_id', BARBERIA_ID).order('created_at')
-      if (data?.length) {
-        const agrupados = {}
-        for (const m of data) {
-          if (!agrupados[m.paciente]) {
-            agrupados[m.paciente] = { id: m.paciente, paciente: m.paciente, clienteId: m.cliente_id ?? null, ultimaHora: m.hora, ultimoCreatedAt: m.created_at, noLeido: false, mensajes: [] }
-          }
-          agrupados[m.paciente].mensajes.push(m)
-          agrupados[m.paciente].ultimaHora = m.hora
-          agrupados[m.paciente].ultimoCreatedAt = m.created_at
-          if (m.cliente_id) agrupados[m.paciente].clienteId = m.cliente_id
-          if (!m.leido) agrupados[m.paciente].noLeido = true
+      const [{ data }, { data: clientesData }] = await Promise.all([
+        supabase.from('mensajes').select('*').eq('barberia_id', BARBERIA_ID).order('created_at'),
+        supabase.from('clientes').select('id, nombre').eq('barberia_id', BARBERIA_ID),
+      ])
+
+      // Agrupamos por cliente_id, NO por nombre. Si agrupáramos por nombre,
+      // un mismo cliente puede aparecer duplicado apenas el texto no calza
+      // exacto (ej: se cargó "Lauta" desde Agendar o desde el bot, y en el
+      // mensaje quedó guardado "Lauta Gómez" — dos claves distintas, mismo
+      // cliente). El cliente_id no cambia nunca, así que es la clave correcta.
+      const agrupados = {}
+      for (const m of data ?? []) {
+        const key = m.cliente_id != null ? `id-${m.cliente_id}` : `sin-id-${m.paciente}`
+        if (!agrupados[key]) {
+          agrupados[key] = { id: key, paciente: m.paciente, clienteId: m.cliente_id ?? null, ultimaHora: m.hora, ultimoCreatedAt: m.created_at, noLeido: false, mensajes: [] }
         }
-        const lista = Object.values(agrupados).sort(
-          (a, b) => new Date(b.ultimoCreatedAt) - new Date(a.ultimoCreatedAt)
-        )
-        setConversaciones(lista)
-      } else {
-        setConversaciones([])
+        agrupados[key].mensajes.push(m)
+        agrupados[key].ultimaHora = m.hora
+        agrupados[key].ultimoCreatedAt = m.created_at
+        agrupados[key].paciente = m.paciente
+        if (m.cliente_id) agrupados[key].clienteId = m.cliente_id
+        if (!m.leido) agrupados[key].noLeido = true
       }
+
+      // Clientes que todavia no le escribieron nunca a la barberia: se agregan
+      // igual, con el chat vacio, y quedan siempre al final de la lista.
+      // Se chequea por id de cliente (no por nombre) para no duplicar chats.
+      for (const c of clientesData ?? []) {
+        const key = `id-${c.id}`
+        if (agrupados[key]) continue
+        agrupados[key] = {
+          id: key,
+          paciente: c.nombre,
+          clienteId: c.id,
+          ultimaHora: null,
+          ultimoCreatedAt: new Date(0).toISOString(),
+          noLeido: false,
+          mensajes: [],
+        }
+      }
+
+      const lista = Object.values(agrupados).sort(
+        (a, b) => new Date(b.ultimoCreatedAt) - new Date(a.ultimoCreatedAt)
+      )
+      setConversaciones(lista)
     }
 
     async function cargarTodo() {
@@ -209,7 +233,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mensajes' }, () => cargarMensajes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'turnos' }, () => cargarTurnos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notas' }, () => cargarNotas())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => cargarClientes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => { cargarClientes(); cargarMensajes() })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'servicios' }, () => cargarServicios())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barberos' }, () => cargarBarberos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'config' }, () => cargarConfig())
@@ -233,17 +257,17 @@ export default function App() {
     setSelectedConversationId(convId)
     setView('mensajes')
 
+    const conv = conversaciones.find((c) => c.id === convId)
+
     setConversaciones((prev) =>
       prev.map((c) => (c.id === convId ? { ...c, noLeido: false, mensajes: c.mensajes.map((m) => ({ ...m, leido: true })) } : c))
     )
 
-    if (isSupabaseConfigured) {
-      const { error } = await supabase
-        .from('mensajes')
-        .update({ leido: true })
-        .eq('barberia_id', BARBERIA_ID)
-        .eq('paciente', convId)
-        .eq('leido', false)
+    if (isSupabaseConfigured && conv) {
+      const base = supabase.from('mensajes').update({ leido: true }).eq('barberia_id', BARBERIA_ID).eq('leido', false)
+      const { error } = conv.clienteId != null
+        ? await base.eq('cliente_id', conv.clienteId)
+        : await base.eq('paciente', conv.paciente)
       if (error) reportError('No se pudo marcar la conversacion como leida', error)
     }
   }
@@ -340,12 +364,13 @@ export default function App() {
   const sendMensaje = async (paciente, texto, clienteId) => {
     const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
     const nuevoMensaje = { paciente, texto, de: 'clinica', hora: horaActual, leido: true, cliente_id: clienteId ?? null }
+    const esLaConversacion = (c) => (clienteId != null ? c.clienteId === clienteId : c.paciente === paciente)
 
     setConversaciones((prev) => {
       const actualizadas = prev.map((c) =>
-        c.paciente === paciente ? { ...c, mensajes: [...c.mensajes, nuevoMensaje], ultimaHora: horaActual } : c
+        esLaConversacion(c) ? { ...c, mensajes: [...c.mensajes, nuevoMensaje], ultimaHora: horaActual, ultimoCreatedAt: new Date().toISOString() } : c
       )
-      const idx = actualizadas.findIndex((c) => c.paciente === paciente)
+      const idx = actualizadas.findIndex(esLaConversacion)
       if (idx <= 0) return actualizadas
       const [conv] = actualizadas.splice(idx, 1)
       return [conv, ...actualizadas]
