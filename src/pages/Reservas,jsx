@@ -1,0 +1,650 @@
+import React, { useState, useEffect, useMemo } from 'react'
+import { format, parseISO, addDays, isToday } from 'date-fns'
+import { es } from 'date-fns/locale'
+import { 
+  Scissors, 
+  Calendar, 
+  Clock, 
+  User, 
+  Phone, 
+  CheckCircle2,
+  ArrowLeft,
+  ArrowRight,
+  AlertCircle,
+  MessageCircle,
+  XCircle
+} from 'lucide-react'
+import ServiceSelector from '../components/ServiceSelector'
+import TimeSlotPicker from '../components/TimeSlotPicker'
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { barberoDisponible, generarSlots } from '../lib/text'
+import { mockBarberos, mockServicios } from '../data/mockData'
+import './Reservas.css'
+
+const PREFIJO_AR = '+54 9 11 '
+const BARBERIA_ID = Number(import.meta.env.VITE_BARBERIA_ID) || 1
+
+function generarIdHabilidad(nombre) {
+  return nombre
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '')
+}
+
+export default function Reservas() {
+  const [step, setStep] = useState(1)
+  const [servicioId, setServicioId] = useState(null)
+  const [barberoId, setBarberoId] = useState(null)
+  const [fecha, setFecha] = useState('')
+  const [hora, setHora] = useState('')
+  const [nombre, setNombre] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [notas, setNotas] = useState('')
+  const [confirmado, setConfirmado] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const [barberos, setBarberos] = useState([])
+  const [servicios, setServicios] = useState([])
+  const [turnosExistentes, setTurnosExistentes] = useState([])
+  const [cargandoDatos, setCargandoDatos] = useState(true)
+
+  useEffect(() => {
+    async function cargarDatos() {
+      try {
+        if (isSupabaseConfigured) {
+          console.log('📡 Cargando datos desde Supabase...')
+          
+          const [barberosRes, serviciosRes, turnosRes] = await Promise.all([
+            supabase.from('barberos').select('*').eq('activo', true).order('nombre'),
+            supabase.from('servicios').select('*').eq('activo', true).order('nombre'),
+            supabase.from('turnos').select('*').gte('fecha', new Date().toISOString().slice(0, 10)),
+          ])
+          
+          if (barberosRes.data) {
+            const barberosConHabilidades = barberosRes.data.map(b => ({
+              ...b,
+              habilidades: b.habilidades ? JSON.parse(b.habilidades) : []
+            }))
+            setBarberos(barberosConHabilidades)
+          }
+          if (serviciosRes.data) {
+            setServicios(serviciosRes.data.map(s => ({ 
+              ...s, 
+              duracion: s.duracion_min || s.duracion || 30 
+            })))
+          }
+          if (turnosRes.data) {
+            setTurnosExistentes(turnosRes.data)
+          }
+        } else {
+          setBarberos(mockBarberos.filter(b => b.activo))
+          setServicios(mockServicios.filter(s => s.activo))
+          setTurnosExistentes([])
+        }
+      } catch (e) {
+        console.error('❌ Error cargando datos:', e)
+        setError('Error al cargar los datos. Intenta de nuevo.')
+      } finally {
+        setCargandoDatos(false)
+      }
+    }
+    cargarDatos()
+  }, [])
+
+  const servicioSeleccionado = servicios.find(s => s.id === servicioId)
+  const barberoSeleccionado = barberos.find(b => b.id === barberoId)
+
+  const barberosFiltrados = useMemo(() => {
+    if (!servicioSeleccionado) return barberos
+    
+    const idHabilidad = generarIdHabilidad(servicioSeleccionado.nombre)
+    
+    return barberos.filter(b => {
+      if (!b.habilidades || b.habilidades.length === 0) return false
+      return b.habilidades.includes(idHabilidad)
+    })
+  }, [barberos, servicioSeleccionado])
+
+  const fechasConDisponibilidad = useMemo(() => {
+    const hoy = new Date()
+    const fechas = []
+    
+    for (let i = 0; i < 14; i++) {
+      const fecha = addDays(hoy, i)
+      const fechaStr = format(fecha, 'yyyy-MM-dd')
+      
+      let disponible = false
+      
+      if (barberoId && barberoSeleccionado) {
+        disponible = barberoDisponible(barberoSeleccionado, fechaStr, '09:00')
+      } else if (barberosFiltrados.length > 0) {
+        for (const b of barberosFiltrados) {
+          if (barberoDisponible(b, fechaStr, '09:00')) {
+            disponible = true
+            break
+          }
+        }
+      } else {
+        disponible = true
+      }
+      
+      fechas.push({
+        fecha: fechaStr,
+        fechaObj: fecha,
+        disponible,
+        esHoy: isToday(fecha),
+        esSeleccionada: fechaStr === fecha,
+        diaSemana: format(fecha, 'EEE', { locale: es }),
+        diaNum: format(fecha, 'd'),
+        mes: format(fecha, 'MMM', { locale: es })
+      })
+    }
+    
+    return fechas
+  }, [barberoId, barberoSeleccionado, barberosFiltrados])
+
+  const barberoPuedeHacerServicio = useMemo(() => {
+    if (!barberoSeleccionado || !servicioSeleccionado) return false
+    
+    if (!barberoSeleccionado.habilidades || barberoSeleccionado.habilidades.length === 0) {
+      return false
+    }
+    
+    const idHabilidad = generarIdHabilidad(servicioSeleccionado.nombre)
+    return barberoSeleccionado.habilidades.includes(idHabilidad)
+  }, [barberoSeleccionado, servicioSeleccionado])
+
+  const horariosDisponibles = useMemo(() => {
+    if (!fecha || !barberoId || !servicioId) return []
+    if (!barberoPuedeHacerServicio) return []
+    
+    const duracion = servicioSeleccionado?.duracion || 30
+    
+    const turnosOcupados = turnosExistentes.filter(t => 
+      t.fecha === fecha && 
+      String(t.barbero_id) === String(barberoId) &&
+      t.estado !== 'no_asistio'
+    )
+
+    const slots = generarSlots(9 * 60, 20 * 60, 15)
+    
+    return slots.filter(slot => {
+      if (!barberoDisponible(barberoSeleccionado, fecha, slot)) return false
+      
+      const slotMin = parseInt(slot.split(':')[0]) * 60 + parseInt(slot.split(':')[1])
+      return !turnosOcupados.some(t => {
+        const tMin = parseInt(t.hora.split(':')[0]) * 60 + parseInt(t.hora.split(':')[1])
+        return slotMin < tMin + (t.duracion || 30) && tMin < slotMin + duracion
+      })
+    })
+  }, [fecha, barberoId, servicioId, servicioSeleccionado, turnosExistentes, barberoSeleccionado, barberoPuedeHacerServicio])
+
+  const siguientePaso = () => {
+    setError('')
+    
+    if (step === 1 && !servicioId) {
+      setError('Por favor, seleccioná un servicio')
+      return
+    }
+    
+    if (step === 2 && !barberoId) {
+      setError('Por favor, seleccioná un barbero')
+      return
+    }
+    
+    if (step === 2 && !fecha) {
+      setError('Por favor, seleccioná una fecha')
+      return
+    }
+    
+    if (step === 2 && barberoSeleccionado && servicioSeleccionado && !barberoPuedeHacerServicio) {
+      setError(`❌ ${barberoSeleccionado.nombre} no realiza este servicio. Probá con otro barbero.`)
+      return
+    }
+    
+    if (step === 3 && !hora) {
+      setError('Por favor, seleccioná un horario')
+      return
+    }
+    
+    if (step === 4) {
+      if (!nombre.trim()) {
+        setError('Por favor, ingresá tu nombre')
+        return
+      }
+      if (!telefono.trim() || telefono.length < 10) {
+        setError('Por favor, ingresá un teléfono válido')
+        return
+      }
+      confirmarTurno()
+      return
+    }
+    
+    setStep(step + 1)
+  }
+
+  const pasoAnterior = () => {
+    setError('')
+    setStep(step - 1)
+  }
+
+  const formatearTelefono = (value) => {
+    const digitos = value.replace(/\D/g, '').slice(0, 8)
+    let formateado = digitos
+    if (digitos.length > 4) {
+      formateado = `${digitos.slice(0, 4)}-${digitos.slice(4)}`
+    }
+    return PREFIJO_AR + formateado
+  }
+
+  const confirmarTurno = async () => {
+    setLoading(true)
+    setError('')
+
+    const turnoData = {
+      paciente: nombre.trim(),
+      telefono: telefono.trim(),
+      fecha,
+      hora,
+      motivo: servicioSeleccionado?.nombre || 'Corte',
+      estado: 'confirmado',
+      servicio_id: servicioId,
+      barbero_id: barberoId,
+      precio: servicioSeleccionado?.precio || 0,
+      duracion_min: servicioSeleccionado?.duracion || 30,
+    }
+
+    try {
+      if (isSupabaseConfigured) {
+        const { data: turnoDataResult, error: turnoError } = await supabase
+          .from('turnos')
+          .insert({
+            ...turnoData,
+            barberia_id: BARBERIA_ID,
+          })
+          .select()
+        
+        if (turnoError) throw turnoError
+
+        const { data: clienteExistente } = await supabase
+          .from('clientes')
+          .select('id')
+          .eq('telefono', telefono.trim())
+          .maybeSingle()
+        
+        if (!clienteExistente) {
+          await supabase.from('clientes').insert({
+            nombre: nombre.trim(),
+            telefono: telefono.trim(),
+            barberia_id: BARBERIA_ID,
+            ultima_visita: fecha,
+          })
+        }
+
+        setConfirmado(true)
+      } else {
+        console.log('📡 Modo demo - turno guardado localmente:', turnoData)
+        setConfirmado(true)
+      }
+    } catch (e) {
+      console.error('❌ Error:', e)
+      setError(e.message || 'Error al confirmar el turno. Por favor, intentá de nuevo.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (confirmado) {
+    return (
+      <div className="reservas-container">
+        <div className="reservas-success">
+          <div className="success-icon">
+            <CheckCircle2 size={64} strokeWidth={1.5} />
+          </div>
+          <h1>¡Turno confirmado! ✂️</h1>
+          <p>
+            {nombre}, tu turno ha sido agendado para el <strong>{format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es })}</strong> a las <strong>{hora}</strong>.
+          </p>
+          <div className="success-details">
+            <div><strong>Servicio:</strong> {servicioSeleccionado?.nombre}</div>
+            <div><strong>Barbero:</strong> {barberoSeleccionado?.nombre}</div>
+            <div><strong>Duración:</strong> {servicioSeleccionado?.duracion} min</div>
+            <div><strong>Precio:</strong> ${servicioSeleccionado?.precio}</div>
+          </div>
+          <div className="success-whatsapp">
+            <MessageCircle size={18} />
+            <span>Te enviaremos un recordatorio por WhatsApp</span>
+          </div>
+          <button 
+            className="btn btn-primary" 
+            onClick={() => window.location.reload()}
+          >
+            Agendar otro turno
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (cargandoDatos) {
+    return (
+      <div className="reservas-container">
+        <div className="reservas-loading">
+          <div className="skeleton" style={{ height: 60, width: '100%', marginBottom: 20 }} />
+          <div className="skeleton" style={{ height: 200, width: '100%' }} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="reservas-container">
+      <header className="reservas-header">
+        <div className="reservas-brand">
+          <div className="brand-icon">
+            <Scissors size={32} strokeWidth={2} />
+          </div>
+          <div>
+            <h1>Barbería Central</h1>
+            <p>Reservá tu turno en 4 pasos simples</p>
+          </div>
+        </div>
+        <div className="reservas-contacto">
+          <Phone size={16} />
+          <span>+54 9 11 5522-8080</span>
+        </div>
+      </header>
+
+      <div className="reservas-steps">
+        {[
+          { num: 1, label: 'Servicio', icon: Scissors },
+          { num: 2, label: 'Barbero y fecha', icon: User },
+          { num: 3, label: 'Horario', icon: Clock },
+          { num: 4, label: 'Confirmar', icon: CheckCircle2 },
+        ].map((s, i) => (
+          <React.Fragment key={s.num}>
+            <div className={`step-indicator ${step >= s.num ? 'active' : ''}`}>
+              <span className="step-number">{s.num}</span>
+              <span className="step-label">{s.label}</span>
+            </div>
+            {i < 3 && <div className={`step-line ${step > s.num ? 'active' : ''}`} />}
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div className="reservas-content">
+        {error && (
+          <div className="reservas-error">
+            <AlertCircle size={18} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className="step-content">
+            <div className="step-header">
+              <h2>Elegí tu servicio</h2>
+              <p className="step-sub">Seleccioná el servicio que deseas</p>
+            </div>
+            <ServiceSelector
+              servicios={servicios}
+              selectedId={servicioId}
+              onSelect={setServicioId}
+            />
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="step-content">
+            <div className="step-header">
+              <h2>Elegí barbero y fecha</h2>
+              <p className="step-sub">Seleccioná quién te va a atender y cuándo</p>
+            </div>
+            
+            <div className="form-group">
+              <label>Barbero</label>
+              {barberosFiltrados.length === 0 && servicioSeleccionado ? (
+                <div className="no-barberos-message">
+                  <AlertCircle size={20} />
+                  <p>No hay barberos disponibles que realicen este servicio.</p>
+                  <span className="hint">Probá con otro servicio o agregá habilidades a los barberos.</span>
+                </div>
+              ) : (
+                <div className="barberos-grid-public">
+                  {barberosFiltrados.map(b => {
+                    const disponibleEnFecha = fecha ? barberoDisponible(b, fecha, '09:00') : true
+                    const seleccionado = barberoId === b.id
+                    
+                    return (
+                      <button
+                        key={b.id}
+                        className={`barbero-card-public ${seleccionado ? 'active' : ''} ${!disponibleEnFecha ? 'disabled' : ''}`}
+                        onClick={() => disponibleEnFecha && setBarberoId(b.id)}
+                        disabled={!disponibleEnFecha}
+                      >
+                        <div className="barbero-avatar" style={{ background: b.color }}>
+                          {b.nombre.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="barbero-info">
+                          <strong>{b.nombre}</strong>
+                          <div className="barbero-habilidades">
+                            {(b.habilidades || []).slice(0, 3).map(h => (
+                              <span key={h} className="habilidad-tag-mini">
+                                {h.replace(/_/g, ' ')}
+                              </span>
+                            ))}
+                            {(b.habilidades || []).length > 3 && (
+                              <span className="habilidad-tag-mini">+{(b.habilidades || []).length - 3}</span>
+                            )}
+                          </div>
+                        </div>
+                        {!disponibleEnFecha && (
+                          <span className="barbero-disabled">No trabaja este día</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label>Fecha</label>
+              <div className="fechas-grid">
+                {fechasConDisponibilidad.map((f) => {
+                  const clases = [
+                    'fecha-card',
+                    f.esSeleccionada ? 'active' : '',
+                    f.esHoy ? 'today' : '',
+                    !f.disponible ? 'no-disponible' : '',
+                  ].filter(Boolean).join(' ')
+                  
+                  return (
+                    <button
+                      key={f.fecha}
+                      className={clases}
+                      onClick={() => f.disponible && setFecha(f.fecha)}
+                      disabled={!f.disponible}
+                      title={!f.disponible ? 'No hay barberos disponibles este día' : ''}
+                    >
+                      <span className="fecha-dia">{f.diaSemana}</span>
+                      <span className="fecha-num">{f.diaNum}</span>
+                      <span className="fecha-mes">{f.mes}</span>
+                      {f.esHoy && <span className="fecha-badge">Hoy</span>}
+                      {!f.disponible && (
+                        <span className="fecha-no-disponible">
+                          <XCircle size={14} />
+                        </span>
+                      )}
+                      {f.esSeleccionada && f.disponible && (
+                        <span className="fecha-seleccionada-check">
+                          <CheckCircle2 size={14} />
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="fechas-leyenda">
+                <span className="leyenda-item">
+                  <span className="leyenda-color disponible" />
+                  Disponible
+                </span>
+                <span className="leyenda-item">
+                  <span className="leyenda-color no-disponible" />
+                  No disponible
+                </span>
+                <span className="leyenda-item">
+                  <span className="leyenda-color seleccionado" />
+                  Seleccionado
+                </span>
+              </div>
+            </div>
+
+            {servicioSeleccionado && barberoSeleccionado && fecha && barberoPuedeHacerServicio && (
+              <div className="resumen-seleccion">
+                <span className="badge-resumen">
+                  <Scissors size={14} />
+                  {servicioSeleccionado.nombre}
+                </span>
+                <span className="badge-resumen">
+                  <User size={14} />
+                  {barberoSeleccionado.nombre}
+                </span>
+                <span className="badge-resumen">
+                  <Calendar size={14} />
+                  {format(parseISO(fecha), "EEE d MMM", { locale: es })}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="step-content">
+            <div className="step-header">
+              <h2>Elegí tu horario</h2>
+              <p className="step-sub">Seleccioná la hora que mejor te quede</p>
+            </div>
+            
+            <div className="resumen-seleccion">
+              <span className="badge-resumen">
+                <Scissors size={14} />
+                {servicioSeleccionado?.nombre}
+              </span>
+              <span className="badge-resumen">
+                <User size={14} />
+                {barberoSeleccionado?.nombre}
+              </span>
+              <span className="badge-resumen">
+                <Calendar size={14} />
+                {format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es })}
+              </span>
+            </div>
+
+            <TimeSlotPicker
+              slots={horariosDisponibles}
+              selected={hora}
+              onSelect={setHora}
+              turnosOcupados={turnosExistentes.filter(
+                t => t.fecha === fecha && 
+                     String(t.barbero_id) === String(barberoId) &&
+                     t.estado !== 'no_asistio'
+              )}
+            />
+
+            {hora && (
+              <div className="slot-selected">
+                <Clock size={16} />
+                <span>Turno seleccionado: <strong>{hora}</strong></span>
+                <span className="slot-duracion">({servicioSeleccionado?.duracion} min)</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="step-content">
+            <div className="step-header">
+              <h2>Tus datos</h2>
+              <p className="step-sub">Completá tus datos para confirmar el turno</p>
+            </div>
+            
+            <div className="resumen-turno">
+              <h3>📋 Resumen del turno</h3>
+              <div className="resumen-detalle">
+                <div><strong>Servicio:</strong> {servicioSeleccionado?.nombre}</div>
+                <div><strong>Duración:</strong> {servicioSeleccionado?.duracion} min</div>
+                <div><strong>Precio:</strong> ${servicioSeleccionado?.precio}</div>
+                <div><strong>Barbero:</strong> {barberoSeleccionado?.nombre}</div>
+                <div><strong>Fecha:</strong> {format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es })}</div>
+                <div><strong>Hora:</strong> {hora}</div>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Nombre y apellido *</label>
+              <input
+                className="text-input"
+                type="text"
+                placeholder="Ej: Juan Pérez"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Teléfono *</label>
+              <div className="phone-field">
+                <span className="phone-prefix">{PREFIJO_AR}</span>
+                <input
+                  className="phone-input"
+                  type="tel"
+                  placeholder="0000-0000"
+                  value={telefono.replace(PREFIJO_AR, '')}
+                  onChange={(e) => setTelefono(formatearTelefono(e.target.value))}
+                />
+              </div>
+              <span className="phone-hint">Te enviaremos un recordatorio por WhatsApp</span>
+            </div>
+
+            <div className="form-group notas-group">
+              <label className="notas-label">
+                <span>Notas (opcional)</span>
+                <span className="notas-hint">Alguna preferencia especial</span>
+              </label>
+              <textarea
+                className="notas-textarea"
+                placeholder="Ej: Prefiero tijera, no máquina. O: Quiero que me deje la barba más corta."
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="reservas-navegacion">
+          {step > 1 && (
+            <button className="btn" onClick={pasoAnterior}>
+              <ArrowLeft size={16} />
+              Atrás
+            </button>
+          )}
+          <button 
+            className="btn btn-primary" 
+            onClick={siguientePaso}
+            disabled={loading}
+          >
+            {loading ? 'Confirmando...' : step === 4 ? 'Confirmar turno' : 'Siguiente'}
+            {step < 4 && <ArrowRight size={16} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
