@@ -17,7 +17,7 @@ function ultimosNDias(n, todayKey) {
   return dias
 }
 
-export default function Stats({ turnos, pacientes, conversaciones, todayKey, barberos = [] }) {
+export default function Stats({ turnos, pacientes, conversaciones, todayKey, barberos = [], servicios = [] }) {
   const atendidos = useMemo(() => turnos.filter((t) => statusMeta(t.estado).value === 'atendido'), [turnos])
   const ingresosTotales = useMemo(() => atendidos.reduce((acc, t) => acc + (Number(t.precio) || 0), 0), [atendidos])
   const ticketPromedio = atendidos.length > 0 ? Math.round(ingresosTotales / atendidos.length) : 0
@@ -54,15 +54,21 @@ export default function Stats({ turnos, pacientes, conversaciones, todayKey, bar
   const tasaAsistencia = resueltos.length > 0 ? Math.round((asistieron / resueltos.length) * 100) : null
 
   const motivos = useMemo(() => {
+    // Contamos por servicio_id real (con fallback al texto de "motivo" solo
+    // para turnos viejos que no tengan servicio_id cargado). Así da igual
+    // si el turno vino del bot, del panel, o qué texto haya quedado en
+    // motivo — siempre se agrupa por el servicio real que se hizo.
+    const nombreServicio = (id) => servicios.find((s) => String(s.id) === String(id))?.nombre
     const counts = {}
     for (const t of turnos) {
-      const key = normalizar(t.motivo || 'sin motivo').trim()
+      const nombre = (t.servicio_id != null && nombreServicio(t.servicio_id)) || t.motivo || 'Sin servicio'
+      const key = normalizar(nombre).trim()
       if (!key) continue
-      counts[key] = counts[key] || { label: t.motivo || 'Sin motivo', count: 0 }
+      counts[key] = counts[key] || { label: nombre, count: 0 }
       counts[key].count += 1
     }
     return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5)
-  }, [turnos])
+  }, [turnos, servicios])
 
   const maxMotivo = Math.max(1, ...motivos.map((m) => m.count))
 

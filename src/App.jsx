@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Info, CalendarCheck, MessageCircle, Plus, Bot, Download, AlertTriangle, X } from 'lucide-react'
@@ -70,6 +70,7 @@ export default function App() {
   const [notas, setNotas] = useState(mockNotas)
   const [servicios, setServicios] = useState(mockServicios)
   const [barberos, setBarberos] = useState(mockBarberos)
+  const [bloqueos, setBloqueos] = useState([])
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [selectedConversationId, setSelectedConversationId] = useState(null)
   const [theme, setTheme] = useState(initialTheme)
@@ -149,19 +150,26 @@ export default function App() {
       const { data, error } = await supabase
         .from('barberos').select('*').eq('barberia_id', BARBERIA_ID).order('nombre')
       if (error) reportError('No se pudieron cargar los barberos', error)
-      if (data) {
-        const barberosConHabilidades = data.map(b => ({
-          ...barberoFromDb(b),
-          habilidades: b.habilidades ? JSON.parse(b.habilidades) : []
-        }))
-        setBarberos(barberosConHabilidades)
-      }
+      // OJO: "habilidades" queda tal cual viene de la base (texto JSON), no
+      // se parsea acá. El único lugar que la convierte a array es
+      // parseHabilidades() (lib/text.js), justo antes de usarla. Si se
+      // parsea acá Y en parseHabilidades, el segundo parseo se rompe
+      // (JSON.parse de un array ya parseado tira error) y todas las
+      // habilidades quedan "vacías" apenas se recarga la lista.
+      if (data) setBarberos(data.map(barberoFromDb))
     }
 
     async function cargarConfig() {
       const { data } = await supabase
         .from('config').select('*').eq('barberia_id', BARBERIA_ID).eq('clave', 'bot_activo').maybeSingle()
       if (data) setBotActivo(data.valor === 'true')
+    }
+
+    async function cargarBloqueos() {
+      const { data, error } = await supabase
+        .from('bloqueos_agenda').select('*').eq('barberia_id', BARBERIA_ID).order('fecha')
+      if (error) reportError('No se pudieron cargar los días libres', error)
+      setBloqueos(data ?? [])
     }
 
     async function cargarMensajes() {
@@ -175,6 +183,7 @@ export default function App() {
       // exacto (ej: se cargó "Lauta" desde Agendar o desde el bot, y en el
       // mensaje quedó guardado "Lauta Gómez" — dos claves distintas, mismo
       // cliente). El cliente_id no cambia nunca, así que es la clave correcta.
+      const nombrePorClienteId = Object.fromEntries((clientesData ?? []).map((c) => [c.id, c.nombre]))
       const agrupados = {}
       for (const m of data ?? []) {
         const key = m.cliente_id != null ? `id-${m.cliente_id}` : `sin-id-${m.paciente}`
@@ -184,8 +193,14 @@ export default function App() {
         agrupados[key].mensajes.push(m)
         agrupados[key].ultimaHora = m.hora
         agrupados[key].ultimoCreatedAt = m.created_at
-        agrupados[key].paciente = m.paciente
+        // OJO: el nombre a mostrar NO sale de m.paciente (eso queda
+        // congelado con el nombre/apodo de WhatsApp de cuando se guardó
+        // ese mensaje puntual). Mostramos siempre el nombre ACTUAL de la
+        // ficha del cliente, que es el que el bot corrige cuando confirma
+        // el nombre y apellido real. Si el cliente no tiene ficha (caso
+        // raro), usamos el de m.paciente como respaldo.
         if (m.cliente_id) agrupados[key].clienteId = m.cliente_id
+        agrupados[key].paciente = nombrePorClienteId[agrupados[key].clienteId] ?? m.paciente
         if (!m.leido) agrupados[key].noLeido = true
       }
 
@@ -222,6 +237,7 @@ export default function App() {
         cargarBarberos(),
         cargarConfig(),
         cargarMensajes(),
+        cargarBloqueos(),
       ])
       setLoading(false)
     }
@@ -237,6 +253,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'servicios' }, () => cargarServicios())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barberos' }, () => cargarBarberos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'config' }, () => cargarConfig())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bloqueos_agenda' }, () => cargarBloqueos())
       .subscribe()
 
     return () => supabase.removeChannel(channel)
@@ -519,13 +536,39 @@ export default function App() {
     }
   }
 
+  // Guarda, para cada (barbero, campo), cuál es el último valor que el
+  // usuario pidió guardar y si ya hay un guardado en curso para ese par.
+  // Así, si tocás/destocás rápido una habilidad, los guardados a Supabase
+  // salen siempre de a uno y en orden — nunca se pisan entre sí ni puede
+  // "ganar" un click viejo por llegar después que uno nuevo.
+  const barberoWritesRef = useRef({})
+
   const updateBarbero = async (id, field, value) => {
     setBarberos((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)))
-    if (isSupabaseConfigured) {
-      const dbFieldMap = { rol: 'especialidad', horario: 'horario_texto', habilidades: 'habilidades' }
-      const dbField = dbFieldMap[field] || field
-      const { error } = await supabase.from('barberos').update({ [dbField]: value }).eq('id', id)
-      if (error) reportError('No se pudo actualizar el barbero', error)
+    if (!isSupabaseConfigured) return
+
+    const key = `${id}:${field}`
+    const estado = barberoWritesRef.current[key] || { inFlight: false, latest: value }
+    estado.latest = value
+    barberoWritesRef.current[key] = estado
+
+    if (estado.inFlight) return // ya hay un guardado de este campo en curso, el loop de abajo lo va a mandar solo
+
+    const dbFieldMap = { rol: 'especialidad', horario: 'horario_texto', habilidades: 'habilidades' }
+    const dbField = dbFieldMap[field] || field
+
+    estado.inFlight = true
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const valorAGuardar = estado.latest
+        const { error } = await supabase.from('barberos').update({ [dbField]: valorAGuardar }).eq('id', id)
+        if (error) reportError('No se pudo actualizar el barbero', error)
+        if (estado.latest === valorAGuardar) break // no llego nada nuevo mientras se guardaba, listo
+        // si llego un valor mas nuevo mientras se guardaba, el loop repite y lo manda
+      }
+    } finally {
+      estado.inFlight = false
     }
   }
 
@@ -534,6 +577,26 @@ export default function App() {
     if (isSupabaseConfigured) {
       const { error } = await supabase.from('barberos').delete().eq('id', id)
       if (error) reportError('No se pudo eliminar el barbero', error)
+    }
+  }
+
+  const addBloqueo = async ({ barbero_id, fecha, motivo, tipo }) => {
+    const nuevo = { barberia_id: BARBERIA_ID, barbero_id, fecha, motivo, tipo, start_time: '00:00', end_time: '23:59' }
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase.from('bloqueos_agenda').insert(nuevo).select()
+      if (error) { reportError('No se pudo guardar el día libre', error); return false }
+      if (data?.[0]) setBloqueos((prev) => [...prev, data[0]])
+      return true
+    }
+    setBloqueos((prev) => [...prev, { id: nextLocalId(prev), ...nuevo }])
+    return true
+  }
+
+  const deleteBloqueo = async (id) => {
+    setBloqueos((prev) => prev.filter((b) => b.id !== id))
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.from('bloqueos_agenda').delete().eq('id', id)
+      if (error) reportError('No se pudo eliminar el día libre', error)
     }
   }
 
@@ -784,7 +847,7 @@ export default function App() {
               </div>
             </div>
             {loading ? <SkeletonBlock height={420} /> : (
-              <Stats turnos={turnos} pacientes={pacientes} conversaciones={conversaciones} todayKey={todayKey} barberos={barberos} />
+              <Stats turnos={turnos} pacientes={pacientes} conversaciones={conversaciones} todayKey={todayKey} barberos={barberos} servicios={servicios} />
             )}
           </div>
         )}
@@ -809,6 +872,9 @@ export default function App() {
                 onAddBarbero={addBarbero}
                 onUpdateBarbero={updateBarbero}
                 onDeleteBarbero={deleteBarbero}
+                bloqueos={bloqueos}
+                onAddBloqueo={addBloqueo}
+                onDeleteBloqueo={deleteBloqueo}
                 config={mockBarberiaConfig}
               />
             )}
@@ -826,6 +892,7 @@ export default function App() {
         servicios={servicios}
         barberos={barberos}
         clientes={pacientes}
+        bloqueos={bloqueos}
       />
     </div>
   )

@@ -1320,7 +1320,8 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 }
 
 .ops-edit-main label,
-.ops-edit-grid label {
+.ops-edit-grid label,
+.ops-field-label {
   display: grid;
   gap: 4px;
   color: var(--ink-faint);

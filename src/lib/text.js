@@ -52,6 +52,43 @@ export function formatTelefonoDisplay(value = '') {
   return `${PREFIJO_AR}${local.slice(0, 4)}-${local.slice(4)}`
 }
 
+// ===== HABILIDADES DE CADA BARBERO (que servicios puede hacer) =====
+// Se guardan como un JSON de ids (slug del nombre del servicio) en
+// barberos.habilidades. Un barbero SIN habilidades cargadas se interpreta
+// como "hace todos los servicios" (para no romper turnos existentes de
+// barberos a los que todavia no se les configuro nada).
+
+export function generarIdHabilidad(nombre = '') {
+  return nombre
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '')
+}
+
+export function parseHabilidades(habilidadesStr) {
+  if (!habilidadesStr) return []
+  try {
+    return JSON.parse(habilidadesStr)
+  } catch {
+    return []
+  }
+}
+
+export function serializeHabilidades(habilidades) {
+  return JSON.stringify(habilidades)
+}
+
+// Devuelve true si el barbero puede hacer ese servicio (o si no tiene
+// restricciones cargadas, en cuyo caso puede hacer cualquier cosa).
+export function barberoHaceServicio(barbero, servicio) {
+  if (!servicio) return true
+  const habilidades = parseHabilidades(barbero?.habilidades)
+  if (habilidades.length === 0) return true
+  return habilidades.includes(generarIdHabilidad(servicio.nombre))
+}
+
 // ===== PARSEO DE HORARIOS =====
 export function parseHorarioBarbero(horario = '') {
   if (!horario || typeof horario !== 'string') return null

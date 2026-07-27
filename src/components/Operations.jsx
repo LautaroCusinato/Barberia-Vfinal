@@ -1,4 +1,5 @@
-import { Clock, Palette, Plus, Save, Scissors, Settings, Trash2, UserRound, Coffee, Briefcase, Check } from 'lucide-react'
+import { Clock, Palette, Plus, Save, Scissors, Settings, Trash2, UserRound, Coffee, Check } from 'lucide-react'
+import { generarIdHabilidad, parseHabilidades, serializeHabilidades } from '../lib/text'
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -70,27 +71,6 @@ function serializeHorario(dias, desde, hasta, breakDesde, breakHasta) {
   return `${diasTexto} ${desde}-${hasta}`
 }
 
-function parseHabilidades(habilidadesStr) {
-  if (!habilidadesStr) return []
-  try {
-    return JSON.parse(habilidadesStr)
-  } catch {
-    return []
-  }
-}
-
-function serializeHabilidades(habilidades) {
-  return JSON.stringify(habilidades)
-}
-
-function generarIdHabilidad(nombre) {
-  return nombre
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/\s+/g, '_')
-    .replace(/[^a-z0-9_]/g, '')
-}
 
 function getEmoji(nombre) {
   const emojis = {
@@ -335,7 +315,7 @@ export default function Operations({
                       </label>
                     </div>
 
-                    <label>
+                    <div className="ops-field-label">
                       Habilidades (qué servicios puede hacer)
                       {habilidadesDisponibles.length === 0 ? (
                         <div className="ops-help" style={{ marginTop: 4, fontSize: 12, color: 'var(--ink-faint)' }}>
@@ -364,9 +344,9 @@ export default function Operations({
                           })}
                         </div>
                       )}
-                    </label>
+                    </div>
 
-                    <label>
+                    <div className="ops-field-label">
                       Días que atiende
                       <div className="day-toggle-row">
                         {DIAS.map((dia) => (
@@ -385,7 +365,7 @@ export default function Operations({
                           </button>
                         ))}
                       </div>
-                    </label>
+                    </div>
 
                     <div className="ops-edit-grid">
                       <label>
@@ -455,29 +435,6 @@ export default function Operations({
             })}
           </div>
         </div>
-      </div>
-
-      <div className="panel">
-        <p className="panel-title">
-          <span className="panel-title-icon">
-            <Clock size={16} />
-            ¿Cómo lo usará el bot?
-          </span>
-        </p>
-
-        <div className="readiness-list">
-          <span className="done"><Save size={14} />El bot pregunta servicio, día y horario.</span>
-          <span className="done"><Save size={14} />El sistema revisa si algún barbero activo está libre en ese bloque.</span>
-          <span className="done"><Save size={14} />Si un barbero está ocupado, otro puede tomar el mismo horario.</span>
-          <span className="done"><Save size={14} />Los cambios de esta pantalla ya se guardan en Supabase (servicios y barberos).</span>
-          <span className="done"><Save size={14} />Los horarios con break bloquean automáticamente ese intervalo.</span>
-          <span><Save size={14} />Pendiente backend: horarios especiales por feriados o vacaciones puntuales.</span>
-        </div>
-
-        <p className="ops-help" style={{ marginTop: 12 }}>
-          <Briefcase size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-          Link público preparado para más adelante: {config.linkReserva}
-        </p>
       </div>
     </div>
   )

@@ -8,6 +8,7 @@ import {
   normalizar,
   parseHorarioBarbero,
   barberoDisponible,
+  barberoHaceServicio,
   generarSlots,
 } from '../lib/text'
 
@@ -119,7 +120,21 @@ export default function NewTurnoModal({
   const servicioSeleccionado = servicios.find((s) => String(s.id) === String(servicioId))
   const duracion = servicioSeleccionado?.duracion || turnoExistente?.duracion || DEFAULT_DURACION
   const precio = servicioSeleccionado?.precio || turnoExistente?.precio || 0
+  // Solo dejamos elegir barberos que sepan hacer el servicio seleccionado
+  // (los que no tienen ninguna habilidad cargada cuentan como "hacen todo").
+  const barberosDisponibles = barberos.filter((b) => barberoHaceServicio(b, servicioSeleccionado))
   const barberoSeleccionado = barberos.find((b) => String(b.id) === String(barberoId))
+
+  // Si cambiás el servicio y el barbero que tenías elegido no sabe hacerlo,
+  // pasamos automáticamente al primero que sí puede.
+  useEffect(() => {
+    if (!open || !servicioSeleccionado) return
+    const sigueSiendoValido = barberosDisponibles.some((b) => String(b.id) === String(barberoId))
+    if (!sigueSiendoValido) {
+      setBarberoId(String(barberosDisponibles[0]?.id || ''))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servicioId])
 
   // Slots del día en base al horario del barbero (si se puede parsear).
   // Si no se puede, usamos un rango amplio 09-20h.
@@ -299,10 +314,15 @@ export default function NewTurnoModal({
               <div className="modal-field">
                 <label className={labelBase}>Barbero *</label>
                 <select className={inputBase} value={barberoId} onChange={(e) => setBarberoId(e.target.value)}>
-                  {barberos.map((b) => (
+                  {barberosDisponibles.map((b) => (
                     <option key={b.id} value={b.id}>{b.nombre}</option>
                   ))}
                 </select>
+                {barberosDisponibles.length === 0 && (
+                  <p className="schedule-empty" style={{ marginTop: 6 }}>
+                    Ningún barbero tiene cargado ese servicio en "Habilidades" (Operación → Equipo).
+                  </p>
+                )}
               </div>
             </div>
 
