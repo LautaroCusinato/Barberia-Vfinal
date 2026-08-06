@@ -22,5 +22,9 @@ for (const required of ['trial_ends_at', 'estado_cuenta', 'is_platform_member', 
   assert.match(migration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
 }
 
+for (const role of ['owner', 'admin', 'sales', 'support', 'readonly', 'automation']) {
+  assert.match(migration, new RegExp(`'${role}'`), `platform role ${role} missing`)
+}
+
 assert.doesNotMatch(tenantModule, /service_role/i, 'tenant module must not contain privileged credentials')
 console.log('SaaS foundation checks passed')

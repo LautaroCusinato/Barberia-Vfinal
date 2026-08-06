@@ -137,7 +137,7 @@ $$;
 -- tenant: un vendedor o soporte puede trabajar con muchos negocios.
 create table if not exists public.platform_members (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  role text not null check (role in ('owner', 'admin', 'sales', 'support', 'automation')),
+  role text not null check (role in ('owner', 'admin', 'sales', 'support', 'readonly', 'automation')),
   created_at timestamptz not null default now()
 );
 
