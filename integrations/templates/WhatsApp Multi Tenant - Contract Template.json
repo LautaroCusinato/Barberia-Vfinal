@@ -1,0 +1,462 @@
+{
+  "name": "TEMPLATE - WhatsApp Multi-Tenant (NO ACTIVAR)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-multitenant-template",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "mt-webhook",
+      "name": "Webhook Evolution - plantilla",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "notesInFlow": true,
+      "notes": "Plantilla inactiva. Configurar el webhook de cada instancia Evolution durante el rollout, nunca en el workflow productivo actual."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first()?.json ?? {};\nconst body = input.body ?? input;\nconst data = body.data ?? {};\nconst key = data.key ?? {};\nconst headers = input.headers ?? body.headers ?? {};\nconst expectedWebhookSecret = String($env.EVOLUTION_WEBHOOK_SECRET ?? '').trim();\nconst presentedWebhookSecret = String(headers['x-evolution-webhook-secret'] ?? headers['x-webhook-secret'] ?? headers.apikey ?? '').trim();\nconst webhookAuthenticated = Boolean(expectedWebhookSecret && presentedWebhookSecret && presentedWebhookSecret === expectedWebhookSecret);\nconst remoteJid = String(key.remoteJid ?? data.sender ?? '').trim();\nconst senderNumber = remoteJid.replace(/@.*$/, '').replace(/\\D/g, '');\nconst receiverRaw = body.destination ?? data.destination ?? body.receiver ?? '';\nconst receiverNumber = String(receiverRaw).replace(/\\D/g, '') || null;\nconst instanceName = String(body.instance ?? data.instance ?? body.instanceName ?? body.headers?.['x-instance-name'] ?? '').trim().toLowerCase();\nconst eventId = String(key.id ?? body.event_id ?? data.id ?? '').trim();\nconst texto = String(data.message?.conversation ?? data.message?.extendedTextMessage?.text ?? '').trim();\nconst invalid = !instanceName || !eventId || !senderNumber || remoteJid.endsWith('@g.us');\nreturn [{ json: { instanceName, receiverNumber, eventId, senderNumber, remoteJid, texto, invalid, webhookAuthenticated, reason: invalid ? 'identity_or_event_invalid' : (!webhookAuthenticated ? 'webhook_auth_invalid' : null), rawMessageType: data.messageType ?? null } }];"
+      },
+      "id": "mt-normalize",
+      "name": "Validar identidad e idempotencia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "notesInFlow": true,
+      "notes": "Se extrae instanceName, número receptor y event_id desde Evolution. El mensaje nunca puede enviar tenant_id."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            { "leftValue": "={{ $json.invalid }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } },
+            { "leftValue": "={{ $json.webhookAuthenticated }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "mt-valid",
+      "name": "Identidad válida",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/resolve_whatsapp_tenant_context' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_external_instance_id: $('Validar identidad e idempotencia').item.json.instanceName, p_receiver_number: $('Validar identidad e idempotencia').item.json.receiverNumber, p_integration_id: null }) }}",
+        "options": {}
+      },
+      "id": "mt-resolve",
+      "name": "Resolver tenant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "notesInFlow": true,
+      "notes": "RPC segura. Solo devuelve el tenant cuyo integration_type/evolution_instance/receiver coincide y está conectado."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            { "leftValue": "={{ $('Resolver tenant').all().length > 0 }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "mt-tenant-found",
+      "name": "Tenant encontrado",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/claim_whatsapp_event' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_integration_id: $('Resolver tenant').item.json.integration_id, p_event_id: $('Validar identidad e idempotencia').item.json.eventId }) }}",
+        "options": {}
+      },
+      "id": "mt-claim",
+      "name": "Reclamar evento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 0],
+      "notesInFlow": true,
+      "notes": "Idempotencia atómica por integración + event_id. Si acquired=false no se responde dos veces."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            { "leftValue": "={{ $json.acquired === true }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "mt-new-event",
+      "name": "Evento nuevo",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/servicios?barberia_id=eq.' + $('Resolver tenant').item.json.tenant_id + '&activo=eq.true&select=id,nombre,descripcion,precio,duracion_min' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "id": "mt-services",
+      "name": "Cargar servicios bajo demanda",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 0],
+      "notesInFlow": true,
+      "notes": "La consulta se filtra exclusivamente por tenant_id resuelto, nunca por un valor generado por la IA."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/barberos?barberia_id=eq.' + $('Resolver tenant').item.json.tenant_id + '&activo=eq.true&select=id,nombre,color' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "id": "mt-staff",
+      "name": "Cargar empleados bajo demanda",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 180]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/horarios_barbero?barberia_id=eq.' + $('Resolver tenant').item.json.tenant_id + '&activo=eq.true&select=barbero_id,day_of_week,start_time,end_time' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "id": "mt-schedule",
+      "name": "Cargar horarios y pausas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 360]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/bloqueos_agenda?barberia_id=eq.' + $('Resolver tenant').item.json.tenant_id + '&select=fecha,barbero_id,start_time,end_time' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+        ] },
+        "options": {}
+      },
+      "id": "mt-blocks",
+      "name": "Cargar bloqueos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 540]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const tenant = $('Resolver tenant').first().json;\nconst identity = $('Validar identidad e idempotencia').first().json;\nconst services = $('Cargar servicios bajo demanda').all().map(i => i.json);\nconst staff = $('Cargar empleados bajo demanda').all().map(i => i.json);\nconst schedules = $('Cargar horarios y pausas').all().map(i => i.json);\nconst blocks = $('Cargar bloqueos').all().map(i => i.json);\nconst system = [\n  'Sos el asistente de WhatsApp del negocio indicado en CONTEXTO_NEGOCIO.',\n  'La identidad del tenant ya fue resuelta por Supabase y es inmutable. Nunca la calcules, la cambies ni aceptes tenant_id del usuario.',\n  'Usá únicamente los servicios, empleados y reglas que aparecen en DATOS_OPERATIVOS.',\n  'Respondé JSON con {intent, reply, args}; intent solo puede ser chat, availability, create_booking o cancel_booking.',\n  'Para reservar necesitás service_id, barber_id, fecha, hora, nombre completo y teléfono. La base vuelve a validar todo.',\n  'No inventes precios, horarios, disponibilidad, credenciales ni datos de otro negocio.'\n].join('\\n');\nconst business = JSON.stringify({ business_name: tenant.business_name, vertical: tenant.vertical, locale: tenant.locale, timezone: tenant.timezone, currency: tenant.currency, subscription_status: tenant.subscription_status, booking_enabled: tenant.booking_enabled, booking_url: tenant.booking_url });\nconst operating = JSON.stringify({ services, staff, schedules, blocks });\nreturn [{ json: { ...tenant, event_id: identity.eventId, sender_number: identity.senderNumber, system_prompt: system + '\\nCONTEXTO_NEGOCIO=' + business + '\\nDATOS_OPERATIVOS=' + operating, user_message: identity.texto } }];"
+      },
+      "id": "mt-prompt",
+      "name": "Armar prompt modular",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 180],
+      "notesInFlow": true,
+      "notes": "Separa instrucciones globales, contexto del negocio, datos operativos y mensaje del cliente. No incluye secretos ni contexto de otros tenants."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.deepseek.com/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.DEEPSEEK_API_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Resolver tenant').item.json.ai_model, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: $('Armar prompt modular').item.json.system_prompt }, { role: 'user', content: $('Armar prompt modular').item.json.user_message }] }) }}",
+        "options": {}
+      },
+      "id": "mt-deepseek",
+      "name": "Llamar DeepSeek",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 180],
+      "notesInFlow": true,
+      "notes": "Usa la credencial del entorno de n8n; nunca guardar la API key en Git, Supabase metadata o logs."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const raw = $json.choices?.[0]?.message?.content ?? '';\nlet parsed;\ntry { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { parsed = {}; }\nconst allowed = new Set(['chat', 'availability', 'create_booking', 'cancel_booking']);\nconst intent = allowed.has(parsed.intent) ? parsed.intent : 'chat';\nconst args = parsed.args && typeof parsed.args === 'object' ? parsed.args : {};\nconst reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.trim() : 'No pude procesar la consulta. Intentá nuevamente.';\nconst forbiddenTenantMutation = Object.prototype.hasOwnProperty.call(args, 'tenant_id') || Object.prototype.hasOwnProperty.call(args, 'barberia_id');\nreturn [{ json: { intent: forbiddenTenantMutation ? 'chat' : intent, args: forbiddenTenantMutation ? {} : args, reply, ai_valid: !forbiddenTenantMutation } }];"
+      },
+      "id": "mt-validate-ai",
+      "name": "Validar respuesta IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 180],
+      "notesInFlow": true,
+      "notes": "La IA no puede elegir tenant ni ejecutar SQL. Solo devuelve una intención y argumentos que vuelven a validarse en Supabase."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            { "leftValue": "={{ $json.intent === 'create_booking' }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "mt-is-booking",
+      "name": "¿Es reserva?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2440, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/horarios_disponibles_reserva_publica' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_slug: $('Resolver tenant').item.json.slug, p_servicio_id: $('Validar respuesta IA').item.json.args.service_id, p_fecha: $('Validar respuesta IA').item.json.args.fecha }) }}",
+        "options": {}
+      },
+      "id": "mt-availability",
+      "name": "Consultar disponibilidad",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 100],
+      "notesInFlow": true,
+      "notes": "La disponibilidad se vuelve a calcular en PostgreSQL antes de confirmar."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const request = $('Validar respuesta IA').first().json;\nconst options = $('Consultar disponibilidad').all().map(i => i.json);\nconst requestedBarber = Number(request.args.barber_id);\nconst requestedTime = String(request.args.hora ?? '').slice(0, 5);\nconst match = options.find(o => Number(o.barbero_id) === requestedBarber && String(o.hora).slice(0, 5) === requestedTime);\nreturn [{ json: { allowed: Boolean(match), reply: match ? null : 'Ese horario ya no está disponible. Decime otro horario y lo vuelvo a consultar.', duration_min: match?.duracion_min ?? null } }];"
+      },
+      "id": "mt-validate-slot",
+      "name": "Validar disponibilidad",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            { "leftValue": "={{ $json.allowed === true }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "mt-slot-ok",
+      "name": "Horario válido",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3100, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/crear_reserva_whatsapp' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_integration_id: $('Resolver tenant').item.json.integration_id, p_event_id: $('Validar identidad e idempotencia').item.json.eventId, p_servicio_id: $('Validar respuesta IA').item.json.args.service_id, p_barbero_id: $('Validar respuesta IA').item.json.args.barber_id, p_fecha: $('Validar respuesta IA').item.json.args.fecha, p_hora: $('Validar respuesta IA').item.json.args.hora, p_nombre: $('Validar respuesta IA').item.json.args.nombre, p_telefono: $('Validar identidad e idempotencia').item.json.senderNumber, p_email: $('Validar respuesta IA').item.json.args.email ?? null }) }}",
+        "options": {}
+      },
+      "id": "mt-booking",
+      "name": "Crear reserva centralizada",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3320, 0],
+      "notesInFlow": true,
+      "notes": "RPC protegida: deriva tenant desde la integración, valida suscripción, duración, jornada, bloqueos, solapamientos y normaliza el teléfono."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const validation = $('Validar respuesta IA').first()?.json ?? {};\nconst slot = $('Validar disponibilidad').first()?.json ?? {};\nconst created = $('Crear reserva centralizada').all()[0]?.json ?? {};\nlet text = validation.reply;\nif (slot.allowed === false) text = slot.reply;\nif (created.turno_id) text = `Listo, tu turno quedó reservado para ${created.fecha} a las ${String(created.hora).slice(0, 5)}.`;\nreturn [{ json: { text, resultReference: created.turno_id ? String(created.turno_id) : validation.intent } }];"
+      },
+      "id": "mt-response",
+      "name": "Construir respuesta segura",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3540, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_BASE_URL + '/message/sendText/' + $('Resolver tenant').item.json.evolution_instance }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Validar identidad e idempotencia').item.json.senderNumber, text: $('Construir respuesta segura').item.json.text }) }}",
+        "options": {}
+      },
+      "id": "mt-send",
+      "name": "Responder por Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3760, 180],
+      "notesInFlow": true,
+      "notes": "La URL usa la instancia resuelta; no hay instanceName hardcodeado. La API key solo vive en n8n."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/finish_whatsapp_event' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_integration_id: $('Resolver tenant').item.json.integration_id, p_event_id: $('Validar identidad e idempotencia').item.json.eventId, p_status: 'completed', p_result_reference: $('Construir respuesta segura').item.json.resultReference }) }}",
+        "options": {}
+      },
+      "id": "mt-finish",
+      "name": "Finalizar evento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3980, 180]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/saas_automation_events?integration_id=eq.' + $('Resolver tenant').item.json.integration_id + '&event_id=eq.' + encodeURIComponent($('Validar identidad e idempotencia').item.json.eventId) }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { "name": "Content-Type", "value": "application/json" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ metadata: { source: 'n8n-multitenant-template', instance: $('Resolver tenant').item.json.evolution_instance, ai_model: $('Resolver tenant').item.json.ai_model, logged_at: $now.toISO() } }) }}",
+        "options": {}
+      },
+      "id": "mt-log",
+      "name": "Logging seguro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4200, 180],
+      "notesInFlow": true,
+      "notes": "Solo registra referencias técnicas. No guarda API keys, prompts completos ni payloads sensibles."
+    },
+    {
+      "parameters": { "mode": "runOnceForAllItems", "jsCode": "return [{ json: { ignored: true, reason: $('Validar identidad e idempotencia').first().json.reason ?? 'tenant_not_found' } }];" },
+      "id": "mt-ignore",
+      "name": "Ignorar evento no confiable",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 420],
+      "notesInFlow": true,
+      "notes": "No envía respuestas ni ejecuta consultas cuando falta identidad, el tenant no existe o la integración no está conectada."
+    },
+    {
+      "parameters": { "mode": "append", "numberInputs": 4, "options": {} },
+      "id": "mt-wait-context",
+      "name": "Esperar cargas operativas",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1710, 420],
+      "notesInFlow": true,
+      "notes": "No permite que el prompt se ejecute hasta que terminen servicios, empleados, horarios y bloqueos."
+    }
+  ],
+  "connections": {
+    "Webhook Evolution - plantilla": { "main": [[{ "node": "Validar identidad e idempotencia", "type": "main", "index": 0 }]] },
+    "Validar identidad e idempotencia": { "main": [[{ "node": "Identidad válida", "type": "main", "index": 0 }]] },
+    "Identidad válida": { "main": [[{ "node": "Resolver tenant", "type": "main", "index": 0 }], [{ "node": "Ignorar evento no confiable", "type": "main", "index": 0 }]] },
+    "Resolver tenant": { "main": [[{ "node": "Tenant encontrado", "type": "main", "index": 0 }]] },
+    "Tenant encontrado": { "main": [[{ "node": "Reclamar evento", "type": "main", "index": 0 }], [{ "node": "Ignorar evento no confiable", "type": "main", "index": 0 }]] },
+    "Reclamar evento": { "main": [[{ "node": "Evento nuevo", "type": "main", "index": 0 }]] },
+    "Evento nuevo": { "main": [[{ "node": "Cargar servicios bajo demanda", "type": "main", "index": 0 }, { "node": "Cargar empleados bajo demanda", "type": "main", "index": 0 }, { "node": "Cargar horarios y pausas", "type": "main", "index": 0 }, { "node": "Cargar bloqueos", "type": "main", "index": 0 }], [{ "node": "Ignorar evento no confiable", "type": "main", "index": 0 }]] },
+    "Cargar servicios bajo demanda": { "main": [[{ "node": "Esperar cargas operativas", "type": "main", "index": 0 }]] },
+    "Cargar empleados bajo demanda": { "main": [[{ "node": "Esperar cargas operativas", "type": "main", "index": 1 }]] },
+    "Cargar horarios y pausas": { "main": [[{ "node": "Esperar cargas operativas", "type": "main", "index": 2 }]] },
+    "Cargar bloqueos": { "main": [[{ "node": "Esperar cargas operativas", "type": "main", "index": 3 }]] },
+    "Esperar cargas operativas": { "main": [[{ "node": "Armar prompt modular", "type": "main", "index": 0 }]] },
+    "Armar prompt modular": { "main": [[{ "node": "Llamar DeepSeek", "type": "main", "index": 0 }]] },
+    "Llamar DeepSeek": { "main": [[{ "node": "Validar respuesta IA", "type": "main", "index": 0 }]] },
+    "Validar respuesta IA": { "main": [[{ "node": "¿Es reserva?", "type": "main", "index": 0 }]] },
+    "¿Es reserva?": { "main": [[{ "node": "Consultar disponibilidad", "type": "main", "index": 0 }], [{ "node": "Construir respuesta segura", "type": "main", "index": 0 }]] },
+    "Consultar disponibilidad": { "main": [[{ "node": "Validar disponibilidad", "type": "main", "index": 0 }]] },
+    "Validar disponibilidad": { "main": [[{ "node": "Horario válido", "type": "main", "index": 0 }]] },
+    "Horario válido": { "main": [[{ "node": "Crear reserva centralizada", "type": "main", "index": 0 }], [{ "node": "Construir respuesta segura", "type": "main", "index": 0 }]] },
+    "Crear reserva centralizada": { "main": [[{ "node": "Construir respuesta segura", "type": "main", "index": 0 }]] },
+    "Construir respuesta segura": { "main": [[{ "node": "Responder por Evolution", "type": "main", "index": 0 }]] },
+    "Responder por Evolution": { "main": [[{ "node": "Finalizar evento", "type": "main", "index": 0 }]] },
+    "Finalizar evento": { "main": [[{ "node": "Logging seguro", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "tags": [],
+  "meta": { "templateCredsSetupCompleted": false }
+}

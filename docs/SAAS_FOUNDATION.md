@@ -18,7 +18,7 @@
 - El workflow de n8n filtra `barberia_id = 1`, usa la instancia `miwsp` y un prompt de “Barberia Central”. No es multi-tenant todavía.
 - No existen planes, suscripciones, período de prueba, estado de cuenta, usuarios internos de plataforma ni CRM.
 - `pagos` registra cobros de turnos; no representa pagos recurrentes ni eventos idempotentes de un proveedor.
-- El estado de suscripción todavía no se aplica a RLS. Eso se hará después de probar onboarding y período de gracia para no bloquear la cuenta existente.
+- El estado de suscripción ya protege las reservas web y el RPC de reservas de WhatsApp; la escritura general del panel seguirá una política de billing separada para conservar exportación y soporte.
 
 ## Arquitectura objetivo
 
@@ -43,7 +43,7 @@ La aplicación se divide en cuatro capas:
 3. **Operación SaaS**: onboarding, planes, trial, billing, CRM y soporte.
 4. **Canales**: panel web, reservas públicas, WhatsApp/n8n y futuras APIs.
 
-La migración `20260806060000_saas_foundation.sql` agrega metadatos de tenant, planes, suscripciones, usuarios internos, registro de integraciones y CRM. Es aditiva y todavía no se aplicó al proyecto remoto.
+La migración `20260806060000_saas_foundation.sql` agrega metadatos de tenant, planes, suscripciones, usuarios internos, registro de integraciones y CRM. Está aplicada al proyecto remoto `ssagttjdgtypxjcgdnrw`.
 
 ## Prueba gratuita de 14 días
 
@@ -94,7 +94,7 @@ idempotente de administracion estan documentados en `docs/PLATFORM_ADMIN.md`.
 
 1. Aplicar y verificar la migración SaaS en Supabase; crear el primer `platform_member`.
 2. Crear onboarding de negocio, selección de vertical, branding y usuarios.
-3. Cambiar n8n a un contrato multi-tenant con `tenant_slug`/`barberia_id` resuelto desde webhook y configuración.
+3. Pilotear el contrato multi-tenant de WhatsApp documentado en `docs/MULTITENANT_WHATSAPP_CONTRACT.md`, sin activar todavía el workflow de producción.
 4. Implementar billing con proveedor elegido, eventos idempotentes y enforcement de acceso.
 5. Construir CRM operativo y agentes en modo borrador/aprobación.
 6. Agregar dominios/subdominios por tenant, presets de vertical y métricas comerciales.

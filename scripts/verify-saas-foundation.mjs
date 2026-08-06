@@ -30,6 +30,34 @@ const fkIndexesMigration = await fs.readFile(
   path.join(root, 'supabase/migrations/20260806143000_add_crm_saas_fk_indexes.sql'),
   'utf8',
 )
+const whatsappContractMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806150000_multitenant_whatsapp_contract.sql'),
+  'utf8',
+)
+const whatsappContractFixMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806151000_fix_claim_whatsapp_event_conflict.sql'),
+  'utf8',
+)
+const whatsappEventPolicyMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806152000_add_service_event_policy.sql'),
+  'utf8',
+)
+const whatsappEventIndexMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806153000_add_automation_tenant_index.sql'),
+  'utf8',
+)
+const whatsappTemplate = JSON.parse(await fs.readFile(
+  path.join(root, 'integrations/templates/WhatsApp Multi Tenant - Contract Template.json'),
+  'utf8',
+))
+const whatsappTemplateText = await fs.readFile(
+  path.join(root, 'integrations/templates/WhatsApp Multi Tenant - Contract Template.json'),
+  'utf8',
+)
+const whatsappContractDocs = await fs.readFile(
+  path.join(root, 'docs/MULTITENANT_WHATSAPP_CONTRACT.md'),
+  'utf8',
+)
 
 for (const exportName of ['DEFAULT_TENANT_ID', 'DEFAULT_VERTICAL', 'getRuntimeTenant', 'tenantStorageKey']) {
   assert.match(tenantModule, new RegExp(`(?:export const|export function)\\s+${exportName}`), `${exportName} missing`)
@@ -69,6 +97,29 @@ for (const required of ['saas_suscripciones_select_access', 'saas_integraciones_
 for (const required of ['idx_crm_interacciones_created_by', 'idx_crm_leads_negocio_id', 'idx_crm_leads_responsable_id', 'idx_saas_suscripciones_plan_codigo']) {
   assert.match(fkIndexesMigration, new RegExp(required), `${required} missing`)
 }
+
+for (const required of [
+  'integration_type',
+  'external_instance_id',
+  'credential_reference',
+  'saas_automation_events',
+  'resolve_whatsapp_tenant_context',
+  'claim_whatsapp_event',
+  'finish_whatsapp_event',
+  'cleanup_whatsapp_events',
+  'crear_reserva_whatsapp',
+  'search_path = public, pg_temp',
+  'service_role',
+]) {
+  assert.match(whatsappContractMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
+}
+assert.match(whatsappContractFixMigration, /on conflict on constraint saas_automation_events_integration_id_event_id_key/i)
+assert.match(whatsappEventPolicyMigration, /saas_automation_events_service_role/i)
+assert.match(whatsappEventIndexMigration, /idx_saas_automation_events_tenant_id/i)
+assert.equal(whatsappTemplate.active, false, 'WhatsApp template must remain inactive')
+assert.ok(whatsappTemplate.nodes.length >= 20, 'WhatsApp template is unexpectedly incomplete')
+assert.match(whatsappContractDocs, /inactiva|No activar/i)
+assert.doesNotMatch(whatsappTemplateText, /PONE-ACA-TU-EVOLUTION-API-KEY|miwsp|barberia_id.?=.?.?1/i)
 
 assert.doesNotMatch(tenantModule, /service_role/i, 'tenant module must not contain privileged credentials')
 console.log('SaaS foundation checks passed')
