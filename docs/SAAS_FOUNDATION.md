@@ -83,6 +83,13 @@ Todos los agentes deben escribir en CRM, usar claves idempotentes y pasar por un
 - **DeepSeek**: clasificación, resumen y redacción con límites de costo y revisión humana.
 - **Evolution API**: canal WhatsApp inicial; la instancia y el webhook deben resolverse por tenant, no estar hardcodeados.
 
+## Estado de la etapa 2 (2026-08-06)
+
+La migracion SaaS ya fue aplicada al proyecto remoto `ssagttjdgtypxjcgdnrw` y
+el owner inicial fue verificado en `platform_members`. El workspace interno
+del CRM esta disponible en `/plataforma`; el detalle operativo y el SQL
+idempotente de administracion estan documentados en `docs/PLATFORM_ADMIN.md`.
+
 ## Etapas siguientes
 
 1. Aplicar y verificar la migración SaaS en Supabase; crear el primer `platform_member`.
@@ -91,4 +98,3 @@ Todos los agentes deben escribir en CRM, usar claves idempotentes y pasar por un
 4. Implementar billing con proveedor elegido, eventos idempotentes y enforcement de acceso.
 5. Construir CRM operativo y agentes en modo borrador/aprobación.
 6. Agregar dominios/subdominios por tenant, presets de vertical y métricas comerciales.
-
