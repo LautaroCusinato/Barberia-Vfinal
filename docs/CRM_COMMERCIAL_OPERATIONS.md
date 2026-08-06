@@ -14,6 +14,7 @@ Esta etapa agrega la base operativa para prospectar con aprobación humana. No h
 ## Contratos seguros
 
 - `import_crm_leads` valida máximo 500 filas, normaliza email/teléfono, rechaza fórmulas, usa una clave idempotente y registra errores/duplicados.
+- La importación recibe `p_environment` (`sandbox`, `demo`, `production` o `internal`) y nunca mezcla datos entre entornos. El frontend muestra advertencias para país/idioma ausentes y permite descargar los errores de validación.
 - `merge_crm_leads` mueve interacciones, notas, adjuntos, acciones y borradores antes de eliminar duplicados, y registra la operación.
 - `calculate_crm_lead_score` calcula hasta 100 puntos desde señales declaradas y devuelve razones y recomendación. Cada cambio queda en `crm_actividades`.
 - `set_crm_lead_stage` y `set_crm_lead_do_not_contact` centralizan las transiciones. DNC bloquea borradores y aprobaciones mediante RLS, RPC y trigger.
@@ -31,3 +32,9 @@ La interfaz muestra columnas detectadas, vista previa y errores por fila. Los en
 ## Piloto futuro con cinco leads
 
 Antes de usar datos reales hay que: aplicar la migración en un entorno controlado, crear cinco leads con consentimiento/base legal, completar investigación manual, revisar scores, probar exportación y DNC, preparar borradores y aprobarlos uno por uno. Recién después se podrá definir un canal sandbox y un endpoint de envío con autorización explícita; esta etapa no lo activa.
+
+## Activación segura verificada
+
+Las migraciones `20260807050000_crm_commercial_operations.sql`, `20260807051000_crm_import_environment.sql`, `20260807052000_crm_stage_compatibility.sql` y `20260807053000_crm_security_hardening.sql` dejan el contrato operativo listo. Las funciones de políticas permanecen disponibles sólo para usuarios autenticados y los helpers de auditoría/guardas no son ejecutables desde la API. Los fixtures de aceptación se guardan en `environment = 'internal'`, con valores `.invalid` y sin canales reales; la limpieza opcional está en `supabase/operations/cleanup-crm-activation-fixtures.sql`.
+
+El proceso manual para los primeros cinco leads reales es: registrar fuente y base legal, país/idioma/rubro/url/canal, necesidad observada y evidencia; crear el lead en `discovered`, verificar DNC y deduplicación, completar investigación y score, pasar a `qualified` sólo tras revisión y dejar todos los mensajes en `pending_approval`. No se envía nada hasta una autorización explícita y una prueba sandbox separada.

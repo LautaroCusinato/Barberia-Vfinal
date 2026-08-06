@@ -67,14 +67,16 @@ export function parseLeadsCsv(text) {
     const index = normalized.findIndex((header) => aliases.includes(header))
     if (index >= 0) mapping[field] = index
   })
-  const errors = []
+  const errors = []; const warnings = []
   const rows = rawLines.slice(1).map((line, rowIndex) => {
     const values = parseLine(line, delimiter); const row = {}; const formulaFields = []
     Object.keys(FIELD_ALIASES).forEach((field) => { row[field] = mapping[field] == null ? '' : values[mapping[field]] || ''; if (field !== 'telefono' && isDangerousCsvValue(row[field])) formulaFields.push(field); if (field === 'telefono' && /^[=@]/.test(row[field].trim())) formulaFields.push(field) })
     if (formulaFields.length) errors.push({ row: rowIndex + 2, message: `Valor no permitido en ${formulaFields.join(', ')}.` })
     if (!row.nombre.trim() || !row.negocio.trim()) errors.push({ row: rowIndex + 2, message: 'Nombre y negocio son obligatorios.' })
     if (row.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.email)) errors.push({ row: rowIndex + 2, message: 'Email inválido.' })
+    if (!row.pais.trim()) warnings.push({ row: rowIndex + 2, message: 'País faltante: se importará sin país.' })
+    if (!row.idioma.trim()) warnings.push({ row: rowIndex + 2, message: 'Idioma faltante: se usará es.' })
     return row
   })
-  return { headers: originalHeaders, mapping, rows, errors }
+  return { headers: originalHeaders, mapping, rows, errors, warnings }
 }

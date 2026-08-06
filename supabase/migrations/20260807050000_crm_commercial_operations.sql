@@ -337,6 +337,10 @@ as $$ begin if tg_op='UPDATE' and (old.contenido is distinct from new.contenido 
 drop trigger if exists trg_crm_agent_draft_audit on public.crm_agent_drafts;
 create trigger trg_crm_agent_draft_audit after update on public.crm_agent_drafts for each row execute function public.crm_agent_draft_audit();
 
+-- La versión anterior retornaba jsonb; se elimina sólo la firma de la
+-- función (no datos) para poder publicar el contrato booleano compatible con
+-- el frontend actual.
+drop function if exists public.set_crm_agent_draft_status(bigint,text);
 create or replace function public.set_crm_agent_draft_status(p_draft_id bigint, p_status text)
 returns boolean language plpgsql security definer set search_path=public,pg_temp
 as $$ declare d public.crm_agent_drafts%rowtype; s text:=lower(btrim(p_status)); begin if not public.platform_can_write() then raise exception 'No autorizado.' using errcode='42501'; end if; if s not in ('pending_research','ready_for_draft','pending_approval','approved','rejected','sent','replied','closed','canceled') then raise exception 'Estado inválido.' using errcode='22023'; end if; select * into d from public.crm_agent_drafts where id=p_draft_id for update; if d.id is null then raise exception 'Borrador inexistente.' using errcode='P0002'; end if; if s in ('approved','sent') and (exists(select 1 from public.crm_negocios where id=d.negocio_id and do_not_contact) or exists(select 1 from public.crm_leads where id=d.lead_id and do_not_contact)) then raise exception 'No se puede aprobar un contacto excluido.' using errcode='42501'; end if; update public.crm_agent_drafts set estado=s,approved_by=case when s='approved' then auth.uid() else approved_by end,approved_at=case when s='approved' then now() else approved_at end,updated_at=now() where id=d.id; insert into public.crm_actividades(negocio_id,lead_id,tipo,resumen,metadata,actor_id) values(d.negocio_id,d.lead_id,'draft_reviewed','Estado de borrador actualizado',jsonb_build_object('draft_id',d.id,'status',s),auth.uid()); return true; end $$;
