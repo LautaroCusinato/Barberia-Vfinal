@@ -24,19 +24,37 @@ PAYPAL_WEBHOOK_ID
 PAYPAL_API_BASE_URL (opcional; default https://api-m.sandbox.paypal.com)
 SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
+APP_BASE_URL
+BILLING_CRON_SECRET
 ```
 
 El service role sólo se configura en una Edge Function/Cloudflare Worker/backend privado. Nunca en `VITE_*`, n8n compartido, logs o el frontend.
 
-## URLs que quedarán listas al habilitar backend
+## URLs desplegadas
 
 - Portal: `https://<dominio>/facturacion`
-- Mercado Pago: `https://<dominio>/api/billing/mercadopago/webhook`
-- PayPal: `https://<dominio>/api/billing/paypal/webhook`
+- API autenticada: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-api/status`
+- Checkout: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-api/checkout`
+- Sincronización de planes: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-api/sync-plans`
+- Mercado Pago: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-webhooks/mercadopago`
+- PayPal: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-webhooks/paypal`
+- Jobs privados: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-jobs`
 - Retorno aprobado: `https://<dominio>/facturacion?billing=success`
 - Retorno cancelado: `https://<dominio>/facturacion?billing=cancel`
 
-Las rutas son documentación/contrato; hoy no están desplegadas y no aceptan webhooks.
+Las funciones están desplegadas por HTTPS. Sin secretos sandbox y con los proveedores desactivados, rechazan llamadas externas de forma segura.
+
+## Backend desplegable
+
+La implementación serverless vive en `supabase/functions/` y usa Supabase Edge Functions:
+
+- `billing-api`: requiere sesión y resuelve el único tenant owner de la sesión. Expone `GET /status`, `POST /checkout` y `POST /sync-plans`.
+- `billing-webhooks`: endpoint público separado para `/mercadopago` y `/paypal`; exige firma válida y consulta el recurso al proveedor antes de cambiar estados.
+- `billing-jobs`: endpoint privado para trials, reintentos y outbox; exige `BILLING_CRON_SECRET`.
+
+Las funciones se desplegaron sin secretos: en ese estado devuelven `provider_not_configured` y no generan efectos externos.
+
+El proyecto no tiene `pg_cron` instalado actualmente. Por eso `billing-jobs` queda listo para asociarlo a Supabase Cron o Cloudflare Cron Triggers cuando se cargue `BILLING_CRON_SECRET`; no se creó una tarea automática que pudiera ejecutarse sin autorización.
 
 ## Flujo de un pago
 

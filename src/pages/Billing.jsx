@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, CreditCard, ExternalLink, LoaderCircle, ShieldCheck } from 'lucide-react'
-import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabaseClient'
 
 const STATUS_LABELS = {
   trialing: 'Prueba gratuita',
@@ -36,12 +36,20 @@ function formatMoney(value, currency) {
   }
 }
 
-function idempotencyKey() {
-  if (globalThis.crypto?.randomUUID) return `checkout-${globalThis.crypto.randomUUID()}`
-  return `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`
+async function billingApi(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Tu sesión expiró. Volvé a iniciar sesión.')
+  const response = await fetch(`${supabaseUrl}/functions/v1/billing-api/${path}`, {
+    method: options.method || 'GET',
+    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload?.error?.message || 'Error temporal de facturación.')
+  return payload
 }
 
-export default function Billing({ barberiaId }) {
+export default function Billing({ barberiaId: _barberiaId }) {
   const [portal, setPortal] = useState(null)
   const [catalog, setCatalog] = useState([])
   const [provider, setProvider] = useState('mercadopago')
@@ -54,15 +62,15 @@ export default function Billing({ barberiaId }) {
     if (!isSupabaseConfigured) { setLoading(false); return }
     setLoading(true)
     setError('')
-    const [{ data: portalData, error: portalError }, { data: catalogData, error: catalogError }] = await Promise.all([
-      supabase.rpc('get_billing_portal', { p_barberia_id: barberiaId }),
+    const [portalResult, catalogResult] = await Promise.allSettled([
+      billingApi('status'),
       supabase.rpc('get_billing_catalog'),
     ])
-    if (portalError || catalogError) setError(portalError?.message || catalogError?.message || 'No se pudo cargar facturación')
-    setPortal(portalData || null)
-    setCatalog(Array.isArray(catalogData) ? catalogData : [])
+    if (portalResult.status === 'rejected' || catalogResult.status === 'rejected' || catalogResult.value.error) setError(portalResult.reason?.message || catalogResult.reason?.message || catalogResult.value?.error?.message || 'No se pudo cargar facturación')
+    setPortal(portalResult.status === 'fulfilled' ? portalResult.value : null)
+    setCatalog(catalogResult.status === 'fulfilled' && Array.isArray(catalogResult.value.data) ? catalogResult.value.data : [])
     setLoading(false)
-  }, [barberiaId])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
@@ -76,18 +84,14 @@ export default function Billing({ barberiaId }) {
     setSaving(true)
     setError('')
     setNotice('')
-    const { data, error: rpcError } = await supabase.rpc('create_billing_checkout_intent', {
-      p_barberia_id: barberiaId,
-      p_plan_codigo: planCode,
-      p_proveedor_codigo: provider,
-      p_idempotency_key: idempotencyKey(),
-    })
-    if (rpcError) setError(rpcError.message)
-    else if (data?.checkout_url) {
-      setNotice('Checkout creado. Se abrirá el proveedor en una pestaña nueva.')
-      window.open(data.checkout_url, '_blank', 'noopener,noreferrer')
-    } else {
-      setNotice(data?.message || 'El checkout quedó preparado; falta configurar el backend sandbox.')
+    try {
+      const data = await billingApi('checkout', { method: 'POST', body: { plan_codigo: planCode, proveedor_codigo: provider } })
+      if (data?.checkout_url) {
+        setNotice('Checkout creado. Se abrirá el proveedor en una pestaña nueva.')
+        window.open(data.checkout_url, '_blank', 'noopener,noreferrer')
+      } else setNotice(data?.message || 'El checkout quedó preparado; falta configuración sandbox.')
+    } catch (apiError) {
+      setError(apiError.message)
     }
     setSaving(false)
   }
@@ -122,7 +126,7 @@ export default function Billing({ barberiaId }) {
         <div className="panel billing-provider-card">
           <p className="panel-kicker">Proveedor para el checkout</p>
           <h2>Elegí cómo pagar</h2>
-          <p className="panel-subtitle">Esta etapa sólo prepara intents sandbox. No se realizan cobros desde el navegador.</p>
+          <p className="panel-subtitle">El checkout se solicita al backend sandbox desplegado. El navegador nunca maneja credenciales.</p>
           <div className="billing-provider-options">
             {providers.map((item) => <label className={`billing-provider-option ${provider === item.codigo ? 'selected' : ''}`} key={item.codigo}><input type="radio" name="billing-provider" value={item.codigo} checked={provider === item.codigo} onChange={(event) => setProvider(event.target.value)} /><span><strong>{PROVIDER_LABELS[item.codigo] || item.nombre}</strong><small>{item.activo ? 'Sandbox configurado' : 'Pendiente de configuración'}</small></span></label>)}
           </div>

@@ -10,6 +10,7 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 const migration = read('supabase/migrations/20260807030000_billing_core.sql')
 const hardeningMigration = read('supabase/migrations/20260807031000_billing_outbox_and_idempotency.sql')
 const raceMigration = read('supabase/migrations/20260807032000_billing_checkout_race.sql')
+const uniquenessMigration = read('supabase/migrations/20260807034000_billing_plan_checkout_uniques.sql')
 for (const table of ['saas_proveedores_pago', 'saas_plan_proveedores', 'saas_billing_customers', 'saas_suscripciones_externas', 'saas_billing_checkout_attempts', 'saas_billing_payments', 'saas_billing_invoices', 'saas_billing_refunds', 'saas_billing_webhook_events', 'saas_billing_state_history', 'saas_billing_events']) {
   assert.match(migration, new RegExp(`create table if not exists public\\.${table}`), `falta tabla ${table}`)
 }
@@ -22,10 +23,12 @@ assert.match(hardeningMigration, /pg_advisory_xact_lock/)
 assert.match(hardeningMigration, /subscription\.trial_started/)
 assert.match(hardeningMigration, /payment\.succeeded/)
 assert.match(raceMigration, /pg_advisory_xact_lock/)
+assert.match(uniquenessMigration, /uq_billing_active_checkout_per_plan/)
+assert.match(uniquenessMigration, /uq_billing_external_plan_per_provider/)
 
 const billingPage = read('src/pages/Billing.jsx')
-assert.match(billingPage, /get_billing_portal/)
-assert.match(billingPage, /create_billing_checkout_intent/)
+assert.match(billingPage, /billingApi\('status'\)/)
+assert.match(billingPage, /billingApi\('checkout'/)
 assert.match(read('src/components/Sidebar.jsx'), /facturacion/)
 assert.match(read('src/App.jsx'), /<Billing barberiaId=/)
 
