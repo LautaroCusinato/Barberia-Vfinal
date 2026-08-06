@@ -39,13 +39,14 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyBusiness)
+  const [view, setView] = useState('businesses')
 
   const load = async () => {
     setLoading(true)
     setError('')
     const [businessesResult, leadsResult] = await Promise.all([
       supabase.from('crm_negocios').select('*').order('updated_at', { ascending: false }),
-      supabase.from('crm_leads').select('id, negocio_id, estado_conversacion, interes, proxima_accion_at').order('updated_at', { ascending: false }),
+      supabase.from('crm_leads').select('id, negocio_id, nombre_contacto, email, telefono, canal_preferido, estado_conversacion, interes, proxima_accion_at').order('updated_at', { ascending: false }),
     ])
     if (businessesResult.error || leadsResult.error) {
       setError(businessesResult.error?.message || leadsResult.error?.message || 'No se pudo cargar el CRM')
@@ -76,6 +77,21 @@ export default function PlatformCRM({ role = 'owner' }) {
     interested: leads.filter((lead) => ['interesado', 'convertido'].includes(lead.estado_conversacion)).length,
     nextActions: businesses.filter((business) => business.proxima_accion_at && new Date(business.proxima_accion_at) <= new Date()).length,
   }), [businesses, leads])
+
+  const businessById = useMemo(() => new Map(businesses.map((business) => [business.id, business])), [businesses])
+  const filteredLeads = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    if (!needle) return leads
+    return leads.filter((lead) => [
+      lead.nombre_contacto,
+      lead.email,
+      lead.telefono,
+      lead.canal_preferido,
+      lead.estado_conversacion,
+      lead.interes,
+      businessById.get(lead.negocio_id)?.nombre,
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(needle)))
+  }, [businessById, leads, search])
 
   const updateForm = (key, value) => setForm((current) => ({ ...current, [key]: value }))
 
@@ -119,8 +135,8 @@ export default function PlatformCRM({ role = 'owner' }) {
         <nav className="nav">
           <div className="nav-section">
             <p className="nav-section-label">Plataforma</p>
-            <div className="nav-item active"><BriefcaseBusiness size={17} /><span>CRM comercial</span></div>
-            <div className="nav-item"><UsersRound size={17} /><span>Negocios y leads</span></div>
+            <button type="button" className={`nav-item ${view === 'businesses' ? 'active' : ''}`} onClick={() => setView('businesses')}><BriefcaseBusiness size={17} /><span>CRM comercial</span></button>
+            <button type="button" className={`nav-item ${view === 'leads' ? 'active' : ''}`} onClick={() => setView('leads')}><UsersRound size={17} /><span>Negocios y leads</span></button>
           </div>
         </nav>
         <div className="sidebar-footer">
@@ -155,10 +171,10 @@ export default function PlatformCRM({ role = 'owner' }) {
 
         <section className="panel platform-crm-panel">
           <div className="panel-header">
-            <div><h2 className="panel-title">Negocios</h2><p className="panel-subtitle">Los registros estan protegidos por RLS para miembros de plataforma.</p></div>
-            <label className="crm-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar negocio..." aria-label="Buscar negocio" /></label>
+            <div><h2 className="panel-title">{view === 'businesses' ? 'Negocios' : 'Leads'}</h2><p className="panel-subtitle">Los registros estan protegidos por RLS para miembros de plataforma.</p></div>
+            <label className="crm-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === 'businesses' ? 'Buscar negocio...' : 'Buscar lead...'} aria-label={view === 'businesses' ? 'Buscar negocio' : 'Buscar lead'} /></label>
           </div>
-          {loading ? <div className="empty-state">Cargando CRM...</div> : filteredBusinesses.length === 0 ? (
+          {loading ? <div className="empty-state">Cargando CRM...</div> : view === 'businesses' ? (filteredBusinesses.length === 0 ? (
             <div className="empty-state">No hay negocios que coincidan con la busqueda.</div>
           ) : (
             <div className="table-scroll">
@@ -171,6 +187,24 @@ export default function PlatformCRM({ role = 'owner' }) {
                     <td><span className={`status-pill stage-${business.etapa}`}>{stageLabel(business.etapa)}</span></td>
                     <td>{business.interes || 'Sin clasificar'}</td>
                     <td>{formatDate(business.proxima_accion_at)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )) : filteredLeads.length === 0 ? (
+            <div className="empty-state">No hay leads que coincidan con la busqueda.</div>
+          ) : (
+            <div className="table-scroll">
+              <table className="table platform-table">
+                <thead><tr><th>Contacto</th><th>Negocio</th><th>Canal</th><th>Estado</th><th>Interes</th><th>Proxima accion</th></tr></thead>
+                <tbody>{filteredLeads.map((lead) => (
+                  <tr key={lead.id}>
+                    <td><div className="table-name-cell"><span className="avatar avatar-sm">{(lead.nombre_contacto || '?').slice(0, 1).toUpperCase()}</span><div><strong>{lead.nombre_contacto || 'Sin nombre'}</strong><small>{lead.email || lead.telefono || 'Sin contacto'}</small></div></div></td>
+                    <td>{businessById.get(lead.negocio_id)?.nombre || `Negocio #${lead.negocio_id}`}</td>
+                    <td>{lead.canal_preferido || 'Sin canal'}</td>
+                    <td><span className="status-pill">{stageLabel(lead.estado_conversacion)}</span></td>
+                    <td>{lead.interes || 'Sin clasificar'}</td>
+                    <td>{formatDate(lead.proxima_accion_at)}</td>
                   </tr>
                 ))}</tbody>
               </table>

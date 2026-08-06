@@ -9,6 +9,11 @@ const migration = await fs.readFile(
   path.join(root, 'supabase/migrations/20260806060000_saas_foundation.sql'),
   'utf8',
 )
+const crmSyncMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806100000_sync_crm_negocios.sql'),
+  'utf8',
+)
+const platformCrm = await fs.readFile(path.join(root, 'src/pages/PlatformCRM.jsx'), 'utf8')
 
 for (const exportName of ['DEFAULT_TENANT_ID', 'DEFAULT_VERTICAL', 'getRuntimeTenant', 'tenantStorageKey']) {
   assert.match(tenantModule, new RegExp(`(?:export const|export function)\\s+${exportName}`), `${exportName} missing`)
@@ -25,6 +30,13 @@ for (const required of ['trial_ends_at', 'estado_cuenta', 'is_platform_member', 
 for (const role of ['owner', 'admin', 'sales', 'support', 'readonly', 'automation']) {
   assert.match(migration, new RegExp(`'${role}'`), `platform role ${role} missing`)
 }
+
+for (const required of ['idx_crm_negocios_barberia_id_unique', 'barberias_sync', 'sync_barberia_to_crm', 'trg_barberias_sync_crm']) {
+  assert.match(crmSyncMigration, new RegExp(required), `${required} missing`)
+}
+
+assert.match(platformCrm, /setView\('businesses'\)/, 'business navigation missing')
+assert.match(platformCrm, /setView\('leads'\)/, 'lead navigation missing')
 
 assert.doesNotMatch(tenantModule, /service_role/i, 'tenant module must not contain privileged credentials')
 console.log('SaaS foundation checks passed')
