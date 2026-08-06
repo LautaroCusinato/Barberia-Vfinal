@@ -140,7 +140,18 @@ create table if not exists public.mensajes (
   leido boolean not null default false,
   enviado_wsp boolean not null default false,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  telefono text,
+  whatsapp_id text,
+  estado_envio text not null default 'enviado'
+);
+
+create table if not exists public.conversaciones (
+  id bigint generated always as identity primary key,
+  telefono text not null,
+  mensajes jsonb not null default '[]'::jsonb,
+  updated_at timestamptz,
+  barberia_id bigint references public.barberias(id) on delete cascade
 );
 
 create table if not exists public.notas (
@@ -160,6 +171,18 @@ create table if not exists public.config (
   valor text not null,
   updated_at timestamptz not null default now(),
   primary key (barberia_id, clave)
+);
+
+create table if not exists public.pagos (
+  id bigint generated always as identity primary key,
+  barberia_id bigint not null references public.barberias(id) on delete cascade,
+  turno_id bigint references public.turnos(id) on delete set null,
+  cliente_id bigint references public.clientes(id) on delete set null,
+  paciente text,
+  servicio text,
+  monto numeric(12,2) not null check (monto >= 0),
+  metodo text not null check (metodo in ('efectivo', 'mercadopago', 'transferencia')),
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.horarios_barbero (
@@ -357,6 +380,16 @@ create index if not exists idx_turnos_barbero_fecha on public.turnos (barbero_id
 create index if not exists idx_mensajes_barberia on public.mensajes (barberia_id, created_at desc);
 create index if not exists idx_notas_barberia on public.notas (barberia_id, fecha desc);
 create index if not exists idx_config_barberia on public.config (barberia_id);
+create index if not exists idx_bloqueos_agenda_barbero on public.bloqueos_agenda (barbero_id);
+create index if not exists idx_horarios_barbero_barberia on public.horarios_barbero (barberia_id);
+create index if not exists idx_mensajes_cliente on public.mensajes (cliente_id);
+create index if not exists idx_notas_cliente on public.notas (cliente_id);
+create index if not exists idx_conversaciones_barberia on public.conversaciones (barberia_id);
+create index if not exists idx_pagos_barberia on public.pagos (barberia_id);
+create index if not exists idx_pagos_cliente on public.pagos (cliente_id);
+create index if not exists idx_pagos_turno on public.pagos (turno_id);
+create index if not exists idx_turnos_cliente on public.turnos (cliente_id);
+create index if not exists idx_turnos_servicio on public.turnos (servicio_id);
 
 alter table public.barberias enable row level security;
 alter table public.profiles enable row level security;
@@ -366,8 +399,10 @@ alter table public.barberos enable row level security;
 alter table public.clientes enable row level security;
 alter table public.turnos enable row level security;
 alter table public.mensajes enable row level security;
+alter table public.conversaciones enable row level security;
 alter table public.notas enable row level security;
 alter table public.config enable row level security;
+alter table public.pagos enable row level security;
 alter table public.horarios_barbero enable row level security;
 alter table public.barbero_servicios enable row level security;
 alter table public.bloqueos_agenda enable row level security;
@@ -484,13 +519,39 @@ with check (public.is_barberia_role(barberia_id, array['owner', 'recepcionista',
 drop policy if exists "mensajes_select_member" on public.mensajes;
 create policy "mensajes_select_member"
 on public.mensajes
-for select
+for select to authenticated
 using (public.is_barberia_member(barberia_id));
 
 drop policy if exists "mensajes_write_staff" on public.mensajes;
 create policy "mensajes_write_staff"
 on public.mensajes
-for all
+for all to authenticated
+using (public.is_barberia_role(barberia_id, array['owner', 'recepcionista', 'barbero']))
+with check (public.is_barberia_role(barberia_id, array['owner', 'recepcionista', 'barbero']));
+
+drop policy if exists "conversaciones_select_member" on public.conversaciones;
+create policy "conversaciones_select_member"
+on public.conversaciones
+for select to authenticated
+using (barberia_id is not null and public.is_barberia_member(barberia_id));
+
+drop policy if exists "conversaciones_write_staff" on public.conversaciones;
+create policy "conversaciones_write_staff"
+on public.conversaciones
+for all to authenticated
+using (barberia_id is not null and public.is_barberia_role(barberia_id, array['owner', 'recepcionista', 'barbero']))
+with check (barberia_id is not null and public.is_barberia_role(barberia_id, array['owner', 'recepcionista', 'barbero']));
+
+drop policy if exists "pagos_select_member" on public.pagos;
+create policy "pagos_select_member"
+on public.pagos
+for select to authenticated
+using (public.is_barberia_member(barberia_id));
+
+drop policy if exists "pagos_write_staff" on public.pagos;
+create policy "pagos_write_staff"
+on public.pagos
+for all to authenticated
 using (public.is_barberia_role(barberia_id, array['owner', 'recepcionista', 'barbero']))
 with check (public.is_barberia_role(barberia_id, array['owner', 'recepcionista', 'barbero']));
 
