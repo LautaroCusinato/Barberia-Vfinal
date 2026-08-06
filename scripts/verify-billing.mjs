@@ -9,6 +9,7 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 
 const migration = read('supabase/migrations/20260807030000_billing_core.sql')
 const hardeningMigration = read('supabase/migrations/20260807031000_billing_outbox_and_idempotency.sql')
+const raceMigration = read('supabase/migrations/20260807032000_billing_checkout_race.sql')
 for (const table of ['saas_proveedores_pago', 'saas_plan_proveedores', 'saas_billing_customers', 'saas_suscripciones_externas', 'saas_billing_checkout_attempts', 'saas_billing_payments', 'saas_billing_invoices', 'saas_billing_refunds', 'saas_billing_webhook_events', 'saas_billing_state_history', 'saas_billing_events']) {
   assert.match(migration, new RegExp(`create table if not exists public\\.${table}`), `falta tabla ${table}`)
 }
@@ -20,6 +21,7 @@ assert.match(migration, /unique \(barberia_id, idempotency_key\)/)
 assert.match(hardeningMigration, /pg_advisory_xact_lock/)
 assert.match(hardeningMigration, /subscription\.trial_started/)
 assert.match(hardeningMigration, /payment\.succeeded/)
+assert.match(raceMigration, /pg_advisory_xact_lock/)
 
 const billingPage = read('src/pages/Billing.jsx')
 assert.match(billingPage, /get_billing_portal/)
