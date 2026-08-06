@@ -46,6 +46,14 @@ const whatsappEventIndexMigration = await fs.readFile(
   path.join(root, 'supabase/migrations/20260806153000_add_automation_tenant_index.sql'),
   'utf8',
 )
+const whatsappShadowMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806160000_whatsapp_shadow_runs.sql'),
+  'utf8',
+)
+const whatsappMutationMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806161000_whatsapp_booking_mutations.sql'),
+  'utf8',
+)
 const whatsappTemplate = JSON.parse(await fs.readFile(
   path.join(root, 'integrations/templates/WhatsApp Multi Tenant - Contract Template.json'),
   'utf8',
@@ -116,10 +124,19 @@ for (const required of [
 assert.match(whatsappContractFixMigration, /on conflict on constraint saas_automation_events_integration_id_event_id_key/i)
 assert.match(whatsappEventPolicyMigration, /saas_automation_events_service_role/i)
 assert.match(whatsappEventIndexMigration, /idx_saas_automation_events_tenant_id/i)
+for (const required of ['saas_automation_shadow_runs', 'record_whatsapp_shadow_run', 'cleanup_whatsapp_shadow_runs', "mode = 'shadow'", "interval '30 days'"]) {
+  assert.match(whatsappShadowMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
+}
+for (const required of ['consultar_reserva_whatsapp', 'simular_reserva_whatsapp', 'cancelar_reserva_whatsapp', 'reprogramar_reserva_whatsapp', 'search_path = public, pg_temp', 'service_role']) {
+  assert.match(whatsappMutationMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
+}
 assert.equal(whatsappTemplate.active, false, 'WhatsApp template must remain inactive')
 assert.ok(whatsappTemplate.nodes.length >= 20, 'WhatsApp template is unexpectedly incomplete')
 assert.match(whatsappContractDocs, /inactiva|No activar/i)
 assert.doesNotMatch(whatsappTemplateText, /PONE-ACA-TU-EVOLUTION-API-KEY|miwsp|barberia_id.?=.?.?1/i)
+assert.match(whatsappTemplateText, /PILOT_MODE/)
+assert.match(whatsappTemplateText, /simular_reserva_whatsapp/)
+assert.match(whatsappTemplateText, /record_whatsapp_shadow_run/)
 
 assert.doesNotMatch(tenantModule, /service_role/i, 'tenant module must not contain privileged credentials')
 console.log('SaaS foundation checks passed')

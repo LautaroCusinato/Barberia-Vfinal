@@ -19,7 +19,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const input = $input.first()?.json ?? {};\nconst body = input.body ?? input;\nconst data = body.data ?? {};\nconst key = data.key ?? {};\nconst headers = input.headers ?? body.headers ?? {};\nconst expectedWebhookSecret = String($env.EVOLUTION_WEBHOOK_SECRET ?? '').trim();\nconst presentedWebhookSecret = String(headers['x-evolution-webhook-secret'] ?? headers['x-webhook-secret'] ?? headers.apikey ?? '').trim();\nconst webhookAuthenticated = Boolean(expectedWebhookSecret && presentedWebhookSecret && presentedWebhookSecret === expectedWebhookSecret);\nconst remoteJid = String(key.remoteJid ?? data.sender ?? '').trim();\nconst senderNumber = remoteJid.replace(/@.*$/, '').replace(/\\D/g, '');\nconst receiverRaw = body.destination ?? data.destination ?? body.receiver ?? '';\nconst receiverNumber = String(receiverRaw).replace(/\\D/g, '') || null;\nconst instanceName = String(body.instance ?? data.instance ?? body.instanceName ?? body.headers?.['x-instance-name'] ?? '').trim().toLowerCase();\nconst eventId = String(key.id ?? body.event_id ?? data.id ?? '').trim();\nconst texto = String(data.message?.conversation ?? data.message?.extendedTextMessage?.text ?? '').trim();\nconst invalid = !instanceName || !eventId || !senderNumber || remoteJid.endsWith('@g.us');\nreturn [{ json: { instanceName, receiverNumber, eventId, senderNumber, remoteJid, texto, invalid, webhookAuthenticated, reason: invalid ? 'identity_or_event_invalid' : (!webhookAuthenticated ? 'webhook_auth_invalid' : null), rawMessageType: data.messageType ?? null } }];"
+        "jsCode": "const input = $input.first()?.json ?? {};\nconst body = input.body ?? input;\nconst data = body.data ?? {};\nconst key = data.key ?? {};\nconst headers = input.headers ?? body.headers ?? {};\nconst expectedWebhookSecret = String($env.EVOLUTION_WEBHOOK_SECRET ?? '').trim();\nconst presentedWebhookSecret = String(headers['x-evolution-webhook-secret'] ?? headers['x-webhook-secret'] ?? headers.apikey ?? '').trim();\nconst webhookAuthenticated = Boolean(expectedWebhookSecret && presentedWebhookSecret && presentedWebhookSecret === expectedWebhookSecret);\nconst remoteJid = String(key.remoteJid ?? data.sender ?? '').trim();\nconst senderNumber = remoteJid.replace(/@.*$/, '').replace(/\\D/g, '');\nconst receiverRaw = body.destination ?? data.destination ?? body.receiver ?? '';\nconst receiverNumber = String(receiverRaw).replace(/\\D/g, '') || null;\nconst instanceName = String(body.instance ?? data.instance ?? body.instanceName ?? body.headers?.['x-instance-name'] ?? '').trim().toLowerCase();\nconst eventId = String(key.id ?? body.event_id ?? data.id ?? '').trim();\nconst texto = String(data.message?.conversation ?? data.message?.extendedTextMessage?.text ?? '').trim();\nconst invalid = !instanceName || !eventId || !senderNumber || remoteJid.endsWith('@g.us');\nreturn [{ json: { instanceName, receiverNumber, eventId, senderNumber, remoteJid, texto, invalid, webhookAuthenticated, receivedAt: Date.now(), reason: invalid ? 'identity_or_event_invalid' : (!webhookAuthenticated ? 'webhook_auth_invalid' : null), rawMessageType: data.messageType ?? null } }];"
       },
       "id": "mt-normalize",
       "name": "Validar identidad e idempotencia",
@@ -311,7 +311,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/crear_reserva_whatsapp' }}",
+        "url": "={{ ($env.PILOT_MODE || 'live') === 'shadow' ? $env.SUPABASE_URL + '/rest/v1/rpc/simular_reserva_whatsapp' : $env.SUPABASE_URL + '/rest/v1/rpc/crear_reserva_whatsapp' }}",
         "sendHeaders": true,
         "headerParameters": { "parameters": [
           { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
@@ -334,7 +334,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const validation = $('Validar respuesta IA').first()?.json ?? {};\nconst slot = $('Validar disponibilidad').first()?.json ?? {};\nconst created = $('Crear reserva centralizada').all()[0]?.json ?? {};\nlet text = validation.reply;\nif (slot.allowed === false) text = slot.reply;\nif (created.turno_id) text = `Listo, tu turno quedó reservado para ${created.fecha} a las ${String(created.hora).slice(0, 5)}.`;\nreturn [{ json: { text, resultReference: created.turno_id ? String(created.turno_id) : validation.intent } }];"
+        "jsCode": "const validation = $('Validar respuesta IA').first()?.json ?? {};\nconst slot = $('Validar disponibilidad').first()?.json ?? {};\nconst identity = $('Validar identidad e idempotencia').first()?.json ?? {};\nconst rawCreated = $('Crear reserva centralizada').all()[0]?.json ?? {};\nconst created = Array.isArray(rawCreated) ? (rawCreated[0] ?? {}) : rawCreated;\nconst shadow = ($env.PILOT_MODE || 'live') === 'shadow';\nconst proposalLatencyMs = Math.max(0, Date.now() - Number(identity.receivedAt || Date.now()));\nlet text = validation.reply;\nif (slot.allowed === false) text = slot.reply;\nif (shadow && created.shadow) text = `Simulación shadow: propondría reservar el turno para ${created.fecha} a las ${String(created.hora).slice(0, 5)}. No se creó ninguna reserva ni se envió ningún mensaje.`;\nelse if (created.turno_id) text = `Listo, tu turno quedó reservado para ${created.fecha} a las ${String(created.hora).slice(0, 5)}.`;\nreturn [{ json: { text, mode: shadow ? 'shadow' : 'live', proposalLatencyMs, resultReference: shadow ? validation.intent + ':shadow' : (created.turno_id ? String(created.turno_id) : validation.intent) } }];"
       },
       "id": "mt-response",
       "name": "Construir respuesta segura",
@@ -345,15 +345,16 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.EVOLUTION_BASE_URL + '/message/sendText/' + $('Resolver tenant').item.json.evolution_instance }}",
+        "url": "={{ ($env.PILOT_MODE || 'live') === 'shadow' ? $env.SUPABASE_URL + '/rest/v1/rpc/record_whatsapp_shadow_run' : $env.EVOLUTION_BASE_URL + '/message/sendText/' + $('Resolver tenant').item.json.evolution_instance }}",
         "sendHeaders": true,
         "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" },
+          { "name": "apikey", "value": "={{ ($env.PILOT_MODE || 'live') === 'shadow' ? $env.SUPABASE_SERVICE_ROLE_KEY : $env.EVOLUTION_API_KEY }}" },
+          { "name": "Authorization", "value": "={{ 'Bearer ' + (($env.PILOT_MODE || 'live') === 'shadow' ? $env.SUPABASE_SERVICE_ROLE_KEY : $env.EVOLUTION_API_KEY) }}" },
           { "name": "Content-Type", "value": "application/json" }
         ] },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ number: $('Validar identidad e idempotencia').item.json.senderNumber, text: $('Construir respuesta segura').item.json.text }) }}",
+        "jsonBody": "={{ JSON.stringify((($env.PILOT_MODE || 'live') === 'shadow') ? { p_integration_id: $('Resolver tenant').item.json.integration_id, p_event_id: $('Validar identidad e idempotencia').item.json.eventId, p_intent: $('Validar respuesta IA').item.json.intent, p_proposed_result: $('Construir respuesta segura').item.json.resultReference, p_proposed_response_length: String($('Construir respuesta segura').item.json.text || '').length, p_proposed_latency_ms: $('Construir respuesta segura').item.json.proposalLatencyMs, p_metadata: { mode: 'shadow', sender_number: $('Validar identidad e idempotencia').item.json.senderNumber } } : { number: $('Validar identidad e idempotencia').item.json.senderNumber, text: $('Construir respuesta segura').item.json.text }) }}",
         "options": {}
       },
       "id": "mt-send",
@@ -397,7 +398,7 @@
         ] },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ metadata: { source: 'n8n-multitenant-template', instance: $('Resolver tenant').item.json.evolution_instance, ai_model: $('Resolver tenant').item.json.ai_model, logged_at: $now.toISO() } }) }}",
+        "jsonBody": "={{ JSON.stringify({ metadata: { source: 'n8n-multitenant-template', mode: $env.PILOT_MODE || 'live', instance: $('Resolver tenant').item.json.evolution_instance, ai_model: $('Resolver tenant').item.json.ai_model, logged_at: $now.toISO() } }) }}",
         "options": {}
       },
       "id": "mt-log",

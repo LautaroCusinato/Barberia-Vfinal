@@ -161,3 +161,9 @@ Quedan para el piloto real: registrar las integraciones reales, configurar las
 variables privadas de n8n, verificar el payload exacto de Evolution y ejecutar
 las pruebas de reservas fuera de horario, tenant suspendido, servicio
 inexistente, errores de Supabase/DeepSeek y cruce entre tenants.
+
+La ejecución controlada queda documentada en `docs/WHATSAPP_PILOT_ROLLOUT.md`.
+El template usa `PILOT_MODE=shadow` para invocar `simular_reserva_whatsapp` y
+registrar un reporte minimizado con `record_whatsapp_shadow_run`; no envía por
+Evolution ni crea turnos. Las mutaciones de consulta, cancelación y
+reprogramación están aisladas en RPCs `service_role` y son idempotentes.
