@@ -17,6 +17,7 @@ import Notes from './components/Notes'
 import Stats from './components/Stats'
 import Operations from './components/Operations'
 import OnboardingChecklist from './components/OnboardingChecklist'
+import Billing from './pages/Billing.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { generarIdHabilidad, parseHabilidades, parseHorarioTexto, soloDigitos } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
@@ -1156,6 +1157,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
             )}
           </div>
         )}
+
+        {view === 'facturacion' && <Billing barberiaId={barberiaId} />}
       </main>
 
       <NewTurnoModal

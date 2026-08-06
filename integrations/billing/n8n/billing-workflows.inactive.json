@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Billing - Mercado Pago webhook (INACTIVE)",
+    "active": false,
+    "nodes": [
+      {"parameters":{"httpMethod":"POST","path":"billing/mercadopago/webhook-placeholder","responseMode":"onReceived","options":{}},"id":"billing-mp-webhook","name":"Webhook Mercado Pago","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[-360,0]},
+      {"parameters":{"jsCode":"// Plantilla inactiva. Validar firma en un backend/worker y llamar record_billing_webhook_event.\nreturn items;"},"id":"billing-mp-guard","name":"Validar firma (backend)","type":"n8n-nodes-base.code","typeVersion":2,"position":[-80,0]},
+      {"parameters":{"method":"POST","url":"={{$env.SUPABASE_BILLING_WEBHOOK_ENDPOINT || 'https://tu-dominio.example/api/billing/mercadopago/webhook'}}","sendBody":true,"jsonBody":"={{$json}}","options":{}},"id":"billing-mp-forward","name":"Forward a endpoint privado","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[220,0]}
+    ],
+    "connections":{"Webhook Mercado Pago":{"main":[[{"node":"Validar firma (backend)","type":"main","index":0}]]},"Validar firma (backend)":{"main":[[{"node":"Forward a endpoint privado","type":"main","index":0}]]}},
+    "settings":{},"staticData":null,"tags":[]
+  },
+  {
+    "name": "Billing - PayPal webhook (INACTIVE)",
+    "active": false,
+    "nodes": [
+      {"parameters":{"httpMethod":"POST","path":"billing/paypal/webhook-placeholder","responseMode":"onReceived","options":{}},"id":"billing-paypal-webhook","name":"Webhook PayPal","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[-360,0]},
+      {"parameters":{"jsCode":"// Plantilla inactiva. Verificar firma PayPal mediante su endpoint oficial.\nreturn items;"},"id":"billing-paypal-guard","name":"Verificar firma (backend)","type":"n8n-nodes-base.code","typeVersion":2,"position":[-80,0]},
+      {"parameters":{"method":"POST","url":"={{$env.SUPABASE_BILLING_WEBHOOK_ENDPOINT || 'https://tu-dominio.example/api/billing/paypal/webhook'}}","sendBody":true,"jsonBody":"={{$json}}","options":{}},"id":"billing-paypal-forward","name":"Forward a endpoint privado","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[220,0]}
+    ],
+    "connections":{"Webhook PayPal":{"main":[[{"node":"Verificar firma (backend)","type":"main","index":0}]]},"Verificar firma (backend)":{"main":[[{"node":"Forward a endpoint privado","type":"main","index":0}]]}},
+    "settings":{},"staticData":null,"tags":[]
+  },
+  {
+    "name": "Billing - Trial reminders (INACTIVE)",
+    "active": false,
+    "nodes": [{"parameters":{"rule":{"interval":[{"field":"hours","hoursInterval":24}]}},"id":"billing-trial-cron","name":"Revisión diaria","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1,"position":[-220,0]},{"parameters":{"jsCode":"// Sólo emitir billing.trial_reminder cuando exista consentimiento y un canal configurado.\nreturn items;"},"id":"billing-trial-policy","name":"Política de recordatorio","type":"n8n-nodes-base.code","typeVersion":2,"position":[80,0]}],
+    "connections":{"Revisión diaria":{"main":[[{"node":"Política de recordatorio","type":"main","index":0}]]}},"settings":{},"staticData":null,"tags":[]
+  },
+  {
+    "name": "Billing - Dunning (INACTIVE)",
+    "active": false,
+    "nodes": [{"parameters":{"rule":{"interval":[{"field":"hours","hoursInterval":6}]}},"id":"billing-dunning-cron","name":"Revisar pagos pendientes","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1,"position":[-220,0]},{"parameters":{"jsCode":"// No enviar mensajes en este estado. Preparar sólo una alerta interna y/o tarea.\nreturn items;"},"id":"billing-dunning-policy","name":"Dunning seguro","type":"n8n-nodes-base.code","typeVersion":2,"position":[80,0]}],
+    "connections":{"Revisar pagos pendientes":{"main":[[{"node":"Dunning seguro","type":"main","index":0}]]}},"settings":{},"staticData":null,"tags":[]
+  },
+  {
+    "name": "Billing - Reconciliation (INACTIVE)",
+    "active": false,
+    "nodes": [{"parameters":{"rule":{"interval":[{"field":"hours","hoursInterval":12}]}},"id":"billing-reconcile-cron","name":"Reconciliación periódica","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1,"position":[-220,0]},{"parameters":{"jsCode":"// Consultar sólo referencias externas y producir diferencias para revisión.\nreturn items;"},"id":"billing-reconcile-policy","name":"Comparar estados","type":"n8n-nodes-base.code","typeVersion":2,"position":[80,0]}],
+    "connections":{"Reconciliación periódica":{"main":[[{"node":"Comparar estados","type":"main","index":0}]]}},"settings":{},"staticData":null,"tags":[]
+  }
+]
