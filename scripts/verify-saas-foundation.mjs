@@ -22,6 +22,14 @@ const accessMigration = await fs.readFile(
   path.join(root, 'supabase/migrations/20260806120000_enforce_booking_access.sql'),
   'utf8',
 )
+const rlsMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806140000_consolidate_saas_rls.sql'),
+  'utf8',
+)
+const fkIndexesMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806143000_add_crm_saas_fk_indexes.sql'),
+  'utf8',
+)
 
 for (const exportName of ['DEFAULT_TENANT_ID', 'DEFAULT_VERTICAL', 'getRuntimeTenant', 'tenantStorageKey']) {
   assert.match(tenantModule, new RegExp(`(?:export const|export function)\\s+${exportName}`), `${exportName} missing`)
@@ -52,6 +60,14 @@ for (const required of ['search_path = public, pg_temp', 'revoke all on function
 
 for (const required of ['barberia_booking_access', 'guard_public_reservation_access', 'trg_turnos_guard_public_access', 'past_due']) {
   assert.match(accessMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
+}
+
+for (const required of ['saas_suscripciones_select_access', 'saas_integraciones_insert_owner', 'saas_integraciones_update_owner', 'saas_integraciones_delete_owner']) {
+  assert.match(rlsMigration, new RegExp(required), `${required} missing`)
+}
+
+for (const required of ['idx_crm_interacciones_created_by', 'idx_crm_leads_negocio_id', 'idx_crm_leads_responsable_id', 'idx_saas_suscripciones_plan_codigo']) {
+  assert.match(fkIndexesMigration, new RegExp(required), `${required} missing`)
 }
 
 assert.doesNotMatch(tenantModule, /service_role/i, 'tenant module must not contain privileged credentials')
