@@ -52,7 +52,7 @@ La implementación serverless vive en `supabase/functions/` y usa Supabase Edge 
 
 - `billing-api`: requiere sesión y resuelve el único tenant owner de la sesión. Expone `GET /status`, `POST /checkout`, `POST /external-status`, `POST /sync-plans` y `POST /reconcile` (esta última sólo para owner/admin de plataforma).
 - `billing-webhooks`: endpoint público separado para `/mercadopago` y `/paypal`; exige firma válida y consulta el recurso al proveedor antes de cambiar estados.
-- `billing-jobs`: endpoint privado para trials, reintentos y outbox; exige `BILLING_CRON_SECRET`.
+- `billing-jobs`: endpoint privado para trials, reconciliación externa, reintentos y outbox; exige `BILLING_CRON_SECRET`. Sólo consulta proveedores que estén configurados y explícitamente habilitados.
 
 Las funciones se desplegaron sin secretos: en ese estado devuelven `provider_not_configured` y no generan efectos externos.
 
