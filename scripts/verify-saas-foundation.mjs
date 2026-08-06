@@ -18,6 +18,10 @@ const securityMigration = await fs.readFile(
   path.join(root, 'supabase/migrations/20260806110000_harden_security_definer_grants.sql'),
   'utf8',
 )
+const accessMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806120000_enforce_booking_access.sql'),
+  'utf8',
+)
 
 for (const exportName of ['DEFAULT_TENANT_ID', 'DEFAULT_VERTICAL', 'getRuntimeTenant', 'tenantStorageKey']) {
   assert.match(tenantModule, new RegExp(`(?:export const|export function)\\s+${exportName}`), `${exportName} missing`)
@@ -44,6 +48,10 @@ assert.match(platformCrm, /setView\('leads'\)/, 'lead navigation missing')
 
 for (const required of ['search_path = public, pg_temp', 'revoke all on function public.get_conversacion', 'revoke all on function public.upsert_conversacion', 'service_role']) {
   assert.match(securityMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
+}
+
+for (const required of ['barberia_booking_access', 'guard_public_reservation_access', 'trg_turnos_guard_public_access', 'past_due']) {
+  assert.match(accessMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
 }
 
 assert.doesNotMatch(tenantModule, /service_role/i, 'tenant module must not contain privileged credentials')
