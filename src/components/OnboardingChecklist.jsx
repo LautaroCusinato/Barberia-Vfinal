@@ -1,0 +1,32 @@
+import { useEffect, useState } from 'react'
+import { Check, ChevronRight, CircleHelp, LoaderCircle, MessageCircle, Sparkles } from 'lucide-react'
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+
+export default function OnboardingChecklist({ barberiaId }) {
+  const [status, setStatus] = useState(null)
+  const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [guideOpen, setGuideOpen] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    if (!isSupabaseConfigured) { setLoading(false); return undefined }
+    supabase.rpc('get_onboarding_status', { p_barberia_id: barberiaId }).then(({ data, error }) => {
+      if (!active) return
+      if (!error) setStatus(data)
+      setLoading(false)
+    })
+    return () => { active = false }
+  }, [barberiaId])
+
+  if (loading) return <div className="onboarding-checklist panel"><LoaderCircle className="spin" size={16} /> Cargando recomendaciones…</div>
+  if (!status?.items?.length) return null
+
+  return (
+    <div className="onboarding-checklist panel fade-in">
+      <div className="checklist-heading"><div><p className="panel-kicker"><Sparkles size={13} /> Primeros pasos</p><h2>Terminá de configurar tu negocio</h2></div><strong>{status.progress}%</strong></div>
+      <div className="checklist-progress"><span style={{ width: `${status.progress}%` }} /></div>
+      <div className="checklist-items">{status.items.map((item) => <button className={`checklist-item ${item.done ? 'done' : ''}`} key={item.key} onClick={() => item.key === 'whatsapp' && setGuideOpen(true)}><span className="checklist-check">{item.done ? <Check size={14} /> : null}</span><span>{item.label}</span>{!item.done && item.key === 'whatsapp' ? <MessageCircle size={15} /> : !item.done ? <ChevronRight size={15} /> : null}</button>)}</div>
+      {guideOpen && <div className="guide-panel"><div className="guide-heading"><MessageCircle size={17} /><strong>Conectar WhatsApp</strong><button className="btn-icon-plain" onClick={() => setGuideOpen(false)} aria-label="Cerrar">×</button></div><p>La conexión es manual y segura. Necesitás crear o elegir una instancia en Evolution, copiar su URL y pedir al administrador que configure el webhook en n8n.</p><ol><li>Confirmá que tu número de WhatsApp esté conectado en Evolution.</li><li>Compartí con soporte únicamente el nombre de la instancia y el número normalizado.</li><li>Probamos la resolución del tenant en modo shadow antes de activar mensajes.</li></ol><div className="guide-note"><CircleHelp size={15} /> Este asistente no envía mensajes ni modifica el workflow productivo.</div></div>}
+    </div>
+  )
+}

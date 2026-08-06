@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LayoutDashboard, Calendar, MessageCircle, Users, StickyNote, Sun, Moon, Bot, LogOut, BarChart3, Scissors, BriefcaseBusiness, Users2, MoreHorizontal, X } from 'lucide-react'
+import { LayoutDashboard, Calendar, MessageCircle, Users, StickyNote, Sun, Moon, Bot, LogOut, BarChart3, Scissors, BriefcaseBusiness, Users2, MoreHorizontal, X, ShieldCheck } from 'lucide-react'
 
 const ITEMS = [
   { id: 'resumen', label: 'Resumen', Icon: LayoutDashboard },
@@ -23,7 +23,7 @@ const GROUPS = [
 const TABBAR_PRINCIPAL = ['resumen', 'agenda', 'mensajes', 'pacientes']
 const TABBAR_MAS = ITEMS.filter((i) => !TABBAR_PRINCIPAL.includes(i.id))
 
-export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, onLogout }) {
+export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, onLogout, onAccountSecurity }) {
   const isDark = theme === 'dark'
   const [mostrarMas, setMostrarMas] = useState(false)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
@@ -88,6 +88,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             <span className="live-dot" />
             <span>Conectado a WhatsApp via n8n</span>
           </div>
+          {onAccountSecurity && <button className="theme-toggle" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
           <button className="theme-toggle" onClick={onLogout}>
             <span className="theme-toggle-label">
               <LogOut size={14} />

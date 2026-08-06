@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import PublicBooking from './pages/PublicBooking.jsx'
 import PlatformCRM from './pages/PlatformCRM.jsx'
+import Signup from './pages/Signup.jsx'
+import OnboardingWizard from './pages/OnboardingWizard.jsx'
+import PasswordRecovery from './pages/PasswordRecovery.jsx'
+import AccountSecurity from './pages/AccountSecurity.jsx'
 import Login, { logout } from './components/Login.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
@@ -63,10 +67,11 @@ function SelectorBarberia({ opciones, onElegir }) {
 function SinBarberia() {
   return (
     <EstadoCentrado>
-      <p style={{ fontWeight: 700, marginBottom: 8 }}>Tu usuario no está vinculado a ninguna barbería</p>
+      <p style={{ fontWeight: 700, marginBottom: 8 }}>Creá tu primer negocio</p>
       <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
-        Pedile al administrador que te agregue en <code>barberia_members</code>.
+        Tu cuenta está lista. Completá el asistente para activar tu prueba gratuita de 14 días.
       </p>
+      <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }} onClick={() => window.location.assign('/onboarding')}>Configurar negocio</button>
       <button className="btn" onClick={() => logout()}>Cerrar sesión</button>
     </EstadoCentrado>
   )
@@ -104,6 +109,7 @@ function Root() {
   const [barberiaNombre, setBarberiaNombre] = useState(cacheInicial?.nombre ?? null)
   const [platformMember, setPlatformMember] = useState(false)
   const [platformRole, setPlatformRole] = useState(null)
+  const [onboardingNeeded, setOnboardingNeeded] = useState(false)
 
   const yaResolvioAlgunaVezRef = useRef(false)
 
@@ -111,7 +117,7 @@ function Root() {
     const [tenantResult, platformResult] = await Promise.all([
       supabase
         .from('barberia_members')
-        .select('barberia_id, role, barberias(nombre)')
+        .select('barberia_id, role, barberias(nombre, onboarding_completed)')
         .eq('user_id', userId),
       supabase
         .from('platform_members')
@@ -128,12 +134,16 @@ function Root() {
 
     if (error || !data) {
       setOpciones([])
+      setOnboardingNeeded(true)
       return
     }
     setOpciones(data)
     if (data.length === 1) {
       setBarberiaId(data[0].barberia_id)
       setBarberiaNombre(data[0].barberias?.nombre || null)
+      setOnboardingNeeded(data[0].barberias?.onboarding_completed === false)
+    } else {
+      setOnboardingNeeded(false)
     }
   }
 
@@ -162,6 +172,7 @@ function Root() {
         setBarberiaNombre(null)
         setPlatformMember(false)
         setPlatformRole(null)
+        setOnboardingNeeded(false)
         return
       }
       // Supabase dispara este mismo evento tambien cuando solo renueva el
@@ -196,8 +207,10 @@ function Root() {
     return <EstadoCentrado>Cargando tu barbería...</EstadoCentrado>
   }
   if (opciones !== null && opciones.length === 0) {
+    if (onboardingNeeded) return <OnboardingWizard />
     return <SinBarberia />
   }
+  if (onboardingNeeded) return <OnboardingWizard />
   if (!barberiaId) {
     return (
       <SelectorBarberia
@@ -214,9 +227,15 @@ function Root() {
 }
 
 const bookingMatch = window.location.pathname.match(/^\/reservar\/([^/]+)\/?$/)
+const path = window.location.pathname
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} /> : <Root />}
+    {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} />
+      : path === '/registro' ? <Signup />
+        : path === '/onboarding' ? <OnboardingWizard />
+          : path === '/recuperar' ? <PasswordRecovery />
+            : path === '/cuenta' ? <AccountSecurity />
+              : <Root />}
   </React.StrictMode>
 )

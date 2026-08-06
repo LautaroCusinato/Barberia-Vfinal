@@ -16,6 +16,7 @@ import Patients from './components/Patients'
 import Notes from './components/Notes'
 import Stats from './components/Stats'
 import Operations from './components/Operations'
+import OnboardingChecklist from './components/OnboardingChecklist'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { generarIdHabilidad, parseHabilidades, parseHorarioTexto, soloDigitos } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
@@ -83,6 +84,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const [turnoFechaPrefijada, setTurnoFechaPrefijada] = useState(null)
   const [notasFiltro, setNotasFiltro] = useState('')
   const [botActivo, setBotActivo] = useState(true)
+  const [horariosDefault, setHorariosDefault] = useState({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] })
   const [dbError, setDbError] = useState('')
 
   const reportError = (mensaje, error) => {
@@ -172,9 +174,18 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     }
 
     async function cargarConfig() {
-      const { data } = await supabase
-        .from('config').select('*').eq('barberia_id', barberiaId).eq('clave', 'bot_activo').maybeSingle()
-      if (data) setBotActivo(data.valor === 'true')
+      const { data, error } = await supabase
+        .from('config').select('*').eq('barberia_id', barberiaId).in('clave', ['bot_activo', 'horarios_default'])
+      if (error) { reportError('No se pudo cargar la configuración inicial', error); return }
+      const botConfig = data?.find((item) => item.clave === 'bot_activo')
+      if (botConfig) setBotActivo(botConfig.valor === 'true')
+      const horariosConfig = data?.find((item) => item.clave === 'horarios_default')
+      if (horariosConfig) {
+        try {
+          const parsed = JSON.parse(horariosConfig.valor)
+          if (Array.isArray(parsed.dias) && parsed.inicio && parsed.fin) setHorariosDefault({ dias: parsed.dias, inicio: parsed.inicio, fin: parsed.fin, breaks: Array.isArray(parsed.breaks) ? parsed.breaks : [] })
+        } catch { reportError('No se pudo interpretar el horario por defecto', new Error('JSON inválido')) }
+      }
     }
 
     async function cargarBloqueos() {
@@ -722,10 +733,18 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
         // El alta conserva el horario inicial que muestra el panel y deja al
         // profesional disponible para los servicios activos. De esta forma la
         // reserva pública y el panel no se desincronizan al crear equipo.
-        const horariosIniciales = [1, 2, 3, 4, 5].map((day_of_week) => ({
-          barberia_id: barberiaId, barbero_id: nuevoBarbero.id, day_of_week,
-          start_time: '09:00', end_time: '18:00', activo: true,
-        }))
+        const horariosIniciales = horariosDefault.dias.flatMap((day_of_week) => {
+          const breaks = horariosDefault.breaks.filter((item) => item.inicio < horariosDefault.fin && item.fin > horariosDefault.inicio)
+          if (!breaks.length) return [{ barberia_id: barberiaId, barbero_id: nuevoBarbero.id, day_of_week, start_time: horariosDefault.inicio, end_time: horariosDefault.fin, activo: true }]
+          const segmentos = []
+          let cursor = horariosDefault.inicio
+          for (const pausa of breaks.sort((a, b) => a.inicio.localeCompare(b.inicio))) {
+            if (cursor < pausa.inicio) segmentos.push({ barberia_id: barberiaId, barbero_id: nuevoBarbero.id, day_of_week, start_time: cursor, end_time: pausa.inicio, activo: true })
+            cursor = pausa.fin > cursor ? pausa.fin : cursor
+          }
+          if (cursor < horariosDefault.fin) segmentos.push({ barberia_id: barberiaId, barbero_id: nuevoBarbero.id, day_of_week, start_time: cursor, end_time: horariosDefault.fin, activo: true })
+          return segmentos
+        })
         const { error: horarioError } = await supabase.from('horarios_barbero').insert(horariosIniciales)
         if (horarioError) reportError('El barbero fue creado, pero no se pudieron guardar sus horarios', horarioError)
         const relaciones = servicios.filter((s) => s.activo).map((s) => ({ barbero_id: nuevoBarbero.id, servicio_id: s.id }))
@@ -871,6 +890,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
         botActivo={botActivo}
         onToggleBot={toggleBot}
         onLogout={logout}
+        onAccountSecurity={() => window.location.assign('/cuenta')}
       />
       <main className="main">
         {!isSupabaseConfigured && (
@@ -921,6 +941,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
               </>
             ) : (
               <>
+                <OnboardingChecklist barberiaId={barberiaId} />
                 <StatsCards turnos={turnosHoy} conversaciones={conversaciones} todayKey={todayKey} />
                 <div className="two-col">
                   <div className="panel resumen-agenda-panel">

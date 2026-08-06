@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Lock, Mail, KeyRound, Scissors } from 'lucide-react'
+import { Lock, Mail, KeyRound, Scissors, UserPlus, HelpCircle } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME } from '../lib/tenant'
 
@@ -59,12 +59,16 @@ export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME 
             <label className="modal-label"><KeyRound size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Contrasena</label>
             <input className="text-input" type="password" value={pass} onChange={(e) => setPass(e.target.value)} />
           </div>
-          {error && <p className="login-error">{error}</p>}
+          {error && <p className="login-error" role="alert">{error}</p>}
           <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }} disabled={loading}>
             <Lock size={14} />
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
+        <div className="login-links">
+          <button className="auth-link" onClick={() => window.location.assign('/recuperar')}><HelpCircle size={13} /> ¿Olvidaste tu contraseña?</button>
+          <button className="btn login-signup-button" onClick={() => window.location.assign('/registro')}><UserPlus size={14} /> Crear una cuenta</button>
+        </div>
       </div>
     </div>
   )
