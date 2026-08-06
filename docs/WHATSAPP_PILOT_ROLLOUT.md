@@ -19,6 +19,19 @@ El template versionado es `integrations/templates/WhatsApp Multi Tenant - Contra
 
 El workflow piloto separado está importado en n8n como `WhatsApp Multi Tenant - Pilot Barberia Central`, ID `5UQMp5vAMfBfJtSy`. Se verificó en la lista de workflows sin etiqueta `Published`; permanece inactivo y no se ejecutó. Tiene 25 nodos, sin instancia hardcodeada y con cuatro expresiones que usan el fallback seguro `PILOT_MODE=shadow`.
 
+## Entorno privado de n8n verificado
+
+La API autenticada de n8n informa:
+
+- despliegue Docker (`isDocker=true`), modo `regular` y base SQLite;
+- n8n `2.25.7`, Node `24.15.0`, deployment `default`;
+- `variables.limit=0` y `enterprise.variables=false`: la cuenta no puede crear variables privadas desde la interfaz;
+- el workflow piloto tiene `active=false`, 25 nodos y `triggerCount=0`; el productivo sigue `active=true`.
+
+La interfaz de n8n no expone el nombre real del contenedor, sus volúmenes, la política de reinicio, la red Docker ni el stack Compose. No se dispone de acceso SSH, Portainer o Docker remoto en esta sesión. Por ese motivo no se exportó configuración, no se modificó el contenedor y no se reinició ningún servicio.
+
+La conectividad pública básica quedó comprobada sin enviar credenciales: Supabase REST responde `401` (endpoint alcanzable y protegido), Evolution responde `200` en su raíz y DeepSeek responde `401` en `/v1/models` (endpoint alcanzable, autenticación pendiente). No se pudo validar la autenticación privada de DeepSeek, Evolution ni Supabase desde n8n sin configurar primero las variables del contenedor.
+
 ## Verificación de Evolution y bloqueo de alta automática
 
 Se verificó en Evolution API 2.3.7:
@@ -48,6 +61,12 @@ Usar `integrations/templates/n8n-multitenant.env.example` como referencia y conf
 El secreto de webhook debe ser el mismo que Evolution envía en el header configurado. No se debe reutilizar `SUPABASE_SERVICE_ROLE_KEY` como secreto de webhook.
 
 En esta instancia de n8n, la pantalla **Variables** muestra que la función está bloqueada por el plan y **Environments** requiere Enterprise. Por eso no fue posible guardar variables privadas desde la interfaz disponible. Quedan pendientes en el nivel del servidor/contenedor (SSH, Docker o Portainer): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `DEEPSEEK_API_KEY` y `PILOT_MODE=shadow`. No se solicitaron ni se expusieron secretos en el repositorio o en este chat.
+
+### Procedimiento seguro para el host Docker/Portainer
+
+Cuando se autorice acceso al host, antes de modificar nada se debe registrar el contenedor/stack sin imprimir valores de entorno: imagen y versión, nombre, mounts, `RestartPolicy`, red y estado de los workflows. El backup debe guardarse fuera de Git y con las variables secretas redactadas. El volumen persistente no se elimina ni se recrea.
+
+Las variables se agregan en el Compose/Portainer del servicio n8n, nunca en el repositorio. Deben incluir `PILOT_MODE=shadow`. Después se reinicia sólo n8n (`docker compose up -d --no-deps n8n` o el equivalente del contenedor), se comprueba que el productivo continúe activo y que el piloto siga inactivo, y se conserva el backup para rollback. Evolution, Supabase, Postgres y Redis no deben reiniciarse.
 
 ## Matriz de simulación (22 casos)
 
@@ -89,6 +108,7 @@ Rollback: volver `PILOT_MODE=shadow`, desactivar sólo el workflow piloto, conse
 ## Acciones manuales pendientes
 
 1. Configurar en el servidor/contenedor de n8n las variables privadas indicadas, manteniendo `PILOT_MODE=shadow`.
-2. Mantener el workflow piloto `5UQMp5vAMfBfJtSy` inactivo y sin publicar; no tocar el productivo `gRTZDLTXvGgNq4BZ`.
-3. Cuando exista autorización explícita, configurar un webhook de prueba de Evolution apuntando únicamente al piloto.
-4. Ejecutar una prueba controlada con payload anonimizado y revisar `saas_automation_shadow_runs`; no usar todavía un número de cliente real.
+2. Obtener acceso al host Docker/Portainer para realizar backup, inspección de volumen y reinicio controlado; no enviar secretos por chat.
+3. Mantener el workflow piloto `5UQMp5vAMfBfJtSy` inactivo y sin publicar; no tocar el productivo `gRTZDLTXvGgNq4BZ`.
+4. Cuando exista autorización explícita, configurar un webhook de prueba de Evolution apuntando únicamente al piloto.
+5. Ejecutar una única prueba punta a punta con payload anonimizado, repetir el mismo `event_id` para idempotencia y revisar `saas_automation_shadow_runs`; no usar todavía un número de cliente real.
