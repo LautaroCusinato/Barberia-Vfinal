@@ -238,6 +238,17 @@ begin
   return true;
 end $$;
 
+create or replace function public.set_crm_lead_attributes(p_lead_id bigint, p_prioridad text default null, p_tags text[] default null, p_responsable_id uuid default null, p_fecha_seguimiento_at timestamptz default null)
+returns boolean language plpgsql security definer set search_path=public,pg_temp
+as $$ declare l public.crm_leads%rowtype; begin
+  if not public.platform_can_write() then raise exception 'No autorizado.' using errcode='42501'; end if;
+  if p_prioridad is not null and p_prioridad not in ('low','normal','high','urgent') then raise exception 'Prioridad inválida.' using errcode='22023'; end if;
+  select * into l from public.crm_leads where id=p_lead_id for update; if l.id is null then raise exception 'Lead inexistente.' using errcode='P0002'; end if;
+  update public.crm_leads set prioridad=coalesce(p_prioridad,prioridad), tags=coalesce(p_tags,tags), responsable_id=p_responsable_id, fecha_seguimiento_at=p_fecha_seguimiento_at, updated_at=now() where id=l.id;
+  insert into public.crm_actividades(lead_id,tipo,resumen,metadata,actor_id) values(l.id,'assigned','Datos operativos actualizados',jsonb_build_object('prioridad',p_prioridad,'tags',p_tags,'responsable_id',p_responsable_id,'fecha_seguimiento_at',p_fecha_seguimiento_at),auth.uid());
+  return true;
+end $$;
+
 create or replace function public.merge_crm_leads(p_keep_id bigint, p_duplicate_ids bigint[], p_reason text default null)
 returns jsonb language plpgsql security definer set search_path=public,pg_temp
 as $$
@@ -330,7 +341,7 @@ create or replace function public.set_crm_agent_draft_status(p_draft_id bigint, 
 returns boolean language plpgsql security definer set search_path=public,pg_temp
 as $$ declare d public.crm_agent_drafts%rowtype; s text:=lower(btrim(p_status)); begin if not public.platform_can_write() then raise exception 'No autorizado.' using errcode='42501'; end if; if s not in ('pending_research','ready_for_draft','pending_approval','approved','rejected','sent','replied','closed','canceled') then raise exception 'Estado inválido.' using errcode='22023'; end if; select * into d from public.crm_agent_drafts where id=p_draft_id for update; if d.id is null then raise exception 'Borrador inexistente.' using errcode='P0002'; end if; if s in ('approved','sent') and (exists(select 1 from public.crm_negocios where id=d.negocio_id and do_not_contact) or exists(select 1 from public.crm_leads where id=d.lead_id and do_not_contact)) then raise exception 'No se puede aprobar un contacto excluido.' using errcode='42501'; end if; update public.crm_agent_drafts set estado=s,approved_by=case when s='approved' then auth.uid() else approved_by end,approved_at=case when s='approved' then now() else approved_at end,updated_at=now() where id=d.id; insert into public.crm_actividades(negocio_id,lead_id,tipo,resumen,metadata,actor_id) values(d.negocio_id,d.lead_id,'draft_reviewed','Estado de borrador actualizado',jsonb_build_object('draft_id',d.id,'status',s),auth.uid()); return true; end $$;
 
-revoke all on function public.calculate_crm_lead_score(bigint), public.set_crm_lead_stage(bigint,text,text), public.set_crm_lead_do_not_contact(bigint,boolean,text), public.merge_crm_leads(bigint,bigint[],text), public.import_crm_leads(jsonb,text), public.get_crm_pipeline_metrics(text), public.export_crm_leads(text), public.set_crm_agent_draft_status(bigint,text) from public,anon;
-grant execute on function public.calculate_crm_lead_score(bigint), public.set_crm_lead_stage(bigint,text,text), public.set_crm_lead_do_not_contact(bigint,boolean,text), public.merge_crm_leads(bigint,bigint[],text), public.import_crm_leads(jsonb,text), public.get_crm_pipeline_metrics(text), public.export_crm_leads(text), public.set_crm_agent_draft_status(bigint,text) to authenticated;
+revoke all on function public.calculate_crm_lead_score(bigint), public.set_crm_lead_stage(bigint,text,text), public.set_crm_lead_do_not_contact(bigint,boolean,text), public.set_crm_lead_attributes(bigint,text,text[],uuid,timestamptz), public.merge_crm_leads(bigint,bigint[],text), public.import_crm_leads(jsonb,text), public.get_crm_pipeline_metrics(text), public.export_crm_leads(text), public.set_crm_agent_draft_status(bigint,text) from public,anon;
+grant execute on function public.calculate_crm_lead_score(bigint), public.set_crm_lead_stage(bigint,text,text), public.set_crm_lead_do_not_contact(bigint,boolean,text), public.set_crm_lead_attributes(bigint,text,text[],uuid,timestamptz), public.merge_crm_leads(bigint,bigint[],text), public.import_crm_leads(jsonb,text), public.get_crm_pipeline_metrics(text), public.export_crm_leads(text), public.set_crm_agent_draft_status(bigint,text) to authenticated;
 
 commit;
