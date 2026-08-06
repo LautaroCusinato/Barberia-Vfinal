@@ -42,6 +42,9 @@ Sin configurar Supabase, el panel funciona igual con datos de ejemplo. Para acti
 VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
 VITE_SUPABASE_ANON_KEY=tu-anon-key-publica
 VITE_BARBERIA_ID=1
+VITE_BUSINESS_NAME=Barbería Central
+VITE_BUSINESS_VERTICAL=barberia
+VITE_PRODUCT_NAME=Agenda
 VITE_N8N_SEND_WEBHOOK_URL=https://tu-n8n.example.com/webhook/panel-enviar-wsp
 ```
 
@@ -73,6 +76,18 @@ recargar, incluyendo `/reservar/barberia-central`.
 Para vincular GitHub: en Cloudflare Pages elegí **Create application → Pages →
 Connect to Git**, seleccioná el repositorio y configurá las variables anteriores.
 No subas `.env`; está excluido por `.gitignore`.
+
+## 🧱 Base SaaS multi-tenant
+
+La arquitectura SaaS y el diagnóstico de acoplamientos están documentados en
+[`docs/SAAS_FOUNDATION.md`](docs/SAAS_FOUNDATION.md). La migración
+`20260806060000_saas_foundation.sql` prepara metadatos de tenant, planes,
+prueba gratuita, suscripciones, integraciones y CRM. Es aditiva y debe
+revisarse antes de aplicarla en Supabase.
+
+El frontend usa `src/lib/tenant.js` para resolver el contexto de tenant,
+branding básico y etiquetas por vertical. El nombre físico `barberia_id` se
+mantiene por compatibilidad con los datos y las políticas RLS actuales.
 
 ## ✅ Verificaciones locales
 

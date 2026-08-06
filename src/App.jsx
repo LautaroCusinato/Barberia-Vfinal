@@ -18,6 +18,7 @@ import Stats from './components/Stats'
 import Operations from './components/Operations'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { generarIdHabilidad, parseHabilidades, parseHorarioTexto, soloDigitos } from './lib/text'
+import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
 import {
   mockBarberiaConfig,
   mockBarberos,
@@ -28,9 +29,8 @@ import {
   mockTurnos,
 } from './data/mockData'
 
-const CLINIC_NAME = 'Barberia Central'
 const TZ = 'America/Argentina/Buenos_Aires'
-const THEME_KEY = 'barberia-central-theme'
+const LEGACY_THEME_KEY = 'barberia-central-theme'
 const N8N_SEND_WEBHOOK_URL = import.meta.env.VITE_N8N_SEND_WEBHOOK_URL || ''
 
 function nextLocalId(items) {
@@ -53,8 +53,8 @@ function todayInClinicTZ() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date())
 }
 
-function initialTheme() {
-  const saved = localStorage.getItem(THEME_KEY)
+function initialTheme(tenantId) {
+  const saved = localStorage.getItem(tenantStorageKey('theme', tenantId)) || localStorage.getItem(LEGACY_THEME_KEY)
   if (saved === 'light' || saved === 'dark') return saved
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
@@ -63,7 +63,8 @@ function SkeletonBlock({ height = 90 }) {
   return <div className="skeleton" style={{ height, width: '100%', marginBottom: 10 }} />
 }
 
-export default function App({ barberiaId, barberiaNombre }) {
+export default function App({ barberiaId, barberiaNombre, vertical: _vertical }) {
+  const themeKey = tenantStorageKey('theme', barberiaId)
   const [view, setView] = useState('resumen')
   const [turnos, setTurnos] = useState(mockTurnos)
   const [conversaciones, setConversaciones] = useState(mockConversaciones)
@@ -76,7 +77,7 @@ export default function App({ barberiaId, barberiaNombre }) {
   const [cobroTurno, setCobroTurno] = useState(null)
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [selectedConversationId, setSelectedConversationId] = useState(null)
-  const [theme, setTheme] = useState(initialTheme)
+  const [theme, setTheme] = useState(() => initialTheme(barberiaId))
   const [newTurnoOpen, setNewTurnoOpen] = useState(false)
   const [editingTurno, setEditingTurno] = useState(null)
   const [turnoFechaPrefijada, setTurnoFechaPrefijada] = useState(null)
@@ -92,9 +93,13 @@ export default function App({ barberiaId, barberiaNombre }) {
   const todayKey = todayInClinicTZ()
 
   useEffect(() => {
+    setTheme(initialTheme(barberiaId))
+  }, [barberiaId])
+
+  useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem(THEME_KEY, theme)
-  }, [theme])
+    localStorage.setItem(themeKey, theme)
+  }, [theme, themeKey])
 
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
 
@@ -859,7 +864,7 @@ export default function App({ barberiaId, barberiaNombre }) {
       <Sidebar
         view={view}
         setView={navigateFromMenu}
-        clinicName={barberiaNombre || CLINIC_NAME}
+        clinicName={barberiaNombre || DEFAULT_BUSINESS_NAME}
         unreadCount={unreadCount}
         theme={theme}
         onToggleTheme={toggleTheme}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Lock, Mail, KeyRound, Scissors } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { DEFAULT_BUSINESS_NAME } from '../lib/tenant'
 
 export async function logout() {
   if (isSupabaseConfigured) {
@@ -8,7 +9,7 @@ export async function logout() {
   }
 }
 
-export default function Login({ onSuccess }) {
+export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME }) {
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [error, setError] = useState('')
@@ -44,8 +45,8 @@ export default function Login({ onSuccess }) {
         <div className="brand" style={{ justifyContent: 'center', marginBottom: 22 }}>
           <div className="brand-mark"><Scissors size={20} strokeWidth={2.4} /></div>
           <div style={{ textAlign: 'left' }}>
-            <div className="brand-name">Barberia Central</div>
-            <div className="brand-sub">Panel de barberia</div>
+            <div className="brand-name">{businessName}</div>
+            <div className="brand-sub">Panel de gestión</div>
           </div>
         </div>
 

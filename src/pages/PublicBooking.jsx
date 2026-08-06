@@ -7,10 +7,9 @@ import './PublicBooking.css'
 
 const dateKey = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
 const formatTime = (time) => String(time).slice(0, 5)
-const THEME_KEY = 'public-booking-theme'
-const initialTheme = () => {
+const initialTheme = (slug) => {
   try {
-    const saved = localStorage.getItem(THEME_KEY)
+    const saved = localStorage.getItem(`public-booking-theme:${slug}`)
     if (saved === 'dark' || saved === 'light') return saved
   } catch { /* storage is optional */ }
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -30,11 +29,11 @@ export default function PublicBooking({ slug }) {
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(null)
-  const [theme, setTheme] = useState(initialTheme)
+  const [theme, setTheme] = useState(() => initialTheme(slug))
 
   useEffect(() => {
-    try { localStorage.setItem(THEME_KEY, theme) } catch { /* storage is optional */ }
-  }, [theme])
+    try { localStorage.setItem(`public-booking-theme:${slug}`, theme) } catch { /* storage is optional */ }
+  }, [slug, theme])
 
   const cargarCatalogo = useCallback(async () => {
     if (!isSupabaseConfigured) { setError('La página de reservas no está configurada.'); setLoading(false); return }

@@ -4,6 +4,7 @@ import App from './App.jsx'
 import PublicBooking from './pages/PublicBooking.jsx'
 import Login, { logout } from './components/Login.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
+import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
 import './index.css'
 
 // Pantalla chica y centrada para los estados intermedios (cargando la
@@ -162,11 +163,13 @@ function Root() {
   }, [])
 
   if (checking) return null
-  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
+  if (!authed) return <Login businessName={DEFAULT_BUSINESS_NAME} onSuccess={() => setAuthed(true)} />
 
   // Modo demo sin Supabase configurado: no hay usuario real ni membresias,
   // usamos la barberia 1 por defecto (comportamiento de antes).
-  if (!isSupabaseConfigured) return <App barberiaId={1} />
+  if (!isSupabaseConfigured) {
+    return <App barberiaId={DEFAULT_TENANT_ID} barberiaNombre={DEFAULT_BUSINESS_NAME} vertical={DEFAULT_VERTICAL} />
+  }
 
   if (opciones === null && !barberiaId) {
     return <EstadoCentrado>Cargando tu barbería...</EstadoCentrado>
@@ -186,7 +189,7 @@ function Root() {
     )
   }
 
-  return <App barberiaId={barberiaId} barberiaNombre={barberiaNombre} />
+  return <App barberiaId={barberiaId} barberiaNombre={barberiaNombre} vertical={DEFAULT_VERTICAL} />
 }
 
 const bookingMatch = window.location.pathname.match(/^\/reservar\/([^/]+)\/?$/)
