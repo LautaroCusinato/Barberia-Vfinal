@@ -42,3 +42,7 @@ El proceso manual para los primeros cinco leads reales es: registrar fuente y ba
 ### Hallazgo fuera del alcance
 
 La prueba transaccional de permisos confirmó que `sales` puede invocar el RPC de intención de checkout porque `billing_can_view` considera a cualquier miembro de plataforma como lector de billing. La operación de prueba fue eliminada y no modificó pagos ni suscripciones. No se corrigió en esta etapa porque el alcance prohíbe alterar billing; antes de habilitar ventas reales se debe restringir la creación de checkout a `owner`/`admin` o a un rol comercial explícito con autorización separada.
+
+## Rollback lógico
+
+No existe un `down` destructivo. Si hubiera que revertir la publicación, se vuelve al commit anterior y se deshabilita el acceso al workspace; las tablas, auditorías y datos del CRM se conservan. Las migraciones nuevas son aditivas (la única sustitución es la firma compatible de un RPC) y se revierten restaurando la definición anterior sólo cuando el frontend ya no la use. El script de cleanup afecta únicamente registros `internal`/`sandbox` de fixtures.
