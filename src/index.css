@@ -4878,3 +4878,29 @@ input.client-search-input {
 .day-side-list::-webkit-scrollbar-thumb:hover {
   background: var(--ink-faint);
 }
+.platform-main { max-width: 1440px; width: 100%; }
+.platform-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 1.75rem; }
+.platform-stats .stat-card { display: block; }
+.platform-stats .stat-card strong { display: block; font-family: var(--font-display); font-size: 27px; font-weight: 500; line-height: 1.1; }
+.platform-crm-panel .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 0.85rem; }
+.platform-crm-panel .panel-title { margin-bottom: 0.25rem; }
+.panel-subtitle { color: var(--ink-faint); font-size: 12px; margin: 0; }
+.crm-search { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--surface-muted); color: var(--ink-faint); border-radius: var(--radius-sm); padding: 8px 10px; min-width: min(280px, 100%); }
+.crm-search input { border: 0; outline: 0; background: transparent; color: var(--ink); width: 100%; min-width: 0; font: inherit; }
+.platform-table .table-name-cell { min-width: 220px; }
+.platform-table .table-name-cell > div { display: grid; gap: 2px; }
+.platform-table .table-name-cell small { color: var(--ink-faint); font-weight: 400; font-size: 11px; }
+.avatar-sm { width: 30px; height: 30px; background: var(--accent); }
+.status-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; background: var(--surface-muted); color: var(--ink-soft); font-size: 11px; font-weight: 600; text-transform: capitalize; white-space: nowrap; }
+.stage-cliente { background: var(--accent-soft); color: var(--accent-strong); }
+.stage-prueba, .stage-demo { background: var(--amber-soft); color: var(--amber-text); }
+.stage-perdido { background: var(--rose-soft); color: var(--rose); }
+.error-banner { background: var(--rose-soft); color: var(--rose); border: 1px solid color-mix(in srgb, var(--rose) 30%, transparent); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 1rem; font-size: 13px; }
+.platform-crm-form { max-width: 680px; width: 100%; max-height: min(92vh, 760px); overflow-y: auto; }
+
+@media (max-width: 760px) {
+  .platform-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .platform-crm-panel .panel-header { flex-direction: column; }
+  .crm-search { width: 100%; min-width: 0; }
+  .platform-crm-form { padding: 1rem; }
+}

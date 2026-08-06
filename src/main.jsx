@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import PublicBooking from './pages/PublicBooking.jsx'
+import PlatformCRM from './pages/PlatformCRM.jsx'
 import Login, { logout } from './components/Login.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
@@ -101,14 +102,27 @@ function Root() {
   const cacheInicial = leerCache()
   const [barberiaId, setBarberiaId] = useState(cacheInicial?.id ?? null)
   const [barberiaNombre, setBarberiaNombre] = useState(cacheInicial?.nombre ?? null)
+  const [platformMember, setPlatformMember] = useState(false)
+  const [platformRole, setPlatformRole] = useState(null)
 
   const yaResolvioAlgunaVezRef = useRef(false)
 
   const resolverBarberia = async (userId) => {
-    const { data, error } = await supabase
-      .from('barberia_members')
-      .select('barberia_id, role, barberias(nombre)')
-      .eq('user_id', userId)
+    const [tenantResult, platformResult] = await Promise.all([
+      supabase
+        .from('barberia_members')
+        .select('barberia_id, role, barberias(nombre)')
+        .eq('user_id', userId),
+      supabase
+        .from('platform_members')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle(),
+    ])
+
+    const { data, error } = tenantResult
+    setPlatformMember(Boolean(platformResult.data))
+    setPlatformRole(platformResult.data?.role || null)
 
     yaResolvioAlgunaVezRef.current = true
 
@@ -146,6 +160,8 @@ function Root() {
         setOpciones(null)
         setBarberiaId(null)
         setBarberiaNombre(null)
+        setPlatformMember(false)
+        setPlatformRole(null)
         return
       }
       // Supabase dispara este mismo evento tambien cuando solo renueva el
@@ -169,6 +185,11 @@ function Root() {
   // usamos la barberia 1 por defecto (comportamiento de antes).
   if (!isSupabaseConfigured) {
     return <App barberiaId={DEFAULT_TENANT_ID} barberiaNombre={DEFAULT_BUSINESS_NAME} vertical={DEFAULT_VERTICAL} />
+  }
+
+  const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
+  if (platformMember && (platformPath || (opciones !== null && opciones.length === 0))) {
+    return <PlatformCRM role={platformRole || 'owner'} />
   }
 
   if (opciones === null && !barberiaId) {
