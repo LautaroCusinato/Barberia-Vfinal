@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LayoutDashboard, Calendar, MessageCircle, Users, StickyNote, Sun, Moon, Bot, LogOut, BarChart3, Scissors, BriefcaseBusiness, Users2, MoreHorizontal, X, ShieldCheck, CreditCard } from 'lucide-react'
+import { LayoutDashboard, Calendar, MessageCircle, Users, StickyNote, Sun, Moon, Bot, LogOut, BarChart3, Scissors, BriefcaseBusiness, Users2, MoreHorizontal, X, ShieldCheck, CreditCard, Settings2 } from 'lucide-react'
 
 const ITEMS = [
   { id: 'resumen', label: 'Resumen', Icon: LayoutDashboard },
@@ -10,6 +10,7 @@ const ITEMS = [
   { id: 'notas', label: 'Notas', Icon: StickyNote },
   { id: 'estadisticas', label: 'Estadísticas', Icon: BarChart3 },
   { id: 'operacion', label: 'Operacion', Icon: BriefcaseBusiness },
+  { id: 'configuracion', label: 'Configuración', Icon: Settings2 },
   { id: 'facturacion', label: 'Facturacion', Icon: CreditCard },
 ]
 

@@ -7,6 +7,8 @@ import Signup from './pages/Signup.jsx'
 import OnboardingWizard from './pages/OnboardingWizard.jsx'
 import PasswordRecovery from './pages/PasswordRecovery.jsx'
 import AccountSecurity from './pages/AccountSecurity.jsx'
+import InvitationPage from './pages/InvitationPage.jsx'
+import Landing from './pages/Landing.jsx'
 import Login, { logout } from './components/Login.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
@@ -190,13 +192,11 @@ function Root() {
   }, [])
 
   if (checking) return null
-  if (!authed) return <Login businessName={DEFAULT_BUSINESS_NAME} onSuccess={() => setAuthed(true)} />
-
-  // Modo demo sin Supabase configurado: no hay usuario real ni membresias,
-  // usamos la barberia 1 por defecto (comportamiento de antes).
+  // En modo demo local no hay sesión real: conservamos el panel de ejemplo.
   if (!isSupabaseConfigured) {
     return <App barberiaId={DEFAULT_TENANT_ID} barberiaNombre={DEFAULT_BUSINESS_NAME} vertical={DEFAULT_VERTICAL} />
   }
+  if (!authed) return <Landing vertical={DEFAULT_VERTICAL} />
 
   const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
   if (platformMember && (platformPath || (opciones !== null && opciones.length === 0))) {
@@ -227,12 +227,17 @@ function Root() {
 }
 
 const bookingMatch = window.location.pathname.match(/^\/reservar\/([^/]+)\/?$/)
+const invitationMatch = window.location.pathname.match(/^\/invitacion\/([^/]+)\/?$/)
+const verticalMatch = window.location.pathname.match(/^\/para\/([^/]+)\/?$/)
 const path = window.location.pathname
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} />
-      : path === '/registro' ? <Signup />
+      : invitationMatch ? <InvitationPage token={decodeURIComponent(invitationMatch[1])} />
+        : path === '/ingresar' ? <Login businessName="Austral Automatizaciones" onSuccess={() => window.location.assign('/')} />
+          : verticalMatch ? <Landing vertical={decodeURIComponent(verticalMatch[1])} />
+        : path === '/registro' ? <Signup />
         : path === '/onboarding' ? <OnboardingWizard />
           : path === '/recuperar' ? <PasswordRecovery />
             : path === '/cuenta' ? <AccountSecurity />

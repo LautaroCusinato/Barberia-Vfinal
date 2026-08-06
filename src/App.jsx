@@ -18,6 +18,7 @@ import Stats from './components/Stats'
 import Operations from './components/Operations'
 import OnboardingChecklist from './components/OnboardingChecklist'
 import Billing from './pages/Billing.jsx'
+import TenantSettings from './components/TenantSettings.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { generarIdHabilidad, parseHabilidades, parseHorarioTexto, soloDigitos } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
@@ -942,7 +943,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
               </>
             ) : (
               <>
-                <OnboardingChecklist barberiaId={barberiaId} />
+                <OnboardingChecklist barberiaId={barberiaId} onNavigate={navigateFromMenu} />
                 <StatsCards turnos={turnosHoy} conversaciones={conversaciones} todayKey={todayKey} />
                 <div className="two-col">
                   <div className="panel resumen-agenda-panel">
@@ -1157,6 +1158,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
             )}
           </div>
         )}
+
+        {view === 'configuracion' && <TenantSettings barberiaId={barberiaId} />}
 
         {view === 'facturacion' && <Billing barberiaId={barberiaId} />}
       </main>

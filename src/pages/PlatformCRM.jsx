@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BriefcaseBusiness, CreditCard, LogOut, Plus, RefreshCw, Search, UsersRound, X } from 'lucide-react'
+import { BriefcaseBusiness, Bot, CreditCard, LogOut, Plus, RefreshCw, Search, UsersRound, X } from 'lucide-react'
 import { logout } from '../components/Login.jsx'
 import { supabase } from '../lib/supabaseClient'
+import CommercialAgent from './CommercialAgent.jsx'
 
-const STAGES = ['prospecto', 'contactado', 'calificado', 'demo', 'prueba', 'cliente', 'pausado', 'perdido']
+const STAGES = ['discovered', 'qualified', 'contacted', 'replied', 'interested', 'demo', 'trial', 'negotiating', 'won', 'lost', 'do_not_contact']
 
 const emptyBusiness = {
   nombre: '',
@@ -140,6 +141,7 @@ export default function PlatformCRM({ role = 'owner' }) {
             <p className="nav-section-label">Plataforma</p>
             <button type="button" className={`nav-item ${view === 'businesses' ? 'active' : ''}`} onClick={() => setView('businesses')}><BriefcaseBusiness size={17} /><span>CRM comercial</span></button>
             <button type="button" className={`nav-item ${view === 'leads' ? 'active' : ''}`} onClick={() => setView('leads')}><UsersRound size={17} /><span>Negocios y leads</span></button>
+            <button type="button" className={`nav-item ${view === 'agent' ? 'active' : ''}`} onClick={() => setView('agent')}><Bot size={17} /><span>Agente comercial</span></button>
             {['owner', 'admin'].includes(role) && <button type="button" className={`nav-item ${view === 'billing' ? 'active' : ''}`} onClick={() => setView('billing')}><CreditCard size={17} /><span>Facturacion SaaS</span></button>}
           </div>
         </nav>
@@ -155,8 +157,8 @@ export default function PlatformCRM({ role = 'owner' }) {
         <div className="page-header">
           <div>
             <p className="page-kicker">Workspace interno</p>
-            <h1 className="page-title">{view === 'billing' ? 'Facturacion SaaS' : 'CRM comercial'}</h1>
-            <p className="page-date">{view === 'billing' ? 'Estado de suscripciones, trials y eventos del billing.' : 'Prospectos, pruebas y negocios convertidos en un solo lugar.'}</p>
+            <h1 className="page-title">{view === 'billing' ? 'Facturacion SaaS' : view === 'agent' ? 'Agente comercial' : 'CRM comercial'}</h1>
+            <p className="page-date">{view === 'billing' ? 'Estado de suscripciones, trials y eventos del billing.' : view === 'agent' ? 'Borradores comerciales con aprobación humana.' : 'Prospectos, pruebas y negocios convertidos en un solo lugar.'}</p>
           </div>
           <div className="page-actions">
             <button className="btn" onClick={load} disabled={loading}><RefreshCw size={15} /> Actualizar</button>
@@ -173,7 +175,7 @@ export default function PlatformCRM({ role = 'owner' }) {
           <div className="stat-card"><span className="stat-label">Acciones vencidas</span><strong>{stats.nextActions}</strong></div>
         </section>
 
-        {view === 'billing' ? <section className="panel platform-crm-panel">
+        {view === 'agent' ? <CommercialAgent /> : view === 'billing' ? <section className="panel platform-crm-panel">
           <div className="panel-header"><div><h2 className="panel-title">Salud de las cuentas</h2><p className="panel-subtitle">Sólo lectura. Las transiciones se ejecutan por RPC y webhook verificado.</p></div></div>
           {!billingOverview ? <div className="empty-state">No se pudo cargar el resumen de billing.</div> : <>
             <div className="stats-grid platform-stats billing-platform-stats">{Object.entries(billingOverview.subscriptions_by_state || {}).map(([state, count]) => <div className="stat-card" key={state}><span className="stat-label">{stageLabel(state)}</span><strong>{count}</strong></div>)}</div>
