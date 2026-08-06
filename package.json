@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "node scripts/verify-agenda.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-commercial-prep.mjs",
+    "test": "node scripts/verify-agenda.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-commercial-prep.mjs && node scripts/verify-crm-commercial.mjs",
     "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
