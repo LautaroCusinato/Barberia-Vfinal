@@ -290,10 +290,18 @@ drop trigger if exists trg_crm_leads_updated_at on public.crm_leads;
 create trigger trg_crm_leads_updated_at before update on public.crm_leads
 for each row execute function public.set_updated_at();
 
+-- Privilegios de PostgREST. RLS sigue siendo la frontera efectiva de acceso.
+grant select on public.saas_planes to authenticated;
+grant select on public.saas_suscripciones to authenticated;
+grant select on public.platform_members to authenticated;
+grant select, insert, update, delete on public.saas_integraciones to authenticated;
+grant select, insert, update, delete on public.crm_negocios to authenticated;
+grant select, insert, update, delete on public.crm_leads to authenticated;
+grant select, insert, update, delete on public.crm_interacciones to authenticated;
+
 revoke all on function public.barberia_access_state(bigint) from public, anon;
 grant execute on function public.barberia_access_state(bigint) to authenticated;
 revoke all on function public.is_platform_member() from public, anon;
 grant execute on function public.is_platform_member() to authenticated;
 
 commit;
-
