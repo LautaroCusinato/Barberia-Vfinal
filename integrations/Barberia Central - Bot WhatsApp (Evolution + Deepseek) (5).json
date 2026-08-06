@@ -1,0 +1,1383 @@
+{
+  "name": "Barberia Central - Bot WhatsApp (Evolution + Deepseek)",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "config",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "barberia_id",
+              "condition": "eq",
+              "keyValue": "1"
+            },
+            {
+              "keyName": "clave",
+              "condition": "eq",
+              "keyValue": "bot_activo"
+            }
+          ]
+        }
+      },
+      "id": "80eb5dfe-6771-439c-8a79-51fd0a0e7488",
+      "name": "Chequear bot activo",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -4288,
+        4608
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst fila = items.find(i => i.json && i.json.valor !== undefined);\n// Si nunca se toco el interruptor del panel, no hay fila todavia: por defecto el bot esta activo (igual que en App.jsx).\nconst activo = fila ? fila.json.valor === 'true' : true;\nreturn [{ json: { botActivo: activo } }];"
+      },
+      "id": "72c0b5a4-2fc7-4aa2-afe6-519a99346947",
+      "name": "Bot activo?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4064,
+        4608
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "bc1",
+              "leftValue": "={{ $json.botActivo }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6fb7f605-0052-45b1-a70b-f42498801f88",
+      "name": "Bot esta activo",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3840,
+        4608
+      ],
+      "notes": "Si el barbero apago el bot desde el panel (o le contesto un mensaje a mano, lo que lo apaga solo), el bot no genera respuesta automatica. El mensaje del cliente ya quedo guardado igual por Guardar mensaje entrante."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-miwsp",
+        "options": {}
+      },
+      "id": "21a098b3-e586-461a-8f37-1c6b2dba7c40",
+      "name": "Recibe WhatsApp1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -6304,
+        4608
+      ],
+      "webhookId": "6d094a0b-068d-480e-ac05-8efb39a7d41a",
+      "notes": "Configurar esta URL como webhook de la instancia 'miwsp' en Evolution API (evento messages.upsert)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.body.data.key.fromMe }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.body.data.message?.conversation || $json.body.data.message?.extendedTextMessage?.text || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f5eb9236-13a6-4c39-805b-52295f3dc19b",
+      "name": "Filtrar validos1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -6080,
+        4608
+      ],
+      "notes": "Descarta mensajes que mando el propio bot (fromMe=true) y mensajes que no son texto (audio/imagen/etc)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "telefono",
+              "type": "string",
+              "value": "={{ $json.body.data.key.remoteJid.split('@')[0].replace(/\\D/g, '') }}"
+            },
+            {
+              "id": "a2",
+              "name": "texto",
+              "type": "string",
+              "value": "={{ $json.body.data.message?.conversation || $json.body.data.message?.extendedTextMessage?.text || '' }}"
+            },
+            {
+              "id": "a3",
+              "name": "nombre",
+              "type": "string",
+              "value": "={{ $json.body.data.pushName || 'Cliente WhatsApp' }}"
+            },
+            {
+              "id": "a4",
+              "name": "remoteJid",
+              "type": "string",
+              "value": "={{ $json.body.data.key.remoteJid }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "be81cc7f-fc71-4379-8ea2-476370ab75d8",
+      "name": "Extraer datos1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -5856,
+        4608
+      ],
+      "notes": "OJO: la estructura exacta del payload de Evolution API puede variar segun tu version. Si estos campos salen vacios, hace una ejecucion de prueba, mira el JSON real que llega y ajustamos las rutas (ej: body.data.message.conversation)."
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "clientes",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "barberia_id",
+              "condition": "eq",
+              "keyValue": "1"
+            },
+            {
+              "keyName": "telefono",
+              "condition": "eq",
+              "keyValue": "={{ $json.telefono }}"
+            }
+          ]
+        }
+      },
+      "id": "2c37f9d5-2cb5-49ca-b2e8-906074fd513f",
+      "name": "Buscar cliente1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -5632,
+        4608
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst encontrados = items\n  .map(i => i.json)\n  .filter(item => item && item.id !== undefined && item.id !== null);\n\nif (encontrados.length > 0) {\n  return [{ json: { existe: true, clienteId: encontrados[0].id, nombreGuardado: encontrados[0].nombre } }];\n}\nreturn [{ json: { existe: false } }];"
+      },
+      "id": "e8f16bb7-7148-4c61-a794-5ff845ae707d",
+      "name": "Verificar cliente1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5408,
+        4608
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.existe }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "81bba7d7-4061-49c7-be8f-8541261c8900",
+      "name": "Cliente existe1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -5184,
+        4608
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "clientes",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "barberia_id",
+              "fieldValue": "1"
+            },
+            {
+              "fieldId": "nombre",
+              "fieldValue": "={{ $('Extraer datos1').item.json.nombre }}"
+            },
+            {
+              "fieldId": "telefono",
+              "fieldValue": "={{ $('Extraer datos1').item.json.telefono }}"
+            }
+          ]
+        }
+      },
+      "id": "d5949e08-dc96-4605-9b9a-9eccc321dbb3",
+      "name": "Crear cliente1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -4960,
+        4704
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "clienteId",
+              "type": "number",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "520f4fc7-3829-4795-a729-bac557391ecc",
+      "name": "Cliente id nuevo1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -4736,
+        4704
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b2",
+              "name": "clienteId",
+              "type": "number",
+              "value": "={{ $('Verificar cliente1').item.json.clienteId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bcab88b7-1503-4867-be76-a43b798db417",
+      "name": "Cliente id existente1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -4736,
+        4512
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "mensajes",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "barberia_id",
+              "fieldValue": "1"
+            },
+            {
+              "fieldId": "cliente_id",
+              "fieldValue": "={{ $json.clienteId }}"
+            },
+            {
+              "fieldId": "paciente",
+              "fieldValue": "={{ $('Extraer datos1').item.json.nombre }}"
+            },
+            {
+              "fieldId": "texto",
+              "fieldValue": "={{ $('Extraer datos1').item.json.texto }}"
+            },
+            {
+              "fieldId": "de",
+              "fieldValue": "paciente"
+            },
+            {
+              "fieldId": "hora",
+              "fieldValue": "={{ $now.format('HH:mm') }}"
+            },
+            {
+              "fieldId": "leido",
+              "fieldValue": "false"
+            },
+            {
+              "fieldId": "enviado_wsp",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "id": "60cd22f1-a0c5-4e93-ab98-9fada6ba05ec",
+      "name": "Guardar mensaje entrante1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -4512,
+        4608
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "servicios",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "barberia_id",
+              "condition": "eq",
+              "keyValue": "1"
+            },
+            {
+              "keyName": "activo",
+              "condition": "eq",
+              "keyValue": "true"
+            }
+          ]
+        }
+      },
+      "id": "36dcb15a-bdda-4100-85a3-b40de32a2749",
+      "name": "Traer servicios1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3616,
+        4416
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "barberos",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "barberia_id",
+              "condition": "eq",
+              "keyValue": "1"
+            },
+            {
+              "keyName": "activo",
+              "condition": "eq",
+              "keyValue": "true"
+            }
+          ]
+        }
+      },
+      "id": "ba870dca-05a4-443b-8e4c-437ee7e654ca",
+      "name": "Traer barberos1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3616,
+        4608
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "mensajes",
+        "limit": 4,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "barberia_id",
+              "condition": "eq",
+              "keyValue": "1"
+            },
+            {
+              "keyName": "cliente_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Guardar mensaje entrante1').item.json.cliente_id }}"
+            }
+          ]
+        }
+      },
+      "id": "9e4a136f-d595-48ac-83a4-d44df6a7608e",
+      "name": "Traer historial mensajes1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3616,
+        4800
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const servicios = $('Traer servicios1').all().map(i => i.json);\nconst barberos = $('Traer barberos1').all().map(i => i.json);\n\n// ===== Parser de horario_texto (portado igual que en la web, src/lib/text.js) =====\nfunction parseHorarioBarbero(horario) {\n  if (!horario || typeof horario !== 'string') return null;\n  const txt = horario.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');\n\n  const mapa = {\n    lun: 1, lunes: 1,\n    mar: 2, martes: 2,\n    mie: 3, miercoles: 3,\n    jue: 4, jueves: 4,\n    vie: 5, viernes: 5,\n    sab: 6, sabado: 6,\n    dom: 0, domingo: 0,\n  };\n\n  const conBreak = txt.match(/(.+?)\\s+(\\d{1,2}):(\\d{2})\\s*-\\s*(\\d{1,2}):(\\d{2})\\s+break\\s+(\\d{1,2}):(\\d{2})\\s*-\\s*(\\d{1,2}):(\\d{2})/);\n  if (conBreak) {\n    const [, diasTxt, hIni, mIni, hFin, mFin, hBreakIni, mBreakIni, hBreakFin, mBreakFin] = conBreak;\n    const dias = diasTxt.split(/\\s*,\\s*|\\s+y\\s+/).map(s => s.trim()).filter(Boolean);\n    const atencion = { ini: Number(hIni) * 60 + Number(mIni), fin: Number(hFin) * 60 + Number(mFin) };\n    const breakBlock = { ini: Number(hBreakIni) * 60 + Number(mBreakIni), fin: Number(hBreakFin) * 60 + Number(mBreakFin), break: true };\n    const result = {};\n    for (const d of dias) if (mapa[d] !== undefined) result[mapa[d]] = [atencion, breakBlock];\n    return Object.keys(result).length ? result : null;\n  }\n\n  const rangoDias = txt.match(/([a-z]+)\\s+a\\s+([a-z]+)\\s+(\\d{1,2}):(\\d{2})\\s*-\\s*(\\d{1,2}):(\\d{2})/);\n  if (rangoDias) {\n    const [, dIni, dFin, hIni, mIni, hFin, mFin] = rangoDias;\n    const ini = mapa[dIni], fin = mapa[dFin];\n    if (ini === undefined || fin === undefined) return null;\n    const bloque = { ini: Number(hIni) * 60 + Number(mIni), fin: Number(hFin) * 60 + Number(mFin) };\n    const result = {};\n    if (ini <= fin) { for (let d = ini; d <= fin; d++) result[d] = [bloque]; }\n    else { for (let d = ini; d <= 6; d++) result[d] = [bloque]; for (let d = 0; d <= fin; d++) result[d] = [bloque]; }\n    return result;\n  }\n\n  const varios = txt.match(/((?:[a-z]+\\s*,\\s*)*(?:[a-z]+\\s*y\\s+)[a-z]+)\\s+(\\d{1,2}):(\\d{2})\\s*-\\s*(\\d{1,2}):(\\d{2})/);\n  if (varios) {\n    const [, diasTxt, hIni, mIni, hFin, mFin] = varios;\n    const nombres = diasTxt.split(/\\s*,\\s*|\\s+y\\s+/).map(s => s.trim()).filter(Boolean);\n    const bloque = { ini: Number(hIni) * 60 + Number(mIni), fin: Number(hFin) * 60 + Number(mFin) };\n    const result = {};\n    for (const n of nombres) if (mapa[n] !== undefined) result[mapa[n]] = [bloque];\n    return Object.keys(result).length ? result : null;\n  }\n\n  const unDia = txt.match(/([a-z]+)\\s+(\\d{1,2}):(\\d{2})\\s*-\\s*(\\d{1,2}):(\\d{2})/);\n  if (unDia) {\n    const [, d, hIni, mIni, hFin, mFin] = unDia;\n    if (mapa[d] === undefined) return null;\n    return { [mapa[d]]: [{ ini: Number(hIni) * 60 + Number(mIni), fin: Number(hFin) * 60 + Number(mFin) }] };\n  }\n\n  return null;\n}\n\nfunction minAHora(min) {\n  const h = String(Math.floor(min / 60)).padStart(2, '0');\n  const m = String(min % 60).padStart(2, '0');\n  return `${h}:${m}`;\n}\n\nconst DIAS_ES = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];\n\n// ===== Contexto de servicios =====\nlet contexto = 'SERVICIOS Y PRECIOS:\\n';\nfor (const s of servicios) contexto += `- ${s.nombre} (id ${s.id}): ${s.duracion_min} min, $${s.precio}\\n`;\n\n// ===== Habilidades: que servicios puede hacer cada barbero =====\n// Un barbero sin habilidades cargadas (null o array vacio) hace CUALQUIER\n// servicio. Si tiene habilidades cargadas, son las UNICAS que puede hacer.\nfunction generarIdHabilidad(nombre) {\n  return nombre.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '');\n}\nfunction parseHabilidades(str) {\n  if (!str) return [];\n  try { return JSON.parse(str); } catch { return []; }\n}\nconst serviciosPorId = Object.fromEntries(servicios.map(s => [generarIdHabilidad(s.nombre), s.nombre]));\n\n// ===== Contexto de barberos (horario + que servicios hace cada uno) =====\ncontexto += '\\nBARBEROS:\\n';\nfor (const b of barberos) {\n  const habilidades = parseHabilidades(b.habilidades);\n  const queHace = habilidades.length === 0\n    ? 'hace TODOS los servicios de la lista'\n    : `SOLO hace: ${habilidades.map(h => serviciosPorId[h] || h).join(', ')}`;\n  contexto += `- ${b.nombre} (id ${b.id}): ${b.horario_texto || 'sin horario cargado'} — ${queHace}\\n`;\n}\n\n// ===== Calendario de los proximos 3 dias, YA CALCULADO (no lo calcules vos, Agente) =====\nconst hoyDate = new Date();\nlet calendario = '\\nCALENDARIO DE LOS PROXIMOS 3 DIAS (usa esto tal cual para saber que dia de la semana es cada fecha y quien trabaja ese dia; NUNCA calcules vos el dia de la semana de una fecha, aunque te parezca facil. Para fechas mas lejanas, usa la herramienta consultar_disponibilidad en vez de asumir):\\n';\n\nfor (let i = 0; i < 3; i++) {\n  const d = new Date(hoyDate);\n  d.setDate(d.getDate() + i);\n  const fechaStr = d.toISOString().slice(0, 10);\n  const diaSemana = d.getDay();\n  const nombreDia = DIAS_ES[diaSemana];\n\n  calendario += `${fechaStr} (${nombreDia}): `;\n\n  const partesBarberos = [];\n  for (const b of barberos) {\n    const mapa = parseHorarioBarbero(b.horario_texto);\n    const bloques = mapa ? (mapa[diaSemana] || []) : [];\n    const trabajo = bloques.filter(x => !x.break);\n    const breaks = bloques.filter(x => x.break);\n\n    if (trabajo.length === 0) {\n      partesBarberos.push(`${b.nombre} no trabaja`);\n    } else {\n      const rangos = trabajo.map(t => `${minAHora(t.ini)}-${minAHora(t.fin)}`).join(', ');\n      const breakTxt = breaks.length ? ` (break ${breaks.map(x => `${minAHora(x.ini)}-${minAHora(x.fin)}`).join(', ')})` : '';\n      partesBarberos.push(`${b.nombre} ${rangos}${breakTxt}`);\n    }\n  }\n  calendario += partesBarberos.join(' | ') + '\\n';\n}\n\ncontexto += calendario;\n\nconst fechaHoy = hoyDate.toISOString().slice(0, 10);\n\nreturn [{ json: {\n  contextoNegocio: contexto,\n  fechaHoy,\n  clienteId: $('Guardar mensaje entrante1').first().json.cliente_id,\n  telefono: $('Extraer datos1').first().json.telefono,\n  texto: $('Extraer datos1').first().json.texto,\n  nombre: $('Extraer datos1').first().json.nombre,\n  remoteJid: $('Extraer datos1').first().json.remoteJid\n} }];\n"
+      },
+      "id": "d820da5c-bdd3-4d79-9b95-6809cfcd1036",
+      "name": "Armar contexto1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3168,
+        4608
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.texto }}",
+        "options": {
+          "systemMessage": "=Sos el asistente de WhatsApp de Barberia Central. Respondes de forma corta, clara y amable, como un mensaje de WhatsApp real (nada de listas largas ni formato markdown, excepto emojis simples si suman).\n\nHoy es {{ $json.fechaHoy }}. Estas hablando con {{ $json.nombre }} (telefono {{ $json.telefono }}).\n\n{{ $json.contextoNegocio }}\n\nREGLAS (en orden de prioridad, la primera pisa a las demas):\n1. La lista de SERVICIOS Y PRECIOS y BARBEROS de arriba es la UNICA fuente de verdad. Nunca inventes precios, servicios ni barberos que no esten en esa lista, bajo ningun motivo.\n2. Si el cliente menciona un barbero o servicio que no existe en la lista, no lo confirmes ni sigas la conversacion como si existiera: aclarale amablemente cuales son las opciones reales disponibles.\n3. Cada barbero en la lista de BARBEROS dice que servicios puede hacer. Si dice \"hace TODOS los servicios\", podes ofrecerlo para cualquiera. Si dice \"SOLO hace: X, Y\", NUNCA lo asignes a un servicio que no este en esa lista, aunque el cliente lo pida. En ese caso, decile amablemente que ese barbero no hace ese servicio y ofrecele cual de los barberos si lo hace.\n4. Antes de agendar, preguntale SIEMPRE si el turno es para el/ella o para otra persona (un familiar, etc). No asumas nunca que es para quien esta escribiendo.\n5. Pedile el NOMBRE Y APELLIDO COMPLETO de la persona para la que es el turno, aunque ya sepas como se llama por WhatsApp (el nombre de WhatsApp puede ser un apodo, incompleto, o directamente no ser el nombre real). No uses el nombre de WhatsApp para agendar bajo ningun motivo, incluso si el cliente ya escribio antes: siempre confirma el nombre y apellido completo antes de crear el turno.\n6. Para agendar un turno necesitas: nombre y apellido completo de la persona, barbero, servicio, fecha y hora. Si falta algo, preguntalo.\n6bis. Al llamar a la herramienta crear_turno, el nombre del servicio y del barbero que le pases tienen que ser IDENTICOS, letra por letra, a como figuran en las listas de SERVICIOS Y PRECIOS y BARBEROS de arriba (mismas mayusculas/minusculas y todo, copialos tal cual). Si no estas 100% seguro de cual es el nombre exacto, mira de nuevo la lista antes de llamar a la herramienta: nunca abrevies (\"Corte\" en vez de \"Corte clasico\") ni corrijas/interpretes lo que dijo el cliente.\n6ter. Si el turno que estas agendando es PARA LA PERSONA QUE ESCRIBE (no para otra persona), ademas de crear_turno llama UNA SOLA VEZ, en esa misma respuesta, a la herramienta actualizar_nombre_cliente con su nombre y apellido completo. Esto es para que dejen de figurar con el nombre/apodo de WhatsApp en el panel. Si el turno es para otra persona, NO llames a esta herramienta bajo ningun motivo (no hay que tocar el nombre del dueno del telefono).\n7. Antes de crear un turno, usa la herramienta consultar_disponibilidad para confirmar que el horario esta libre.\n8. Si el horario elegido ya esta ocupado, proponele al cliente otro horario cercano.\n9. Para cancelar un turno, primero usa listar_mis_turnos para mostrarle sus turnos (fijate el nombre de cada uno, porque puede haber turnos agendados desde este mismo numero para distintas personas) y que te confirme cual, despues usa cancelar_turno con el id correcto.\n10. Nunca canceles ni agendes sin que el cliente lo haya confirmado explicitamente en el mensaje.\n11. El CALENDARIO que te paso ya tiene calculado que dia de la semana es cada fecha y en que horario trabaja cada barbero ese dia puntual (incluyendo el break si tiene), para los proximos 3 dias. Es la UNICA fuente de verdad para eso: nunca calcules vos que dia de la semana cae una fecha, ni asumas el horario de un barbero a partir del texto libre de la lista de BARBEROS. Si un barbero \"no trabaja\" ese dia segun el calendario, no le ofrezcas turno ese dia aunque el cliente insista, y proponele el dia mas cercano donde si trabaje. Si te preguntan por una fecha mas alla de esos 3 dias, usa la herramienta consultar_disponibilidad en vez de asumir el horario."
+        }
+      },
+      "id": "8e8b83a0-9604-402a-a822-a4cd5dab496c",
+      "name": "Agente Deepseek1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -2688,
+        4608
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "mensajes",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "barberia_id",
+              "fieldValue": "1"
+            },
+            {
+              "fieldId": "cliente_id",
+              "fieldValue": "={{ $('Armar contexto1').item.json.clienteId }}"
+            },
+            {
+              "fieldId": "paciente",
+              "fieldValue": "={{ $('Armar contexto1').item.json.nombre }}"
+            },
+            {
+              "fieldId": "texto",
+              "fieldValue": "={{ $json.output }}"
+            },
+            {
+              "fieldId": "de",
+              "fieldValue": "bot"
+            },
+            {
+              "fieldId": "hora",
+              "fieldValue": "={{ $now.format('HH:mm') }}"
+            },
+            {
+              "fieldId": "leido",
+              "fieldValue": "true"
+            },
+            {
+              "fieldId": "enviado_wsp",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "id": "fb7a7dd9-61ef-4153-b00c-0f2609ba0898",
+      "name": "Guardar respuesta del bot1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -2096,
+        4608
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Lista los proximos turnos confirmados del cliente que esta escribiendo, para que pueda elegir cual cancelar. No necesita parametros.",
+        "operation": "getAll",
+        "tableId": "turnos",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "barberia_id",
+              "condition": "eq",
+              "keyValue": "1"
+            },
+            {
+              "keyName": "cliente_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Armar contexto1').item.json.clienteId }}"
+            },
+            {
+              "keyName": "estado",
+              "condition": "eq",
+              "keyValue": "confirmado"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        -2688,
+        4848
+      ],
+      "id": "324dde39-8864-47e7-912b-e3602834ae04",
+      "name": "listar_mis_turnos1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Crea un turno nuevo confirmado para el cliente actual. Antes de usar esta herramienta confirma que el horario esta libre con consultar_disponibilidad, y que el cliente confirmo explicitamente los datos.",
+        "tableId": "turnos",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "barberia_id",
+              "fieldValue": "1"
+            },
+            {
+              "fieldId": "cliente_id",
+              "fieldValue": "={{ $('Armar contexto1').item.json.clienteId }}"
+            },
+            {
+              "fieldId": "barbero_id",
+              "fieldValue": "={{ $('Traer barberos1').all().find(i => i.json.nombre.trim().toLowerCase() === $fromAI('barbero_nombre', 'nombre EXACTO del barbero elegido, tal cual figura en la lista de BARBEROS (no inventes ni abrevies)', 'string').trim().toLowerCase())?.json.id }}"
+            },
+            {
+              "fieldId": "servicio_id",
+              "fieldValue": "={{ $('Traer servicios1').all().find(i => i.json.nombre.trim().toLowerCase() === $fromAI('servicio_nombre', 'nombre EXACTO del servicio elegido, tal cual figura en la lista de SERVICIOS Y PRECIOS (no inventes ni abrevies)', 'string').trim().toLowerCase())?.json.id }}"
+            },
+            {
+              "fieldId": "paciente",
+              "fieldValue": "={{ $fromAI('nombre_cliente', 'Nombre y apellido completo de la persona para la que es el turno (puede ser quien escribe u otra persona)', 'string') }}"
+            },
+            {
+              "fieldId": "fecha",
+              "fieldValue": "={{ $fromAI('fecha', 'fecha del turno en formato YYYY-MM-DD', 'string') }}"
+            },
+            {
+              "fieldId": "hora",
+              "fieldValue": "={{ $fromAI('hora', 'hora del turno en formato HH:MM', 'string') }}"
+            },
+            {
+              "fieldId": "motivo",
+              "fieldValue": "={{ $('Traer servicios1').all().find(i => i.json.nombre.trim().toLowerCase() === $fromAI('servicio_nombre', 'nombre EXACTO del servicio elegido, tal cual figura en la lista de SERVICIOS Y PRECIOS (no inventes ni abrevies)', 'string').trim().toLowerCase())?.json.nombre }}"
+            },
+            {
+              "fieldId": "estado",
+              "fieldValue": "confirmado"
+            },
+            {
+              "fieldId": "precio",
+              "fieldValue": "={{ $('Traer servicios1').all().find(i => i.json.nombre.trim().toLowerCase() === $fromAI('servicio_nombre', 'nombre EXACTO del servicio elegido, tal cual figura en la lista de SERVICIOS Y PRECIOS (no inventes ni abrevies)', 'string').trim().toLowerCase())?.json.precio }}"
+            },
+            {
+              "fieldId": "duracion_min",
+              "fieldValue": "={{ $('Traer servicios1').all().find(i => i.json.nombre.trim().toLowerCase() === $fromAI('servicio_nombre', 'nombre EXACTO del servicio elegido, tal cual figura en la lista de SERVICIOS Y PRECIOS (no inventes ni abrevies)', 'string').trim().toLowerCase())?.json.duracion_min }}"
+            },
+            {
+              "fieldId": "telefono",
+              "fieldValue": "={{ $('Armar contexto1').item.json.telefono }}"
+            },
+            {
+              "fieldId": "origen",
+              "fieldValue": "whatsapp"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        -2560,
+        4848
+      ],
+      "id": "fde50a0b-8397-4511-ac75-59490a650ddd",
+      "name": "crear_turno1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Cancela un turno del cliente actual cambiando su estado a cancelado (no lo borra, para conservar historial). Usa el id que salio de listar_mis_turnos. Solo se puede cancelar un turno confirmado que pertenezca a este mismo cliente.",
+        "operation": "update",
+        "tableId": "turnos",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $fromAI('turno_id', 'id numerico del turno a cancelar, obtenido de listar_mis_turnos', 'number') }}"
+            },
+            {
+              "keyName": "cliente_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Armar contexto1').item.json.clienteId }}"
+            },
+            {
+              "keyName": "estado",
+              "condition": "eq",
+              "keyValue": "confirmado"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "estado",
+              "fieldValue": "cancelado"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        -2432,
+        4848
+      ],
+      "id": "f65c4390-763f-47f9-b1f0-0b8d23ceadd2",
+      "name": "cancelar_turno1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Consulta los turnos ya ocupados de un barbero en una fecha puntual, para saber que horarios estan libres. Devuelve hora y duracion_min de cada turno ocupado ese dia",
+        "operation": "getAll",
+        "tableId": "turnos",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "barberia_id",
+              "condition": "eq",
+              "keyValue": "1"
+            },
+            {
+              "keyName": "barbero_id",
+              "condition": "eq",
+              "keyValue": "={{ $fromAI('barbero_id', 'id numerico del barbero a consultar', 'number') }}"
+            },
+            {
+              "keyName": "fecha",
+              "condition": "eq",
+              "keyValue": "={{ $fromAI('fecha', 'fecha a consultar en formato YYYY-MM-DD', 'string') }}"
+            },
+            {
+              "keyName": "estado",
+              "condition": "neq",
+              "keyValue": "no_asistio"
+            },
+            {
+              "keyName": "estado",
+              "condition": "neq",
+              "keyValue": "cancelado"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        -2272,
+        4848
+      ],
+      "id": "1b2540e0-74d5-4af3-b377-1f92f868ddc1",
+      "name": "consultar_disponibilidad1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "0c0ad78c-8e1b-4f8d-97b8-5dfe5354cfa5",
+      "name": "Esperar datos",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -3392,
+        4592
+      ],
+      "notes": "Este nodo solo existe para forzar a n8n a esperar que Traer servicios, Traer barberos y Traer historial mensajes terminen los tres antes de disparar Armar contexto. No usa la data combinada; Armar contexto sigue leyendo cada nodo por separado con $('NodeName')."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution_api:8080/message/sendText/miwsp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "PONE-ACA-TU-EVOLUTION-API-KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Armar contexto1').item.json.remoteJid.split('@')[0], text: $json.texto }) }}",
+        "options": {}
+      },
+      "id": "67c6f19a-8a2e-401d-9c7e-a0f97b2ea100",
+      "name": "Enviar por WhatsApp1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1872,
+        4608
+      ],
+      "notes": "Reemplaza PONE-ACA-TU-EVOLUTION-API-KEY por el apikey real de tu instancia Evolution API."
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.clienteId }}",
+        "contextWindowLength": 12
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -2848,
+        4848
+      ],
+      "id": "c5a7f3cc-3dbd-42b5-ac6d-dbb11682c456",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "model": "deepseek-v4-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        -3008,
+        4848
+      ],
+      "id": "c05ca678-4b17-4de1-9547-1ca6aa227bf2",
+      "name": "DeepSeek Chat Model1",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "2kAeyAMWQIcygIpw",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "panel-enviar-wsp",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "26e3cd1a-4097-4874-b5e7-2714affbdead",
+      "name": "Recibe mensaje panel1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -6304,
+        5024
+      ],
+      "webhookId": "f1b2c3d4-2222-4a2b-9a3d-panel0000002",
+      "notes": "Lo llama el panel web (App.jsx / sendMensaje) cuando el barbero contesta un mensaje a mano. Espera POST JSON: { telefono, texto }."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "p1",
+              "leftValue": "={{ $json.body.telefono }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "p2",
+              "leftValue": "={{ $json.body.texto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fe4a20ff-9d09-41d3-a8a7-ed1a105384ee",
+      "name": "Filtrar datos panel1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -6080,
+        5024
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution_api:8080/message/sendText/miwsp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "PONE-ACA-TU-EVOLUTION-API-KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.body.telefono.replace(/\\D/g, ''), text: $json.body.texto }) }}",
+        "options": {}
+      },
+      "id": "e432f541-71b9-4881-963c-5513a5f4b35e",
+      "name": "Enviar por WhatsApp (panel)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5856,
+        5024
+      ],
+      "notes": "Mismo endpoint y apikey que el nodo Enviar por WhatsApp del bot. Si cambias el apikey de Evolution API, actualiza ambos nodos."
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Actualiza la ficha del cliente (no el turno) con su nombre y apellido real, para que deje de figurar con el nombre/apodo de su perfil de WhatsApp. Usar UNA SOLA VEZ por conversacion, y SOLO en el momento en que confirmes el nombre completo de quien esta ESCRIBIENDO (el dueno de este WhatsApp) para agendarle un turno A EL MISMO. Si el turno es para otra persona, NO uses esta herramienta (el nombre de la otra persona va solo en el turno, no acá).",
+        "operation": "update",
+        "tableId": "clientes",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Armar contexto1').item.json.clienteId }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "nombre",
+              "fieldValue": "={{ $fromAI('nombre_completo_propio', 'Nombre y apellido completo real de quien esta escribiendo este mensaje (el dueno del telefono, no un tercero)', 'string') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        -2096,
+        4848
+      ],
+      "id": "bd70ea29-a377-4977-888b-4139d525a2f0",
+      "name": "actualizar_nombre_cliente1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "9nQU4FiYZwIvsaui",
+          "name": "Supabase account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chequear bot activo": {
+      "main": [
+        [
+          {
+            "node": "Bot activo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bot activo?": {
+      "main": [
+        [
+          {
+            "node": "Bot esta activo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bot esta activo": {
+      "main": [
+        [
+          {
+            "node": "Traer servicios1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Traer barberos1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Traer historial mensajes1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recibe WhatsApp1": {
+      "main": [
+        [
+          {
+            "node": "Filtrar validos1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar validos1": {
+      "main": [
+        [
+          {
+            "node": "Extraer datos1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer datos1": {
+      "main": [
+        [
+          {
+            "node": "Buscar cliente1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar cliente1": {
+      "main": [
+        [
+          {
+            "node": "Verificar cliente1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar cliente1": {
+      "main": [
+        [
+          {
+            "node": "Cliente existe1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente existe1": {
+      "main": [
+        [
+          {
+            "node": "Cliente id existente1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear cliente1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear cliente1": {
+      "main": [
+        [
+          {
+            "node": "Cliente id nuevo1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente id nuevo1": {
+      "main": [
+        [
+          {
+            "node": "Guardar mensaje entrante1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente id existente1": {
+      "main": [
+        [
+          {
+            "node": "Guardar mensaje entrante1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar mensaje entrante1": {
+      "main": [
+        [
+          {
+            "node": "Chequear bot activo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Traer servicios1": {
+      "main": [
+        [
+          {
+            "node": "Esperar datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Traer barberos1": {
+      "main": [
+        [
+          {
+            "node": "Esperar datos",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Traer historial mensajes1": {
+      "main": [
+        [
+          {
+            "node": "Esperar datos",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Armar contexto1": {
+      "main": [
+        [
+          {
+            "node": "Agente Deepseek1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente Deepseek1": {
+      "main": [
+        [
+          {
+            "node": "Guardar respuesta del bot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar respuesta del bot1": {
+      "main": [
+        [
+          {
+            "node": "Enviar por WhatsApp1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "listar_mis_turnos1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente Deepseek1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "crear_turno1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente Deepseek1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cancelar_turno1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente Deepseek1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_disponibilidad1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente Deepseek1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar datos": {
+      "main": [
+        [
+          {
+            "node": "Armar contexto1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agente Deepseek1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente Deepseek1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recibe mensaje panel1": {
+      "main": [
+        [
+          {
+            "node": "Filtrar datos panel1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar datos panel1": {
+      "main": [
+        [
+          {
+            "node": "Enviar por WhatsApp (panel)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "actualizar_nombre_cliente1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente Deepseek1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "cdeda953-f15c-4f98-bb16-c2d3e44ba8af",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b54e8157cdcf828107e0b83d79a81ab3eb2f610a5b29e632f860c903eb87ad1f"
+  },
+  "nodeGroups": [],
+  "id": "gRTZDLTXvGgNq4BZ",
+  "tags": []
+}

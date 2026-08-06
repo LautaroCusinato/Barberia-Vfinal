@@ -1,0 +1,198 @@
+import React, { useEffect, useRef, useState } from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.jsx'
+import PublicBooking from './pages/PublicBooking.jsx'
+import Login, { logout } from './components/Login.jsx'
+import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
+import './index.css'
+
+// Pantalla chica y centrada para los estados intermedios (cargando la
+// barberia, error, o el selector cuando el usuario pertenece a mas de una).
+function EstadoCentrado({ children }) {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg)',
+        padding: '1.5rem',
+      }}
+    >
+      <div
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '2rem',
+          maxWidth: 380,
+          width: '100%',
+          textAlign: 'center',
+          color: 'var(--ink)',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function SelectorBarberia({ opciones, onElegir }) {
+  return (
+    <EstadoCentrado>
+      <p style={{ fontWeight: 700, marginBottom: 16 }}>¿Con cuál barbería querés entrar?</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {opciones.map((o) => (
+          <button
+            key={o.barberia_id}
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => onElegir(o.barberia_id)}
+          >
+            {o.barberias?.nombre || `Barbería #${o.barberia_id}`}
+          </button>
+        ))}
+      </div>
+    </EstadoCentrado>
+  )
+}
+
+function SinBarberia() {
+  return (
+    <EstadoCentrado>
+      <p style={{ fontWeight: 700, marginBottom: 8 }}>Tu usuario no está vinculado a ninguna barbería</p>
+      <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
+        Pedile al administrador que te agregue en <code>barberia_members</code>.
+      </p>
+      <button className="btn" onClick={() => logout()}>Cerrar sesión</button>
+    </EstadoCentrado>
+  )
+}
+
+const CACHE_KEY = 'barberia-activa'
+
+function leerCache() {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function guardarCache(id, nombre) {
+  try {
+    if (id == null) sessionStorage.removeItem(CACHE_KEY)
+    else sessionStorage.setItem(CACHE_KEY, JSON.stringify({ id, nombre }))
+  } catch {
+    // si sessionStorage no esta disponible (algun navegador raro), no pasa nada
+  }
+}
+
+function Root() {
+  const [authed, setAuthed] = useState(false)
+  const [checking, setChecking] = useState(isSupabaseConfigured)
+
+  // Resolucion de la barberia del usuario logueado, via barberia_members.
+  // null = todavia no se resolvio (cargando); [] = no pertenece a ninguna.
+  const [opciones, setOpciones] = useState(null)
+  const cacheInicial = leerCache()
+  const [barberiaId, setBarberiaId] = useState(cacheInicial?.id ?? null)
+  const [barberiaNombre, setBarberiaNombre] = useState(cacheInicial?.nombre ?? null)
+
+  const yaResolvioAlgunaVezRef = useRef(false)
+
+  const resolverBarberia = async (userId) => {
+    const { data, error } = await supabase
+      .from('barberia_members')
+      .select('barberia_id, role, barberias(nombre)')
+      .eq('user_id', userId)
+
+    yaResolvioAlgunaVezRef.current = true
+
+    if (error || !data) {
+      setOpciones([])
+      return
+    }
+    setOpciones(data)
+    if (data.length === 1) {
+      setBarberiaId(data[0].barberia_id)
+      setBarberiaNombre(data[0].barberias?.nombre || null)
+    }
+  }
+
+  useEffect(() => {
+    guardarCache(barberiaId, barberiaNombre)
+  }, [barberiaId, barberiaNombre])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setChecking(false)
+      return
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      const session = data.session
+      setAuthed(Boolean(session))
+      setChecking(false)
+      if (session) resolverBarberia(session.user.id)
+    })
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      setAuthed(Boolean(session))
+      if (!session) {
+        setOpciones(null)
+        setBarberiaId(null)
+        setBarberiaNombre(null)
+        return
+      }
+      // Supabase dispara este mismo evento tambien cuando solo renueva el
+      // token en segundo plano (ej: volviste a la pestaña despues de un
+      // rato). En esos casos NO hay que volver a preguntar la barberia
+      // (ya la tenemos resuelta) — si lo hacemos, parpadea el cartel de
+      // "Cargando tu barbería..." sin necesidad. Solo resolvemos de nuevo
+      // en un login real, o si por algun motivo todavia no la resolvimos.
+      if (event === 'SIGNED_IN' || !yaResolvioAlgunaVezRef.current) {
+        resolverBarberia(session.user.id)
+      }
+    })
+
+    return () => listener?.subscription?.unsubscribe()
+  }, [])
+
+  if (checking) return null
+  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
+
+  // Modo demo sin Supabase configurado: no hay usuario real ni membresias,
+  // usamos la barberia 1 por defecto (comportamiento de antes).
+  if (!isSupabaseConfigured) return <App barberiaId={1} />
+
+  if (opciones === null && !barberiaId) {
+    return <EstadoCentrado>Cargando tu barbería...</EstadoCentrado>
+  }
+  if (opciones !== null && opciones.length === 0) {
+    return <SinBarberia />
+  }
+  if (!barberiaId) {
+    return (
+      <SelectorBarberia
+        opciones={opciones}
+        onElegir={(id) => {
+          setBarberiaId(id)
+          setBarberiaNombre(opciones.find((o) => o.barberia_id === id)?.barberias?.nombre || null)
+        }}
+      />
+    )
+  }
+
+  return <App barberiaId={barberiaId} barberiaNombre={barberiaNombre} />
+}
+
+const bookingMatch = window.location.pathname.match(/^\/reservar\/([^/]+)\/?$/)
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} /> : <Root />}
+  </React.StrictMode>
+)
