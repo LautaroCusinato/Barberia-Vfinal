@@ -4,7 +4,7 @@
 
 Esta etapa deja preparado un workflow piloto en modo **shadow**. El workflow productivo de Barberia Central no fue editado, desactivado ni ejecutado. No se envían mensajes reales, no se crean turnos y no se realizan cobros.
 
-El modo se controla exclusivamente con la variable privada de n8n `PILOT_MODE=shadow`; nunca se acepta desde el payload recibido. En shadow, la reserva usa `simular_reserva_whatsapp` (validación sin escrituras) y la respuesta se guarda sólo como un reporte minimizado en `saas_automation_shadow_runs` mediante `record_whatsapp_shadow_run`.
+El modo se controla exclusivamente con la variable privada de n8n `PILOT_MODE`; nunca se acepta desde el payload recibido. La plantilla versionada además falla de forma segura a `shadow` cuando la variable no está disponible. En shadow, la reserva usa `simular_reserva_whatsapp` (validación sin escrituras) y la respuesta se guarda sólo como un reporte minimizado en `saas_automation_shadow_runs` mediante `record_whatsapp_shadow_run`.
 
 ## Respaldo y estado de n8n
 
@@ -17,7 +17,7 @@ El modo se controla exclusivamente con la variable privada de n8n `PILOT_MODE=sh
 
 El template versionado es `integrations/templates/WhatsApp Multi Tenant - Contract Template.json`: permanece `active:false`, tiene 25 nodos y no contiene instancias, tenants ni claves hardcodeadas.
 
-El workflow piloto separado ya fue importado en n8n como `WhatsApp Multi Tenant - Pilot Barberia Central`, ID `5UQMp5vAMfBfJtSy`. Se verificó en la lista de workflows sin etiqueta `Published`; permanece inactivo y no se ejecutó.
+El workflow piloto separado está importado en n8n como `WhatsApp Multi Tenant - Pilot Barberia Central`, ID `5UQMp5vAMfBfJtSy`. Se verificó en la lista de workflows sin etiqueta `Published`; permanece inactivo y no se ejecutó. Tiene 25 nodos, sin instancia hardcodeada y con cuatro expresiones que usan el fallback seguro `PILOT_MODE=shadow`.
 
 ## Verificación de Evolution y bloqueo de alta automática
 
@@ -28,7 +28,9 @@ Se verificó en Evolution API 2.3.7:
 - número receptor: `5491168280107`;
 - etiqueta visible: `Austral Automatizaciones`.
 
-La base tiene para tenant 1 (`Barberia Central`) el WhatsApp `+5491100000000`. Como los números no coinciden y la etiqueta visible tampoco identifica al negocio, **no se creó ningún registro en `saas_integraciones`**. El alta sólo debe hacerse después de confirmar que esa instancia/número pertenece a Barberia Central o corregir el dato en la base. No se copian tokens ni claves al repositorio.
+El usuario confirmó que el número corresponde a Barberia Central. La migración idempotente `20260806163000_link_barberia_central_evolution.sql` reemplazó únicamente el placeholder `+5491100000000` de `barberias.whatsapp` por el formato canónico `5491168280107` (sólo dígitos). No se modificaron teléfonos históricos de clientes ni turnos.
+
+La integración quedó creada como `saas_integraciones.id=6`, con `external_instance_id=miwsp`, `receiver_number=5491168280107`, estado `conectado`, base URL de Evolution y referencia opaca `n8n:EVOLUTION_API_KEY`; nunca se guardó la clave. Antes de insertar se verificó que no hubiera otra integración con esa instancia o número. El resolver `resolve_whatsapp_tenant_context` devuelve de forma determinista tenant 1, `Barberia Central`, slug `barberia-central`, locale `es-AR`, zona `America/Argentina/Buenos_Aires` y suscripción `active`. También se probó con espacios, mayúsculas y `+54 9 11 6828-0107`; resolvió la misma integración.
 
 ## Migraciones aplicadas
 
@@ -44,6 +46,8 @@ Usar `integrations/templates/n8n-multitenant.env.example` como referencia y conf
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `DEEPSEEK_API_KEY`, `PILOT_MODE=shadow`.
 
 El secreto de webhook debe ser el mismo que Evolution envía en el header configurado. No se debe reutilizar `SUPABASE_SERVICE_ROLE_KEY` como secreto de webhook.
+
+En esta instancia de n8n, la pantalla **Variables** muestra que la función está bloqueada por el plan y **Environments** requiere Enterprise. Por eso no fue posible guardar variables privadas desde la interfaz disponible. Quedan pendientes en el nivel del servidor/contenedor (SSH, Docker o Portainer): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `DEEPSEEK_API_KEY` y `PILOT_MODE=shadow`. No se solicitaron ni se expusieron secretos en el repositorio o en este chat.
 
 ## Matriz de simulación (22 casos)
 
@@ -69,10 +73,10 @@ El secreto de webhook debe ser el mismo que Evolution envía en el header config
 | 18 | duración específica del barbero | RPC protegida |
 | 19 | teléfono con formato variable | normalización en RPC |
 | 20 | evento duplicado | idempotencia verificada en dry-run |
-| 21 | propuesta shadow registrada | pendiente de payload de piloto |
-| 22 | cancelación/reprogramación | RPC creada; pendiente de datos de piloto |
+| 21 | propuesta shadow registrada | probado con payload anonimizado; fila de prueba eliminada |
+| 22 | cancelación/reprogramación | RPC creada; pendiente de ejecución controlada |
 
-Los casos que requieren una integración real no se ejecutaron para no enviar mensajes ni crear datos. El dry-run anterior de idempotencia confirmó resolver, primer claim, duplicate claim y rollback sin dejar eventos.
+Los casos que requieren una integración real no se ejecutaron para no enviar mensajes ni crear datos. La resolución real de `miwsp`/`5491168280107` y la normalización del receptor sí fueron probadas en Supabase. También se comparó el esquema con el workflow productivo: ambos usan `body.data.key.remoteJid` y los campos de texto de Evolution; la plantilla agrega `instance`, `destination`, `event_id` y secreto de webhook. El path del webhook es deliberadamente distinto (`whatsapp-multitenant-template` frente a `whatsapp-miwsp`) para impedir que el piloto intercepte tráfico productivo.
 
 ## Comparación, retención y activación
 
@@ -84,7 +88,7 @@ Rollback: volver `PILOT_MODE=shadow`, desactivar sólo el workflow piloto, conse
 
 ## Acciones manuales pendientes
 
-1. Confirmar a qué negocio corresponde el número `5491168280107` o corregir el WhatsApp de Barberia Central.
-2. Crear/importar en n8n un workflow separado llamado `WhatsApp Multi Tenant - Pilot Barberia Central`, mantenerlo inactivo y cargar las variables privadas.
-3. Configurar el webhook de Evolution apuntando únicamente al workflow piloto cuando se autorice una prueba controlada.
-4. Ejecutar simulaciones con un payload capturado de prueba y revisar los reportes; no usar todavía un número de cliente real.
+1. Configurar en el servidor/contenedor de n8n las variables privadas indicadas, manteniendo `PILOT_MODE=shadow`.
+2. Mantener el workflow piloto `5UQMp5vAMfBfJtSy` inactivo y sin publicar; no tocar el productivo `gRTZDLTXvGgNq4BZ`.
+3. Cuando exista autorización explícita, configurar un webhook de prueba de Evolution apuntando únicamente al piloto.
+4. Ejecutar una prueba controlada con payload anonimizado y revisar `saas_automation_shadow_runs`; no usar todavía un número de cliente real.

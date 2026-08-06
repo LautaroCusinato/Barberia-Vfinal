@@ -54,6 +54,10 @@ const whatsappMutationMigration = await fs.readFile(
   path.join(root, 'supabase/migrations/20260806161000_whatsapp_booking_mutations.sql'),
   'utf8',
 )
+const whatsappLinkMigration = await fs.readFile(
+  path.join(root, 'supabase/migrations/20260806163000_link_barberia_central_evolution.sql'),
+  'utf8',
+)
 const whatsappTemplate = JSON.parse(await fs.readFile(
   path.join(root, 'integrations/templates/WhatsApp Multi Tenant - Contract Template.json'),
   'utf8',
@@ -130,11 +134,23 @@ for (const required of ['saas_automation_shadow_runs', 'record_whatsapp_shadow_r
 for (const required of ['consultar_reserva_whatsapp', 'simular_reserva_whatsapp', 'cancelar_reserva_whatsapp', 'reprogramar_reserva_whatsapp', 'search_path = public, pg_temp', 'service_role']) {
   assert.match(whatsappMutationMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
 }
+for (const required of [
+  "v_receiver text := '5491168280107'",
+  "v_instance text := 'miwsp'",
+  'credential_reference',
+  '5UQMp5vAMfBfJtSy',
+  'placeholder esperado',
+  'No contiene API keys ni secretos',
+]) {
+  assert.match(whatsappLinkMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)
+}
 assert.equal(whatsappTemplate.active, false, 'WhatsApp template must remain inactive')
 assert.ok(whatsappTemplate.nodes.length >= 20, 'WhatsApp template is unexpectedly incomplete')
 assert.match(whatsappContractDocs, /inactiva|No activar/i)
 assert.doesNotMatch(whatsappTemplateText, /PONE-ACA-TU-EVOLUTION-API-KEY|miwsp|barberia_id.?=.?.?1/i)
 assert.match(whatsappTemplateText, /PILOT_MODE/)
+assert.doesNotMatch(whatsappTemplateText, /PILOT_MODE\s*\|\|\s*'live'/, 'WhatsApp template must fail safe to shadow')
+assert.match(whatsappTemplateText, /PILOT_MODE\s*\|\|\s*'shadow'/, 'WhatsApp template shadow default missing')
 assert.match(whatsappTemplateText, /simular_reserva_whatsapp/)
 assert.match(whatsappTemplateText, /record_whatsapp_shadow_run/)
 
