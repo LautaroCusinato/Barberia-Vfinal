@@ -36,6 +36,8 @@ El service role sólo se configura en una Edge Function/Cloudflare Worker/backen
 - API autenticada: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-api/status`
 - Checkout: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-api/checkout`
 - Sincronización de planes: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-api/sync-plans`
+- Estado externo seguro: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-api/external-status`
+- Reconciliación manual (sólo owner/admin de plataforma): `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-api/reconcile`
 - Mercado Pago: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-webhooks/mercadopago`
 - PayPal: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-webhooks/paypal`
 - Jobs privados: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-jobs`
@@ -48,7 +50,7 @@ Las funciones están desplegadas por HTTPS. Sin secretos sandbox y con los prove
 
 La implementación serverless vive en `supabase/functions/` y usa Supabase Edge Functions:
 
-- `billing-api`: requiere sesión y resuelve el único tenant owner de la sesión. Expone `GET /status`, `POST /checkout` y `POST /sync-plans`.
+- `billing-api`: requiere sesión y resuelve el único tenant owner de la sesión. Expone `GET /status`, `POST /checkout`, `POST /external-status`, `POST /sync-plans` y `POST /reconcile` (esta última sólo para owner/admin de plataforma).
 - `billing-webhooks`: endpoint público separado para `/mercadopago` y `/paypal`; exige firma válida y consulta el recurso al proveedor antes de cambiar estados.
 - `billing-jobs`: endpoint privado para trials, reintentos y outbox; exige `BILLING_CRON_SECRET`.
 
@@ -73,9 +75,9 @@ No se debe cambiar estado por una redirección del navegador ni por el contenido
 ## Rollout y rollback
 
 1. Configurar credenciales sandbox en el backend privado y registrar IDs externos de planes.
-2. Desplegar un endpoint privado con firma, rate limit, tamaño máximo y logs redactados.
+2. Desplegar un endpoint privado con firma, límite de tamaño y logs redactados.
 3. Ejecutar eventos sintéticos repetidos y verificar que `saas_billing_webhook_events` queda idempotente.
-4. Activar un proveedor para un tenant de prueba, sin tocar WhatsApp.
+4. Activar un proveedor únicamente para un tenant de prueba, sin tocar WhatsApp.
 5. Rollback: deshabilitar el proveedor, detener el worker y volver a leer el estado interno; no borrar tablas ni datos. Las migraciones son aditivas.
 
 En esta etapa no se hicieron llamadas a Mercado Pago/PayPal, no se crearon cobros y no se activaron webhooks.

@@ -18,7 +18,7 @@ Deno.serve(async (request) => {
 
     // El outbox no se marca como publicado si todavía no existe un consumidor
     // configurado. Así una instalación nueva no pierde eventos por accidente.
-    const { data: pending, error: pendingError } = await admin.from('saas_billing_events').select('id, event_name, barberia_id, suscripcion_id, payload').eq('estado', 'pending').order('occurred_at').limit(100)
+    const { data: pending, error: pendingError } = await admin.from('saas_billing_events').select('id, event_name, barberia_id, suscripcion_id, payload, retry_count').eq('estado', 'pending').order('occurred_at').limit(100)
     if (pendingError) throw Object.assign(new Error('No se pudo leer el outbox.'), { status: 502, code: 'outbox_read_failed' })
     const sink = Deno.env.get('BILLING_OUTBOX_SINK_URL')
     let published = 0

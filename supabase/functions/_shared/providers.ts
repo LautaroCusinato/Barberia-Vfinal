@@ -110,6 +110,28 @@ export async function mercadoPagoResource(payload: Record<string, unknown>) {
   return { id, status: body.status, normalizedStatus: mpStatus(body.status), amount: Number(body.transaction_amount || body.auto_recurring?.transaction_amount || 0) || null, currency: body.currency_id || body.auto_recurring?.currency_id || null, externalReference: body.external_reference || null, resource: body }
 }
 
+/** Consulta explícita de un recurso ya vinculado. Nunca acepta credenciales ni
+ * IDs provistos por el navegador como fuente de verdad: el caller resuelve el
+ * ID desde la base y sólo pasa el tipo de recurso. */
+export async function mercadoPagoExternalStatus(input: { externalId: string; kind: 'checkout' | 'subscription' }) {
+  requireEnv('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET'])
+  const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
+  const resource = input.kind === 'subscription' ? 'preapproval' : 'checkout/preferences'
+  const response = await fetch(`${base}/v1/${resource}/${encodeURIComponent(input.externalId)}`, { headers: { Authorization: `Bearer ${Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')}` } })
+  const body = await responseJson(response, 'Mercado Pago')
+  return {
+    status: body.status,
+    normalizedStatus: mpStatus(body.status),
+    amount: Number(body.transaction_amount || body.auto_recurring?.transaction_amount || 0) || null,
+    currency: body.currency_id || body.auto_recurring?.currency_id || null,
+    externalReference: body.external_reference || null,
+    updatedAt: body.last_modified || body.date_last_updated || body.date_created || null,
+    cancelAtPeriodEnd: Boolean(body.status === 'cancelled' || body.status === 'canceled'),
+    currentPeriodStart: body.date_created || null,
+    currentPeriodEnd: body.next_payment_date || null,
+  }
+}
+
 export async function verifyPayPal(payload: Record<string, unknown>, headers: Headers) {
   requireEnv('PayPal', ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID'])
   const required = ['paypal-transmission-id', 'paypal-transmission-time', 'paypal-cert-url', 'paypal-auth-algo', 'paypal-transmission-sig']
@@ -137,6 +159,35 @@ export async function paypalResource(payload: Record<string, unknown>) {
   const body = await responseJson(response, 'PayPal')
   const unit = body.purchase_units?.[0]
   return { id, status: body.status, normalizedStatus: paypalStatus(body.status), amount: Number(unit?.amount?.value || 0) || null, currency: unit?.amount?.currency_code || null, externalReference: body.custom_id || unit?.reference_id || null, resource: body }
+}
+
+async function paypalAccessToken(base: string) {
+  const basic = btoa(`${Deno.env.get('PAYPAL_CLIENT_ID')}:${Deno.env.get('PAYPAL_CLIENT_SECRET')}`)
+  const tokenResponse = await fetch(`${base}/v1/oauth2/token`, { method: 'POST', headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials' })
+  const tokenBody = await responseJson(tokenResponse, 'PayPal')
+  if (!tokenBody.access_token) throw new ProviderError('PayPal no devolvió un token de acceso.', 502, 'provider_token_missing')
+  return String(tokenBody.access_token)
+}
+
+export async function paypalExternalStatus(input: { externalId: string; kind: 'checkout' | 'subscription' }) {
+  requireEnv('PayPal', ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID'])
+  const base = (Deno.env.get('PAYPAL_API_BASE_URL') || 'https://api-m.sandbox.paypal.com').replace(/\/$/, '')
+  const token = await paypalAccessToken(base)
+  const path = input.kind === 'subscription' ? `/v1/billing/subscriptions/${encodeURIComponent(input.externalId)}` : `/v2/checkout/orders/${encodeURIComponent(input.externalId)}`
+  const body = await responseJson(await fetch(`${base}${path}`, { headers: { Authorization: `Bearer ${token}` } }), 'PayPal')
+  const unit = body.purchase_units?.[0]
+  const lastPayment = body.billing_info?.last_payment?.amount
+  return {
+    status: body.status,
+    normalizedStatus: paypalStatus(body.status),
+    amount: Number(unit?.amount?.value || lastPayment?.value || 0) || null,
+    currency: unit?.amount?.currency_code || lastPayment?.currency_code || null,
+    externalReference: body.custom_id || unit?.reference_id || null,
+    updatedAt: body.update_time || body.create_time || null,
+    cancelAtPeriodEnd: Boolean(body.status === 'SUSPENDED' || body.status === 'CANCELLED'),
+    currentPeriodStart: body.billing_info?.last_payment?.time || null,
+    currentPeriodEnd: body.billing_info?.next_billing_time || null,
+  }
 }
 
 export function normalizeStatus(provider: ProviderCode, status: string) { return provider === 'mercadopago' ? mpStatus(status) : paypalStatus(status) }

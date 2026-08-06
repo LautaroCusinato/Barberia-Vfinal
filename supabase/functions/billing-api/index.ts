@@ -1,6 +1,6 @@
 import { adminClient, authenticate, ownerTenant, platformRole } from '../_shared/supabase.ts'
 import { errorJson, json, readJson, requestId } from '../_shared/http.ts'
-import { mercadoPago, paypal, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { mercadoPago, mercadoPagoExternalStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 
@@ -85,6 +85,67 @@ async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>
   return json({ provider, environment: 'sandbox', results })
 }
 
+function providerStatus(provider: string, externalId: string, kind: 'checkout' | 'subscription') {
+  if (provider === 'mercadopago') return mercadoPagoExternalStatus({ externalId, kind })
+  if (provider === 'paypal') return paypalExternalStatus({ externalId, kind })
+  throw Object.assign(new Error('Proveedor no soportado.'), { status: 422, code: 'unsupported_provider' })
+}
+
+async function externalStatus(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  const tenantId = await ownerTenant(admin, userId)
+  const requestedAttempt = body.checkout_attempt_id == null ? null : Number(body.checkout_attempt_id)
+  if (requestedAttempt !== null && (!Number.isSafeInteger(requestedAttempt) || requestedAttempt <= 0)) throw Object.assign(new Error('Intento de checkout inválido.'), { status: 422, code: 'invalid_checkout_attempt' })
+  const provider = body.proveedor_codigo ? String(body.proveedor_codigo).trim().toLowerCase() : null
+  if (provider && !PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
+  const records = requestedAttempt
+    ? (await admin.from('saas_billing_checkout_attempts').select('id, proveedor_codigo, external_checkout_id').eq('id', requestedAttempt).eq('barberia_id', tenantId).maybeSingle()).data
+    : (await admin.from('saas_suscripciones_externas').select('proveedor_codigo, external_subscription_id').eq('barberia_id', tenantId).maybeSingle()).data
+  if (!records) return json({ status: 'not_linked', checked_at: new Date().toISOString() })
+  const row = records as Record<string, unknown>
+  const currentProvider = String(row.proveedor_codigo)
+  const externalId = String(row.external_checkout_id || row.external_subscription_id || '')
+  if (!externalId || (provider && provider !== currentProvider)) return json({ status: 'not_linked', checked_at: new Date().toISOString() })
+  const kind = requestedAttempt ? 'checkout' : 'subscription'
+  const config = providerConfigured(currentProvider as 'mercadopago' | 'paypal')
+  if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
+  const result = await providerStatus(currentProvider, externalId, kind)
+  return json({ provider: currentProvider, kind, status: result.normalizedStatus, provider_status: result.status, amount: result.amount, currency: result.currency, checked_at: new Date().toISOString() })
+}
+
+async function reconcile(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  const role = await platformRole(admin, userId)
+  if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
+  const provider = body.proveedor_codigo ? String(body.proveedor_codigo).trim().toLowerCase() : null
+  if (provider && !PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
+  const parsedLimit = body.limit == null ? 100 : Number(body.limit)
+  const limit = Number.isSafeInteger(parsedLimit) ? Math.max(1, Math.min(100, parsedLimit)) : 100
+  let query = admin.from('saas_suscripciones_externas').select('id, suscripcion_id, proveedor_codigo, external_subscription_id, barberia_id').limit(limit)
+  if (provider) query = query.eq('proveedor_codigo', provider)
+  const { data: links, error } = await query
+  if (error) throw Object.assign(new Error('No se pudieron leer suscripciones externas.'), { status: 502, code: 'reconciliation_read_failed' })
+  const summary = { checked: 0, transitioned: 0, unchanged: 0, failed: 0, errors: [] as string[] }
+  for (const link of links || []) {
+    const currentProvider = String(link.proveedor_codigo) as 'mercadopago' | 'paypal'
+    try {
+      const config = providerConfigured(currentProvider)
+      if (!config.configured) throw Object.assign(new Error('provider_not_configured'), { code: 'provider_not_configured' })
+      const result = await providerStatus(currentProvider, String(link.external_subscription_id), 'subscription')
+      const now = new Date().toISOString()
+      await admin.from('saas_suscripciones_externas').update({ estado_externo: result.normalizedStatus, current_period_start: result.currentPeriodStart, current_period_end: result.currentPeriodEnd, cancel_at_period_end: result.cancelAtPeriodEnd, last_synced_at: now, metadata: { last_reconciliation_status: result.status } }).eq('id', link.id)
+      const eventId = `reconcile:${currentProvider}:${link.external_subscription_id}:${result.normalizedStatus}`
+      const { data: transition, error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: link.suscripcion_id, p_to_state: result.normalizedStatus, p_reason: 'manual_reconciliation', p_source: 'reconciliation', p_provider_event_id: eventId, p_provider_event_at: result.updatedAt || null })
+      if (transitionError) throw Object.assign(new Error('subscription_transition_failed'), { code: 'subscription_transition_failed' })
+      summary.checked += 1
+      if (transition?.idempotent || transition?.state_version === undefined) summary.unchanged += 1
+      else summary.transitioned += 1
+    } catch (reconciliationError) {
+      summary.failed += 1
+      summary.errors.push(String(reconciliationError?.code || 'reconciliation_failed'))
+    }
+  }
+  return json({ provider: provider || 'all', environment: 'sandbox', ...summary, checked_at: new Date().toISOString() })
+}
+
 Deno.serve(async (request) => {
   const correlationId = requestId(request)
   try {
@@ -101,7 +162,9 @@ Deno.serve(async (request) => {
     }
     const body = await readJson(request)
     if (request.method === 'POST' && route === 'checkout') return await checkout(request, admin, user.id, body)
+    if (request.method === 'POST' && route === 'external-status') return await externalStatus(admin, user.id, body)
     if (request.method === 'POST' && route === 'sync-plans') return await syncPlans(request, admin, user.id, body)
+    if (request.method === 'POST' && route === 'reconcile') return await reconcile(admin, user.id, body)
     return errorJson('Ruta de billing inexistente.', 404, 'route_not_found')
   } catch (error) {
     console.error(JSON.stringify({ correlation_id: correlationId, code: error?.code || 'billing_api_error' }))

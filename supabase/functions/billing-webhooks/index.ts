@@ -15,6 +15,9 @@ async function body(request: Request) {
 
 Deno.serve(async (request) => {
   const correlationId = requestId(request)
+  let recordedEventId: number | null = null
+  let recordedProvider = ''
+  let recordedExternalId = ''
   try {
     if (request.method !== 'POST') return errorJson('Sólo POST.', 405, 'method_not_allowed')
     const provider = new URL(request.url).pathname.split('/').filter(Boolean).pop() || ''
@@ -26,10 +29,13 @@ Deno.serve(async (request) => {
     const resource = provider === 'mercadopago' ? await mercadoPagoResource(payload) : await paypalResource(payload)
     const minimal = minimized(payload)
     const externalEventId = String(minimal.id || `${provider}-${crypto.randomUUID()}`)
+    recordedProvider = provider
+    recordedExternalId = externalEventId
     const { data: recorded, error: recordError } = await admin.rpc('record_billing_webhook_event', { p_proveedor_codigo: provider, p_external_event_id: externalEventId, p_event_type: String(minimal.type), p_signature_valid: true, p_payload_min: { ...minimal, verified_status: resource.status, verified_normalized_status: resource.normalizedStatus }, p_external_updated_at: minimal.updated_at || null })
     if (recordError) throw Object.assign(new Error('No se pudo registrar el webhook.'), { status: 500, code: 'webhook_record_failed' })
+    recordedEventId = Number(recorded?.webhook_event_id || 0) || null
     if (recorded?.idempotent) {
-      const { data: previous } = await admin.from('saas_billing_webhook_events').select('estado').eq('id', recorded.webhook_event_id).maybeSingle()
+      const { data: previous } = await admin.from('saas_billing_webhook_events').select('estado').eq('id', recordedEventId).maybeSingle()
       if (previous?.estado === 'processed' || previous?.estado === 'ignored') return json({ received: true, duplicate: true })
     }
 
@@ -54,6 +60,9 @@ Deno.serve(async (request) => {
     await admin.from('saas_billing_webhook_events').update({ estado: 'processed', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
     return json({ received: true, processed: true })
   } catch (error) {
+    if (recordedEventId && recordedProvider && recordedExternalId) {
+      await adminClient().from('saas_billing_webhook_events').update({ estado: 'failed', error_code: error?.code || 'billing_webhook_error', processed_at: new Date().toISOString() }).eq('id', recordedEventId).eq('proveedor_codigo', recordedProvider).eq('external_event_id', recordedExternalId)
+    }
     console.error(JSON.stringify({ correlation_id: correlationId, code: error?.code || 'billing_webhook_error' }))
     return errorJson(error?.message || 'Error temporal procesando webhook.', error?.status || 500, error?.code || 'billing_webhook_error')
   }
