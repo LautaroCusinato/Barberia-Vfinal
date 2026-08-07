@@ -14,6 +14,7 @@ const crmSyncMigration = await fs.readFile(
   'utf8',
 )
 const platformCrm = await fs.readFile(path.join(root, 'src/pages/PlatformCRM.jsx'), 'utf8')
+const appEntry = await fs.readFile(path.join(root, 'src/main.jsx'), 'utf8')
 const securityMigration = await fs.readFile(
   path.join(root, 'supabase/migrations/20260806110000_harden_security_definer_grants.sql'),
   'utf8',
@@ -93,6 +94,10 @@ for (const required of ['idx_crm_negocios_barberia_id_unique', 'barberias_sync',
 
 assert.match(platformCrm, /setView\('businesses'\)/, 'business navigation missing')
 assert.match(platformCrm, /setView\('leads'\)/, 'lead navigation missing')
+assert.match(appEntry, /SelectorWorkspace/, 'platform/business workspace selector missing')
+assert.match(appEntry, /platformMember && \(platformPath/, 'platform route must take priority')
+assert.match(appEntry, /workspace !== 'business'/, 'platform members must choose a workspace before opening the tenant')
+assert.match(appEntry, /window\.location\.assign\('\/plataforma'\)/, 'platform workspace route missing')
 
 for (const required of ['search_path = public, pg_temp', 'revoke all on function public.get_conversacion', 'revoke all on function public.upsert_conversacion', 'service_role']) {
   assert.match(securityMigration, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i'), `${required} missing`)

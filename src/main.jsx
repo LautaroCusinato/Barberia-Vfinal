@@ -72,6 +72,36 @@ function SelectorBarberia({ opciones, onElegir }) {
   )
 }
 
+function SelectorWorkspace({ opciones, platformRole, onElegirNegocio }) {
+  return (
+    <EstadoCentrado>
+      <p style={{ fontWeight: 700, marginBottom: 8 }}>¿A qué workspace querés entrar?</p>
+      <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
+        Tu cuenta tiene permisos de plataforma y también acceso a un negocio.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button
+          className="btn btn-primary"
+          style={{ width: '100%', justifyContent: 'center' }}
+          onClick={() => window.location.assign('/plataforma')}
+        >
+          Plataforma · {platformRole || 'owner'}
+        </button>
+        {opciones.map((o) => (
+          <button
+            key={o.barberia_id}
+            className="btn"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => onElegirNegocio(o.barberia_id)}
+          >
+            Negocio · {o.barberias?.nombre || `Barbería #${o.barberia_id}`}
+          </button>
+        ))}
+      </div>
+    </EstadoCentrado>
+  )
+}
+
 function SinBarberia() {
   return (
     <EstadoCentrado>
@@ -121,6 +151,7 @@ function Root() {
   const [barberiaNombre, setBarberiaNombre] = useState(cacheInicial?.nombre ?? null)
   const [platformMember, setPlatformMember] = useState(false)
   const [platformRole, setPlatformRole] = useState(null)
+  const [workspace, setWorkspace] = useState(null)
   const [onboardingNeeded, setOnboardingNeeded] = useState(false)
 
   const yaResolvioAlgunaVezRef = useRef(false)
@@ -141,6 +172,7 @@ function Root() {
     const { data, error } = tenantResult
     setPlatformMember(Boolean(platformResult.data))
     setPlatformRole(platformResult.data?.role || null)
+    setWorkspace(null)
 
     yaResolvioAlgunaVezRef.current = true
 
@@ -184,6 +216,7 @@ function Root() {
         setBarberiaNombre(null)
         setPlatformMember(false)
         setPlatformRole(null)
+        setWorkspace(null)
         setOnboardingNeeded(false)
         return
       }
@@ -211,6 +244,20 @@ function Root() {
   const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
   if (platformMember && (platformPath || (opciones !== null && opciones.length === 0))) {
     return <PlatformCRM role={platformRole || 'owner'} />
+  }
+
+  if (platformMember && opciones !== null && opciones.length > 0 && workspace !== 'business') {
+    return (
+      <SelectorWorkspace
+        opciones={opciones}
+        platformRole={platformRole}
+        onElegirNegocio={(id) => {
+          setWorkspace('business')
+          setBarberiaId(id)
+          setBarberiaNombre(opciones.find((o) => o.barberia_id === id)?.barberias?.nombre || null)
+        }}
+      />
+    )
   }
 
   if (opciones === null && !barberiaId) {
