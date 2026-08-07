@@ -99,6 +99,36 @@ export async function syncMercadoPagoPlan(input: { name: string; description?: s
   return { externalPlanId: body.id || null, externalProductId: null }
 }
 
+/** Read-only ownership/configuration check for the isolated sandbox plan. */
+export async function mercadoPagoPlanDetails(externalPlanId: string) {
+  const token = mercadoPagoAccessToken()
+  const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
+  const body = await responseJson(await fetch(`${base}/preapproval_plan/${encodeURIComponent(externalPlanId)}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
+  return {
+    id: String(body.id || externalPlanId),
+    applicationId: Number(body.application_id) || null,
+    collectorId: Number(body.collector_id) || null,
+    status: String(body.status || '').toLowerCase() || null,
+    amount: Number(body.auto_recurring?.transaction_amount) || null,
+    currency: String(body.auto_recurring?.currency_id || '').toUpperCase() || null,
+    frequency: Number(body.auto_recurring?.frequency) || null,
+    frequencyType: String(body.auto_recurring?.frequency_type || '').toLowerCase() || null,
+  }
+}
+
+/** Read-only identity check for the currently configured sandbox credential. */
+export async function mercadoPagoCurrentUser() {
+  const token = mercadoPagoAccessToken()
+  const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
+  const body = await responseJson(await fetch(`${base}/users/me`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
+  return {
+    id: Number(body.id) || null,
+    nickname: String(body.nickname || '').trim() || null,
+    countryId: String(body.country_id || '').trim().toUpperCase() || null,
+    siteId: String(body.site_id || '').trim().toUpperCase() || null,
+  }
+}
+
 export async function paypal(input: { externalPlanId?: string | null; tenantReference: string; amount: number; currency: string; successUrl: string; cancelUrl: string }) {
   requireEnv('PayPal', ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID'])
   const base = (Deno.env.get('PAYPAL_API_BASE_URL') || 'https://api-m.sandbox.paypal.com').replace(/\/$/, '')

@@ -168,6 +168,13 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <div><span>Suscripción</span><strong>No se activa por URL de retorno</strong></div>
       </div>
 
+      {config?.external_plan_check?.reachable && <div className="sandbox-billing-details">
+        <div><span>Plan externo verificado</span><strong>{config.external_plan_check.matches_internal_price ? 'Coincide con ARS 15.000' : 'Difiere del precio interno'}</strong></div>
+        <div><span>Vendedor externo</span><strong>User ID {config.external_plan_check.collector_id || 'no informado'}</strong></div>
+        <div><span>Vendedor del token actual</span><strong>{config.external_plan_check.current_token_user_id || 'no informado'}{config.external_plan_check.seller_matches_current_token ? ' · coincide' : ' · revisar'}</strong></div>
+        <div><span>Aplicación externa</span><strong>{config.external_plan_check.application_id || 'no informada'}</strong></div>
+      </div>}
+
       {checkout?.checkout_url && <div className="sandbox-checkout-url"><span>checkout_url</span><a href={checkout.checkout_url} target="_blank" rel="noreferrer">{checkout.checkout_url}</a></div>}
       {config?.missing_for_checkout?.length > 0 && <p className="panel-subtitle">Faltan para checkout: {config.missing_for_checkout.join(', ')}</p>}
       {busy && <p className="panel-subtitle">Procesando operación sandbox…</p>}

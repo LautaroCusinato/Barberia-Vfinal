@@ -1,6 +1,6 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
-import { mercadoPago, mercadoPagoCredentialStatus, mercadoPagoExternalStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 
@@ -250,6 +250,43 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
   const webhook = providerConfigured('mercadopago', 'webhook')
   const credential = mercadoPagoCredentialStatus()
   const appBaseUrlConfigured = /^https:\/\//i.test(String(Deno.env.get('APP_BASE_URL') || '').trim())
+  let externalPlanCheck: Record<string, unknown> = { configured: false, reachable: false }
+  const { data: sandboxPrice } = await admin.from('saas_plan_precios').select('external_plan_id, importe, moneda, periodicidad, entorno, pais_codigo, activo, habilitado').eq('id', 1).eq('plan_codigo', 'starter').eq('proveedor_codigo', 'mercadopago').maybeSingle()
+  if (credential.sandbox && sandboxPrice?.external_plan_id && sandboxPrice.entorno === 'sandbox' && sandboxPrice.activo) {
+    try {
+      const [external, currentUser] = await Promise.all([
+        mercadoPagoPlanDetails(String(sandboxPrice.external_plan_id)),
+        mercadoPagoCurrentUser(),
+      ])
+      externalPlanCheck = {
+        configured: true,
+        reachable: true,
+        plan_id: external.id,
+        application_id: external.applicationId,
+        collector_id: external.collectorId,
+        status: external.status,
+        amount: external.amount,
+        currency: external.currency,
+        periodicity: external.frequency === 12 && external.frequencyType === 'months' ? 'yearly' : external.frequencyType === 'months' ? 'monthly' : null,
+        current_token_user_id: currentUser.id,
+        current_token_country_id: currentUser.countryId,
+        seller_matches_current_token: Boolean(external.collectorId && currentUser.id && external.collectorId === currentUser.id),
+        matches_internal_price: external.amount === Number(sandboxPrice.importe) && external.currency === String(sandboxPrice.moneda).toUpperCase(),
+      }
+      console.log(JSON.stringify({
+        code: 'sandbox_external_plan_check',
+        plan_id: externalPlanCheck.plan_id,
+        application_id: externalPlanCheck.application_id,
+        collector_id: externalPlanCheck.collector_id,
+        current_token_user_id: externalPlanCheck.current_token_user_id,
+        seller_matches_current_token: externalPlanCheck.seller_matches_current_token,
+        matches_internal_price: externalPlanCheck.matches_internal_price,
+      }))
+    } catch (error) {
+      externalPlanCheck = { configured: true, reachable: false, error_code: error?.code || 'external_plan_check_failed' }
+      console.error(JSON.stringify({ code: 'sandbox_external_plan_check_failed', error_code: externalPlanCheck.error_code }))
+    }
+  }
   return json({
     provider: 'mercadopago',
     environment: 'sandbox',
@@ -262,6 +299,7 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
     app_base_url_configured: appBaseUrlConfigured,
     missing_for_checkout: [...checkout.missing, ...(appBaseUrlConfigured ? [] : ['APP_BASE_URL'])],
     missing_for_webhook: webhook.missing,
+    external_plan_check: externalPlanCheck,
   })
 }
 
