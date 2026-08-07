@@ -1,6 +1,15 @@
+// Billing API is called by the hosted frontend with an explicit bearer token
+// (not cookies). Keep the browser contract explicit so the preflight does not
+// prevent authenticated requests from reaching the function.
+export const corsHeaders: HeadersInit = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+}
+
 export const json = (body: unknown, status = 200, headers: HeadersInit = {}) => new Response(JSON.stringify(body), {
   status,
-  headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers },
+  headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers },
 })
 
 export const errorJson = (message: string, status = 400, code = 'billing_error') => json({ error: { code, message } }, status)

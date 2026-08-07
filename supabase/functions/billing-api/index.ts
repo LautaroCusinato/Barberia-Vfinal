@@ -1,5 +1,5 @@
 import { adminClient, authenticate, ownerTenant, platformRole } from '../_shared/supabase.ts'
-import { errorJson, json, readJson, requestId } from '../_shared/http.ts'
+import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
 import { mercadoPago, mercadoPagoCredentialStatus, mercadoPagoExternalStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
@@ -215,7 +215,7 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
 Deno.serve(async (request) => {
   const correlationId = requestId(request)
   try {
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204 })
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders })
     const admin = adminClient()
     const user = await authenticate(request, admin)
     const url = new URL(request.url)

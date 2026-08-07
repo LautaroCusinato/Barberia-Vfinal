@@ -5081,6 +5081,9 @@ input.client-search-input {
 .sandbox-billing-console { border-color: color-mix(in srgb, var(--amber) 38%, var(--border)); background: color-mix(in srgb, var(--amber-soft) 30%, var(--surface)); margin-bottom: 14px; }
 .sandbox-billing-console .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 14px; }
 .sandbox-billing-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.sandbox-confirmation { display: grid; gap: 5px; margin: 0 0 14px; padding: 12px; border: 1px solid color-mix(in srgb, var(--amber) 48%, var(--border)); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--amber-soft) 45%, var(--surface)); }
+.sandbox-confirmation span { color: var(--ink-muted); font-size: 12px; }
+.sandbox-confirmation-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .sandbox-billing-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
 .sandbox-billing-grid > div, .sandbox-billing-details > div { display: grid; gap: 4px; min-width: 0; padding: 10px; border-radius: var(--radius-sm); background: var(--surface-muted); }
 .sandbox-billing-grid strong, .sandbox-billing-details strong { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }

@@ -33,6 +33,7 @@ const SANDBOX_BILLING_MESSAGES = {
   checkout_persist_failed: 'El checkout se creó pero no se pudo registrar en Supabase.',
   approval_url_missing: 'Mercado Pago no devolvió una URL de checkout.',
   external_status_failed: 'No se pudo consultar el estado externo del checkout.',
+  network_error: 'No se pudo conectar con billing sandbox. Reintentá en unos segundos.',
 }
 
 function sanitizeSandboxError(error, fallback = 'No se pudo completar la operación sandbox.') {
@@ -43,11 +44,16 @@ function sanitizeSandboxError(error, fallback = 'No se pudo completar la operaci
 async function sandboxBillingApi(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) throw Object.assign(new Error(SANDBOX_BILLING_MESSAGES.auth_required), { code: 'auth_required' })
-  const response = await fetch(`${supabaseUrl}/functions/v1/billing-api/${path}`, {
-    method: options.method || 'GET',
-    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  })
+  let response
+  try {
+    response = await fetch(`${supabaseUrl}/functions/v1/billing-api/${path}`, {
+      method: options.method || 'GET',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    })
+  } catch {
+    throw Object.assign(new Error(SANDBOX_BILLING_MESSAGES.network_error), { code: 'network_error' })
+  }
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
     const code = payload?.error?.code || `http_${response.status}`
@@ -98,7 +104,7 @@ function formatDate(value) {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(value))
 }
 
-function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarning, onAction }) {
+function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarning, confirmAction, onAction }) {
   if (!['owner', 'admin'].includes(role)) return null
   const config = snapshot?.configStatus
   const provider = snapshot?.provider
@@ -122,15 +128,26 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       {(error || auditWarning) && <div className="error-banner" role="alert">{error || auditWarning}</div>}
       {notice && <div className="billing-notice" role="status">{notice}</div>}
 
+      {confirmAction && <div className="sandbox-confirmation" role="alert">
+        <strong>{confirmAction === 'sync-plans' ? 'Confirmar sincronización' : 'Confirmar checkout sandbox'}</strong>
+        <span>{confirmAction === 'sync-plans'
+          ? 'Se actualizará únicamente el plan starter de Mercado Pago sandbox.'
+          : 'Se generará un checkout para el tenant técnico #6. No se cobrará dinero real.'}</span>
+        <div className="sandbox-confirmation-actions">
+          <button type="button" className="btn btn-primary" onClick={() => onAction(confirmAction)} disabled={busy}>Confirmar</button>
+          <button type="button" className="btn" onClick={() => onAction('cancel-confirmation')} disabled={busy}>Cancelar</button>
+        </div>
+      </div>}
+
       <div className="sandbox-billing-actions">
-        <button type="button" className="btn" onClick={() => onAction('config-status')} disabled={busy}>Consultar config-status</button>
-        <button type="button" className="btn btn-primary" onClick={() => onAction('sync-plans')} disabled={busy}>Sincronizar starter</button>
-        <button type="button" className="btn btn-primary" onClick={() => onAction('checkout')} disabled={busy}>Generar checkout sandbox</button>
-        <button type="button" className="btn" onClick={() => onAction('external-status')} disabled={busy || !checkout?.id}>Consultar estado externo</button>
+        <button type="button" className="btn" onClick={() => onAction('config-status')} disabled={busy || Boolean(confirmAction)}>Consultar config-status</button>
+        <button type="button" className="btn btn-primary" onClick={() => onAction('sync-plans')} disabled={busy || Boolean(confirmAction)}>Sincronizar starter</button>
+        <button type="button" className="btn btn-primary" onClick={() => onAction('checkout')} disabled={busy || Boolean(confirmAction)}>Generar checkout sandbox</button>
+        <button type="button" className="btn" onClick={() => onAction('external-status')} disabled={busy || Boolean(confirmAction) || !checkout?.id}>Consultar estado externo</button>
       </div>
 
       <div className="sandbox-billing-grid">
-        <div><span className="stat-label">Tenant técnico</span><strong>{tenantReady ? 'id=6 · válido' : 'No validado'}</strong></div>
+        <div><span className="stat-label">Tenant técnico</span><strong>{tenantReady ? 'id=6 · válido' : snapshot?.tenant === null ? 'id=6 · backend valida' : 'No validado'}</strong></div>
         <div><span className="stat-label">Proveedor</span><strong>{provider ? `${provider.codigo} · ${provider.entorno}` : 'Sin consultar'}</strong><small>{provider?.activo ? 'Activo global' : 'Global deshabilitado (correcto)'}</small></div>
         <div><span className="stat-label">Plan externo</span><strong>{plan?.habilitado && plan.external_plan_id ? 'Habilitado' : 'Pendiente'}</strong><small>{plan?.external_plan_id || 'Sin external_plan_id'}</small></div>
         <div><span className="stat-label">Producción</span><strong>{config?.production_enabled === false ? 'Bloqueada' : 'No validada'}</strong><small>{config?.token_kind === 'test' && config?.sandbox_token_valid ? 'Token TEST- válido (valor oculto)' : 'Token no validado'}</small></div>
@@ -166,6 +183,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [sandboxError, setSandboxError] = useState('')
   const [sandboxNotice, setSandboxNotice] = useState('')
   const [sandboxAuditWarning, setSandboxAuditWarning] = useState('')
+  const [sandboxConfirmAction, setSandboxConfirmAction] = useState('')
   const canWrite = ['owner', 'admin', 'sales', 'automation'].includes(role)
 
   const loadSandboxSnapshot = useCallback(async () => {
@@ -207,8 +225,17 @@ export default function PlatformCRM({ role = 'owner' }) {
 
   const executeSandboxAction = async (action) => {
     if (!['owner', 'admin'].includes(role)) return
-    if (action === 'sync-plans' && !window.confirm('Vas a sincronizar únicamente el plan starter en Mercado Pago sandbox. ¿Continuar?')) return
-    if (action === 'checkout' && !window.confirm('Vas a crear un checkout sandbox para el tenant técnico id=6. No se cobrará dinero real. ¿Continuar?')) return
+    if (action === 'cancel-confirmation') {
+      setSandboxConfirmAction('')
+      return
+    }
+    if (['sync-plans', 'checkout'].includes(action) && sandboxConfirmAction !== action) {
+      setSandboxConfirmAction(action)
+      setSandboxError('')
+      setSandboxNotice('')
+      return
+    }
+    setSandboxConfirmAction('')
 
     setSandboxBusy(true)
     setSandboxError('')
@@ -383,7 +410,7 @@ export default function PlatformCRM({ role = 'owner' }) {
               <p className="panel-subtitle billing-platform-footnote">Webhooks pendientes: {billingOverview.pending_webhooks || 0} · Eventos internos pendientes: {billingOverview.pending_events || 0}</p>
             </>}
           </section>
-          <SandboxBillingConsole role={role} snapshot={sandboxSnapshot} busy={sandboxBusy} error={sandboxError} notice={sandboxNotice} auditWarning={sandboxAuditWarning} onAction={executeSandboxAction} />
+          <SandboxBillingConsole role={role} snapshot={sandboxSnapshot} busy={sandboxBusy} error={sandboxError} notice={sandboxNotice} auditWarning={sandboxAuditWarning} confirmAction={sandboxConfirmAction} onAction={executeSandboxAction} />
         </> : view === 'leads' ? <section className="panel platform-crm-panel">
           <div className="panel-header"><div><h2 className="panel-title">Leads comerciales</h2><p className="panel-subtitle">Pipeline, scoring, seguimiento y exclusiones con auditoría. El CRM global sólo es visible para usuarios de plataforma.</p></div></div>
           <CRMLeadsWorkspace role={role} />
