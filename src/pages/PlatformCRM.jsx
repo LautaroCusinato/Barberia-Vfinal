@@ -18,6 +18,7 @@ const SANDBOX_BILLING = Object.freeze({
   provider: 'mercadopago',
   environment: 'sandbox',
 })
+const SANDBOX_PRICE_LABEL = 'ARS 15.000 / mes'
 
 const SANDBOX_BILLING_MESSAGES = {
   auth_required: 'La sesión expiró. Volvé a iniciar sesión.',
@@ -156,7 +157,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       <div className="sandbox-billing-grid">
         <div><span className="stat-label">Tenant técnico</span><strong>{tenantReady ? 'id=6 · válido' : snapshot?.tenant === null ? 'id=6 · backend valida' : 'No validado'}</strong></div>
         <div><span className="stat-label">Proveedor</span><strong>{provider ? `${provider.codigo} · ${provider.entorno}` : 'Sin consultar'}</strong><small>{provider?.activo ? 'Activo global' : 'Global deshabilitado (correcto)'}</small></div>
-        <div><span className="stat-label">Precio externo</span><strong>{price ? `${formatMoney(price.importe, price.moneda)} / ${price.periodicidad === 'yearly' ? 'año' : 'mes'}` : 'ARS 15.000 / mes'}</strong><small>{price?.habilitado && price.external_plan_id ? `Habilitado · ${price.external_plan_id}` : 'Pendiente de sincronizar'}</small></div>
+        <div><span className="stat-label">Precio externo</span><strong>{price ? `${formatMoney(price.importe, price.moneda)} / ${price.periodicidad === 'yearly' ? 'año' : 'mes'}` : SANDBOX_PRICE_LABEL}</strong><small>{price?.habilitado && price.external_plan_id ? `Habilitado · ${price.external_plan_id}` : 'Pendiente de sincronizar'}</small></div>
         <div><span className="stat-label">Producción</span><strong>{config?.production_enabled === false ? 'Bloqueada' : 'No validada'}</strong><small>{config?.token_kind === 'test' && config?.sandbox_token_valid ? 'Token TEST- válido (valor oculto)' : 'Token no validado'}</small></div>
       </div>
 
