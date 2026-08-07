@@ -11,8 +11,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint .",
-    "test": "node scripts/verify-agenda.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-commercial-prep.mjs && node scripts/verify-crm-commercial.mjs",
+    "lint": "eslint \"src/**/*.{js,jsx}\" \"scripts/**/*.mjs\" \"e2e/**/*.mjs\" vite.config.js eslint.config.js playwright.config.mjs",
+    "test": "node scripts/verify-agenda.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-commercial-prep.mjs && node scripts/verify-crm-commercial.mjs && node scripts/verify-commercial-pilot.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "e2e:cleanup": "node scripts/e2e-cleanup.mjs",
     "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
@@ -24,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@vitejs/plugin-react": "^6.0.5",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",

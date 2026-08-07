@@ -9,10 +9,15 @@ import PasswordRecovery from './pages/PasswordRecovery.jsx'
 import AccountSecurity from './pages/AccountSecurity.jsx'
 import InvitationPage from './pages/InvitationPage.jsx'
 import Landing from './pages/Landing.jsx'
+import DemoWorkspace from './pages/DemoWorkspace.jsx'
 import Login, { logout } from './components/Login.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
+import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
 import './index.css'
+
+installGlobalObservability()
 
 // Pantalla chica y centrada para los estados intermedios (cargando la
 // barberia, error, o el selector cuando el usuario pertenece a mas de una).
@@ -233,14 +238,19 @@ const path = window.location.pathname
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
+    <ErrorBoundary>
     {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} />
       : invitationMatch ? <InvitationPage token={decodeURIComponent(invitationMatch[1])} />
         : path === '/ingresar' ? <Login businessName="Austral Automatizaciones" onSuccess={() => window.location.assign('/')} />
           : verticalMatch ? <Landing vertical={decodeURIComponent(verticalMatch[1])} />
         : path === '/registro' ? <Signup />
+        : path === '/demo' ? <DemoWorkspace />
         : path === '/onboarding' ? <OnboardingWizard />
-          : path === '/recuperar' ? <PasswordRecovery />
-            : path === '/cuenta' ? <AccountSecurity />
+            : path === '/recuperar' ? <PasswordRecovery />
+              : path === '/cuenta' ? <AccountSecurity />
               : <Root />}
+    </ErrorBoundary>
   </React.StrictMode>
 )
+
+trackClientEvent('route_view', { route: path })
