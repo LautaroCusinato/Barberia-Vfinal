@@ -52,6 +52,21 @@ Deno.serve(async (request) => {
         checkoutAttempt = (await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('id', Number(match[1])).eq('proveedor_codigo', provider).maybeSingle()).data
       }
     }
+    // A Mercado Pago hosted subscription checkout is generated from the
+    // external plan URL, so the provider resource may not echo the per-attempt
+    // billing reference. In the isolated sandbox we can safely resolve the
+    // plan back to the single technical tenant without trusting webhook input
+    // as a tenant selector. Production tenants never use this fallback.
+    if (!checkoutAttempt && provider === 'mercadopago') {
+      const verifiedResource = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
+      const planId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
+      if (planId) {
+        const { data: price } = await admin.from('saas_plan_precios').select('id, plan_codigo').eq('external_plan_id', planId).eq('proveedor_codigo', 'mercadopago').eq('entorno', 'sandbox').eq('activo', true).maybeSingle()
+        if (price) {
+          checkoutAttempt = (await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('barberia_id', 6).eq('plan_codigo', price.plan_codigo).eq('proveedor_codigo', provider).in('estado', ['ready', 'pending_provider', 'created']).order('created_at', { ascending: false }).limit(1).maybeSingle()).data
+        }
+      }
+    }
     const context = externalSubscription || checkoutAttempt
     if (!context?.suscripcion_id || !context?.barberia_id) {
       await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'external_subscription_unlinked', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
