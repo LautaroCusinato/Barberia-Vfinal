@@ -36,6 +36,13 @@ function formatMoney(value, currency) {
   }
 }
 
+function normalizeCountryCode(value) {
+  const raw = String(value || '').trim().toUpperCase()
+  if (/^[A-Z]{2}$/.test(raw)) return raw
+  const aliases = { ARGENTINA: 'AR', BRASIL: 'BR', BRAZIL: 'BR', CHILE: 'CL', MEXICO: 'MX', 'MÉXICO': 'MX', URUGUAY: 'UY' }
+  return aliases[raw] || 'GLOBAL'
+}
+
 async function billingApi(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) throw new Error('Tu sesión expiró. Volvé a iniciar sesión.')
@@ -78,6 +85,15 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const plan = subscription?.plan
   const providers = useMemo(() => portal?.providers || [], [portal])
   const selectedProvider = providers.find((item) => item.codigo === provider)
+  const tenantCountry = normalizeCountryCode(portal?.tenant?.pais)
+  const findExternalPrice = (item) => {
+    const prices = (item?.precios_externos || []).filter((price) => price.proveedor_codigo === provider && price.activo !== false && (!selectedProvider?.entorno || price.entorno === selectedProvider.entorno))
+    return prices.sort((left, right) => {
+      const leftExact = left.pais_codigo === tenantCountry ? 0 : 1
+      const rightExact = right.pais_codigo === tenantCountry ? 0 : 1
+      return leftExact - rightExact
+    })[0] || null
+  }
 
   const startCheckout = async (planCode) => {
     if (!isSupabaseConfigured) return
@@ -136,7 +152,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
 
       <section className="panel billing-plans-panel">
         <div className="panel-header"><div><h2 className="panel-title">Cambiar de plan</h2><p className="panel-subtitle">El precio se toma de Supabase; no se acepta desde el cliente.</p></div></div>
-        <div className="billing-plans-grid">{catalog.map((item) => <article className={`billing-plan ${item.codigo === subscription?.plan_codigo ? 'current' : ''}`} key={item.codigo}><div className="billing-plan-heading"><h3>{item.nombre}</h3>{item.codigo === subscription?.plan_codigo && <span className="status-pill">Actual</span>}</div><p className="billing-plan-description">{item.descripcion}</p><p className="billing-plan-price">{formatMoney(item.precio_mensual, item.moneda)} <small>/ mes</small></p><ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul><button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo} onClick={() => startCheckout(item.codigo)}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : saving ? 'Preparando…' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button></article>)}</div>
+        <div className="billing-plans-grid">{catalog.map((item) => { const externalPrice = findExternalPrice(item); return <article className={`billing-plan ${item.codigo === subscription?.plan_codigo ? 'current' : ''}`} key={item.codigo}><div className="billing-plan-heading"><h3>{item.nombre}</h3>{item.codigo === subscription?.plan_codigo && <span className="status-pill">Actual</span>}</div><p className="billing-plan-description">{item.descripcion}</p><p className="billing-plan-price">{formatMoney(externalPrice?.importe ?? item.precio_mensual, externalPrice?.moneda || item.moneda)} <small>/ {externalPrice?.periodicidad === 'yearly' ? 'año' : 'mes'}{externalPrice ? ` · ${externalPrice.pais_codigo}` : ' · precio no configurado'}</small></p><ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul><button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice} onClick={() => startCheckout(item.codigo)}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button></article> })}</div>
       </section>
 
       <section className="billing-history-grid">

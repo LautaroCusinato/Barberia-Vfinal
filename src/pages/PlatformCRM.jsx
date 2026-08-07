@@ -28,6 +28,8 @@ const SANDBOX_BILLING_MESSAGES = {
   production_provider_disabled: 'Mercado Pago de producción permanece bloqueado.',
   sandbox_scope_required: 'La operación sólo está permitida para el tenant sandbox técnico.',
   plan_mapping_missing: 'Falta el mapeo del plan starter en Supabase.',
+  external_price_not_configured: 'No hay un precio externo configurado para ese proveedor y país.',
+  external_price_persist_failed: 'No se pudo guardar el precio externo sincronizado.',
   plan_not_found: 'El plan starter no existe o está inactivo.',
   checkout_intent_failed: 'No se pudo preparar el intento de checkout sandbox.',
   checkout_persist_failed: 'El checkout se creó pero no se pudo registrar en Supabase.',
@@ -104,11 +106,16 @@ function formatDate(value) {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(value))
 }
 
+function formatMoney(value, currency) {
+  if (value == null) return 'Sin precio'
+  try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: currency || 'USD' }).format(Number(value)) } catch { return `${value} ${currency || ''}`.trim() }
+}
+
 function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarning, confirmAction, onAction }) {
   if (!['owner', 'admin'].includes(role)) return null
   const config = snapshot?.configStatus
   const provider = snapshot?.provider
-  const plan = snapshot?.plan
+  const price = snapshot?.price
   const checkout = snapshot?.checkout
   const external = snapshot?.externalStatus
   const tenantReady = snapshot?.tenant?.metadata?.environment === SANDBOX_BILLING.environment
@@ -149,7 +156,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       <div className="sandbox-billing-grid">
         <div><span className="stat-label">Tenant técnico</span><strong>{tenantReady ? 'id=6 · válido' : snapshot?.tenant === null ? 'id=6 · backend valida' : 'No validado'}</strong></div>
         <div><span className="stat-label">Proveedor</span><strong>{provider ? `${provider.codigo} · ${provider.entorno}` : 'Sin consultar'}</strong><small>{provider?.activo ? 'Activo global' : 'Global deshabilitado (correcto)'}</small></div>
-        <div><span className="stat-label">Plan externo</span><strong>{plan?.habilitado && plan.external_plan_id ? 'Habilitado' : 'Pendiente'}</strong><small>{plan?.external_plan_id || 'Sin external_plan_id'}</small></div>
+        <div><span className="stat-label">Precio externo</span><strong>{price ? `${formatMoney(price.importe, price.moneda)} / ${price.periodicidad === 'yearly' ? 'año' : 'mes'}` : 'ARS 15.000 / mes'}</strong><small>{price?.habilitado && price.external_plan_id ? `Habilitado · ${price.external_plan_id}` : 'Pendiente de sincronizar'}</small></div>
         <div><span className="stat-label">Producción</span><strong>{config?.production_enabled === false ? 'Bloqueada' : 'No validada'}</strong><small>{config?.token_kind === 'test' && config?.sandbox_token_valid ? 'Token TEST- válido (valor oculto)' : 'Token no validado'}</small></div>
       </div>
 
@@ -178,7 +185,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [form, setForm] = useState(emptyBusiness)
   const [view, setView] = useState('businesses')
   const [billingOverview, setBillingOverview] = useState(null)
-  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, provider: null, plan: null, checkout: null, configStatus: null, externalStatus: null })
+  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null })
   const [sandboxBusy, setSandboxBusy] = useState(false)
   const [sandboxError, setSandboxError] = useState('')
   const [sandboxNotice, setSandboxNotice] = useState('')
@@ -188,10 +195,11 @@ export default function PlatformCRM({ role = 'owner' }) {
 
   const loadSandboxSnapshot = useCallback(async () => {
     if (!['owner', 'admin'].includes(role)) return
-    const [tenantResult, providerResult, planResult, checkoutResult] = await Promise.all([
+    const [tenantResult, providerResult, planResult, priceResult, checkoutResult] = await Promise.all([
       supabase.from('barberias').select('id, metadata').eq('id', SANDBOX_BILLING.tenantId).maybeSingle(),
       supabase.from('saas_proveedores_pago').select('codigo, activo, entorno').eq('codigo', SANDBOX_BILLING.provider).maybeSingle(),
       supabase.from('saas_plan_proveedores').select('plan_codigo, external_plan_id, external_product_id, habilitado, metadata').eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).maybeSingle(),
+      supabase.from('saas_plan_precios').select('id, plan_codigo, proveedor_codigo, pais_codigo, moneda, importe, periodicidad, entorno, external_plan_id, external_product_id, habilitado, activo').eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).eq('pais_codigo', 'AR').eq('entorno', 'sandbox').maybeSingle(),
       supabase.from('saas_billing_checkout_attempts').select('id, barberia_id, plan_codigo, proveedor_codigo, estado, checkout_url, external_checkout_id, created_at, updated_at').eq('barberia_id', SANDBOX_BILLING.tenantId).eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     setSandboxSnapshot((current) => ({
@@ -199,6 +207,7 @@ export default function PlatformCRM({ role = 'owner' }) {
       tenant: tenantResult.data || null,
       provider: providerResult.data || null,
       plan: planResult.data || null,
+      price: priceResult.data || null,
       checkout: checkoutResult.data || null,
     }))
   }, [role])
@@ -252,7 +261,7 @@ export default function PlatformCRM({ role = 'owner' }) {
         auditMetadata.production_enabled = Boolean(data?.production_enabled)
         setSandboxNotice('Config-status consultado sin exponer secretos.')
       } else if (action === 'sync-plans') {
-        const data = await sandboxBillingApi('sync-plans', { method: 'POST', body: { proveedor_codigo: SANDBOX_BILLING.provider, plan_codigo: SANDBOX_BILLING.planCode } })
+        const data = await sandboxBillingApi('sync-plans', { method: 'POST', body: { tenant_id: SANDBOX_BILLING.tenantId, proveedor_codigo: SANDBOX_BILLING.provider, plan_codigo: SANDBOX_BILLING.planCode } })
         auditMetadata.result = data?.results?.[0]?.status || 'unknown'
         setSandboxNotice('El plan starter fue sincronizado en sandbox.')
         await loadSandboxSnapshot()

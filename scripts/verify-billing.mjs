@@ -15,9 +15,15 @@ const authMigration = read('supabase/migrations/20260807060000_billing_authoriza
 const authNullMigration = read('supabase/migrations/20260807061000_billing_auth_null_safety.sql')
 const authBooleanMigration = read('supabase/migrations/20260807062000_billing_auth_boolean_safety.sql')
 const authPrivilegesMigration = read('supabase/migrations/20260807063000_billing_helper_privileges.sql')
+const externalPricesMigration = read('supabase/migrations/20260807113000_billing_external_prices.sql')
+const priceAwareRpcMigration = read('supabase/migrations/20260807114000_billing_price_aware_rpc.sql')
 for (const table of ['saas_proveedores_pago', 'saas_plan_proveedores', 'saas_billing_customers', 'saas_suscripciones_externas', 'saas_billing_checkout_attempts', 'saas_billing_payments', 'saas_billing_invoices', 'saas_billing_refunds', 'saas_billing_webhook_events', 'saas_billing_state_history', 'saas_billing_events']) {
   assert.match(migration, new RegExp(`create table if not exists public\\.${table}`), `falta tabla ${table}`)
 }
+assert.match(externalPricesMigration, /create table if not exists public\.saas_plan_precios/)
+assert.match(externalPricesMigration, /'AR', 'ARS', 15000/)
+assert.match(priceAwareRpcMigration, /create_billing_checkout_intent_with_price/)
+assert.match(priceAwareRpcMigration, /'precios_externos'/)
 for (const state of ['trialing', 'active', 'past_due', 'grace_period', 'suspended', 'canceled', 'incomplete', 'payment_review', 'refunded']) assert.match(migration, new RegExp(`'${state}'`), `falta estado ${state}`)
 for (const functionName of ['get_billing_catalog', 'get_billing_portal', 'create_billing_checkout_intent', 'transition_saas_subscription', 'expire_saas_trials', 'record_billing_webhook_event', 'get_platform_billing_overview']) assert.match(migration, new RegExp(`function public\\.${functionName}`), `falta RPC ${functionName}`)
 assert.match(migration, /alter table public\.saas_billing_webhook_events enable row level security/)
