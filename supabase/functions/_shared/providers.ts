@@ -10,7 +10,7 @@ export class ProviderNotConfigured extends Error {
 }
 
 export class ProviderError extends Error {
-  constructor(message: string, public status = 502, public code = 'provider_error') { super(message) }
+  constructor(message: string, public status = 502, public code = 'provider_error', public providerCode: string | null = null, public providerDetail: string | null = null) { super(message) }
 }
 
 function requireEnv(provider: string, names: string[]) {
@@ -51,7 +51,12 @@ function requiredEnv(provider: ProviderCode, capability: ProviderCapability = 'a
 
 async function responseJson(response: Response, provider: string) {
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new ProviderError(body?.message || `Respuesta ${response.status} de ${provider}.`, response.status)
+  if (!response.ok) {
+    const cause = Array.isArray(body?.cause) ? body.cause[0] : null
+    const providerCode = String(body?.error || body?.code || cause?.code || '').trim().slice(0, 120) || null
+    const providerDetail = String(body?.message || '').replace(/(?:TEST|APP_USR)-[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 180) || null
+    throw new ProviderError(body?.message || `Respuesta ${response.status} de ${provider}.`, response.status, 'provider_error', providerCode, providerDetail)
+  }
   return body
 }
 
@@ -78,10 +83,10 @@ export async function mercadoPago(input: { externalPlanId?: string | null; email
   return { externalId: bodyJson.id || null, checkoutUrl: bodyJson.init_point || bodyJson.sandbox_init_point || null, kind: input.externalPlanId ? 'subscription' : 'preference' }
 }
 
-export async function syncMercadoPagoPlan(input: { name: string; description?: string | null; amount: number; currency: string; periodicity: string; externalReference: string; idempotencyKey: string }) {
+export async function syncMercadoPagoPlan(input: { name: string; description?: string | null; amount: number; currency: string; periodicity: string; externalReference: string; backUrl: string; idempotencyKey: string }) {
   const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
-  const response = await fetch(`${base}/preapproval_plan`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': input.idempotencyKey }, body: JSON.stringify({ reason: input.name, external_reference: input.externalReference, auto_recurring: { frequency: input.periodicity === 'yearly' ? 12 : 1, frequency_type: 'months', transaction_amount: input.amount, currency_id: input.currency } }) })
+  const response = await fetch(`${base}/preapproval_plan`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': input.idempotencyKey }, body: JSON.stringify({ reason: input.name, external_reference: input.externalReference, back_url: input.backUrl, auto_recurring: { frequency: input.periodicity === 'yearly' ? 12 : 1, frequency_type: 'months', transaction_amount: input.amount, currency_id: input.currency } }) })
   const body = await responseJson(response, 'Mercado Pago')
   return { externalPlanId: body.id || null, externalProductId: null }
 }

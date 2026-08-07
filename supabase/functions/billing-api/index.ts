@@ -110,13 +110,15 @@ async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>
   if (!providerRow.activo && provider !== 'mercadopago') throw Object.assign(new Error('El proveedor está deshabilitado.'), { status: 409, code: 'provider_disabled' })
   const { data: plans } = await admin.from('saas_planes').select('codigo, nombre, descripcion, precio_mensual, moneda, periodicidad').eq('codigo', planCode).eq('activo', true).limit(1)
   if (!plans?.length) throw Object.assign(new Error('El plan solicitado no existe o está inactivo.'), { status: 404, code: 'plan_not_found' })
+  const baseUrl = String(Deno.env.get('APP_BASE_URL') || '').trim().replace(/\/$/, '')
+  if (!/^https:\/\//i.test(baseUrl)) throw Object.assign(new Error('Falta APP_BASE_URL HTTPS para sincronizar el plan.'), { status: 503, code: 'app_base_url_not_configured' })
   const results = []
   for (const plan of plans || []) {
     const { data: mapping, error: mappingError } = await admin.from('saas_plan_proveedores').select('id, external_plan_id, external_product_id, habilitado').eq('plan_codigo', plan.codigo).eq('proveedor_codigo', provider).single()
     if (mappingError || !mapping) throw Object.assign(new Error('Falta el mapeo interno del plan.'), { status: 502, code: 'plan_mapping_missing' })
     if (mapping?.external_plan_id && mapping.habilitado) { results.push({ plan: plan.codigo, status: 'already_synced' }); continue }
     const result = provider === 'mercadopago'
-      ? await syncMercadoPagoPlan({ name: plan.nombre, description: plan.descripcion, amount: Number(plan.precio_mensual), currency: plan.moneda, periodicity: plan.periodicidad, externalReference: `plan-${plan.codigo}`, idempotencyKey: `mp-plan:${plan.codigo}` })
+      ? await syncMercadoPagoPlan({ name: plan.nombre, description: plan.descripcion, amount: Number(plan.precio_mensual), currency: plan.moneda, periodicity: plan.periodicidad, externalReference: `plan-${plan.codigo}`, backUrl: `${baseUrl}/facturacion?billing=success`, idempotencyKey: `mp-plan:${plan.codigo}` })
       : await syncPayPalPlan({ name: plan.nombre, description: plan.descripcion, amount: Number(plan.precio_mensual), currency: plan.moneda, periodicity: plan.periodicidad, externalProductId: mapping?.external_product_id })
     const { error: mappingUpdateError } = await admin.from('saas_plan_proveedores').update({ external_plan_id: result.externalPlanId, external_product_id: result.externalProductId, habilitado: Boolean(result.externalPlanId), metadata: { synced_at: new Date().toISOString(), environment: 'sandbox' } }).eq('id', mapping.id)
     if (mappingUpdateError) throw Object.assign(new Error('No se pudo guardar la sincronización del plan.'), { status: 502, code: 'plan_mapping_persist_failed' })
@@ -234,7 +236,7 @@ Deno.serve(async (request) => {
     if (request.method === 'POST' && route === 'reconcile') return await reconcile(admin, user.id, body)
     return errorJson('Ruta de billing inexistente.', 404, 'route_not_found')
   } catch (error) {
-    console.error(JSON.stringify({ correlation_id: correlationId, code: error?.code || 'billing_api_error' }))
+    console.error(JSON.stringify({ correlation_id: correlationId, code: error?.code || 'billing_api_error', provider_status: Number.isSafeInteger(error?.status) ? error.status : null, provider_code: error?.providerCode || null, provider_detail: error?.providerDetail || null }))
     return errorJson(error?.message || 'Error temporal de billing.', error?.status || 500, error?.code || 'billing_api_error')
   }
 })
