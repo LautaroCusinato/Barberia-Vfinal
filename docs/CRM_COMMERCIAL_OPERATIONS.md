@@ -39,9 +39,9 @@ Las migraciones `20260807050000_crm_commercial_operations.sql`, `20260807051000_
 
 El proceso manual para los primeros cinco leads reales es: registrar fuente y base legal, país/idioma/rubro/url/canal, necesidad observada y evidencia; crear el lead en `discovered`, verificar DNC y deduplicación, completar investigación y score, pasar a `qualified` sólo tras revisión y dejar todos los mensajes en `pending_approval`. No se envía nada hasta una autorización explícita y una prueba sandbox separada.
 
-### Hallazgo fuera del alcance
+### Hardening de billing posterior
 
-La prueba transaccional de permisos confirmó que `sales` puede invocar el RPC de intención de checkout porque `billing_can_view` considera a cualquier miembro de plataforma como lector de billing. La operación de prueba fue eliminada y no modificó pagos ni suscripciones. No se corrigió en esta etapa porque el alcance prohíbe alterar billing; antes de habilitar ventas reales se debe restringir la creación de checkout a `owner`/`admin` o a un rol comercial explícito con autorización separada.
+El riesgo de checkout para `sales` quedó corregido en las migraciones `20260807060000_billing_authorization_hardening.sql`, `20260807061000_billing_auth_null_safety.sql` y `20260807062000_billing_auth_boolean_safety.sql`. La matriz transaccional confirmó que `owner` de tenant sólo puede iniciar su propio checkout, `owner`/`admin` de plataforma pueden operar cualquier tenant, y `sales`, `support`, `readonly`, usuarios de otros tenants y usuarios sin membresía no pueden crear checkouts ni modificar suscripciones. La lectura comercial de `sales` devuelve únicamente datos de plan/suscripción, sin pagos, comprobantes ni email de billing.
 
 ## Rollback lógico
 
