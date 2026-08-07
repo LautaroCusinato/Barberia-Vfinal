@@ -1,14 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
-import PublicBooking from './pages/PublicBooking.jsx'
-import PlatformCRM from './pages/PlatformCRM.jsx'
-import Signup from './pages/Signup.jsx'
-import OnboardingWizard from './pages/OnboardingWizard.jsx'
-import PasswordRecovery from './pages/PasswordRecovery.jsx'
-import AccountSecurity from './pages/AccountSecurity.jsx'
-import InvitationPage from './pages/InvitationPage.jsx'
-import Landing from './pages/Landing.jsx'
 import DemoWorkspace from './pages/DemoWorkspace.jsx'
 import Login, { logout } from './components/Login.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
@@ -16,6 +8,15 @@ import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './li
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
 import './index.css'
+
+const PublicBooking = lazy(() => import('./pages/PublicBooking.jsx'))
+const PlatformCRM = lazy(() => import('./pages/PlatformCRM.jsx'))
+const Signup = lazy(() => import('./pages/Signup.jsx'))
+const OnboardingWizard = lazy(() => import('./pages/OnboardingWizard.jsx'))
+const PasswordRecovery = lazy(() => import('./pages/PasswordRecovery.jsx'))
+const AccountSecurity = lazy(() => import('./pages/AccountSecurity.jsx'))
+const InvitationPage = lazy(() => import('./pages/InvitationPage.jsx'))
+const Landing = lazy(() => import('./pages/Landing.jsx'))
 
 installGlobalObservability()
 
@@ -82,6 +83,10 @@ function SinBarberia() {
       <button className="btn" onClick={() => logout()}>Cerrar sesión</button>
     </EstadoCentrado>
   )
+}
+
+function RouteLoading() {
+  return <main className="route-loading" role="status" aria-live="polite"><div className="skeleton" /><span>Cargando pantalla…</span></main>
 }
 
 const CACHE_KEY = 'barberia-activa'
@@ -239,6 +244,7 @@ const path = window.location.pathname
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
+    <Suspense fallback={<RouteLoading />}>
     {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} />
       : invitationMatch ? <InvitationPage token={decodeURIComponent(invitationMatch[1])} />
         : path === '/ingresar' ? <Login businessName="Austral Automatizaciones" onSuccess={() => window.location.assign('/')} />
@@ -249,6 +255,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             : path === '/recuperar' ? <PasswordRecovery />
               : path === '/cuenta' ? <AccountSecurity />
               : <Root />}
+    </Suspense>
     </ErrorBoundary>
   </React.StrictMode>
 )
