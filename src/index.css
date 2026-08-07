@@ -5078,6 +5078,17 @@ input.client-search-input {
 .billing-empty { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 180px; color: var(--ink-faint); }
 .billing-status-past_due, .billing-status-grace_period, .billing-status-payment_review { background: var(--amber-soft); color: var(--amber-text); }
 .billing-status-suspended, .billing-status-canceled, .billing-status-refunded, .billing-status-expired { background: var(--rose-soft); color: var(--rose); }
+.sandbox-billing-console { border-color: color-mix(in srgb, var(--amber) 38%, var(--border)); background: color-mix(in srgb, var(--amber-soft) 30%, var(--surface)); margin-bottom: 14px; }
+.sandbox-billing-console .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 14px; }
+.sandbox-billing-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.sandbox-billing-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.sandbox-billing-grid > div, .sandbox-billing-details > div { display: grid; gap: 4px; min-width: 0; padding: 10px; border-radius: var(--radius-sm); background: var(--surface-muted); }
+.sandbox-billing-grid strong, .sandbox-billing-details strong { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.sandbox-billing-grid small { color: var(--ink-faint); font-size: 10px; overflow-wrap: anywhere; }
+.sandbox-billing-details { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.sandbox-billing-details span, .sandbox-checkout-url > span { color: var(--ink-faint); font-size: 10px; }
+.sandbox-checkout-url { display: grid; gap: 4px; margin-top: 12px; padding: 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.sandbox-checkout-url a { color: var(--accent-strong); font-size: 12px; overflow-wrap: anywhere; }
 
 .settings-page { max-width: 1180px; margin: 0 auto; }
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -5173,6 +5184,9 @@ input.client-search-input {
   .crm-search { width: 100%; min-width: 0; }
   .platform-crm-form { padding: 1rem; }
   .billing-summary-grid, .billing-history-grid { grid-template-columns: 1fr; }
+  .sandbox-billing-console .panel-header { flex-direction: column; }
+  .sandbox-billing-actions .btn { width: 100%; justify-content: center; }
+  .sandbox-billing-grid, .sandbox-billing-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .billing-facts { grid-template-columns: 1fr; }
   .billing-history-row { grid-template-columns: 1fr auto; }
   .billing-history-row small { text-align: left; }

@@ -1,13 +1,77 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bell, BriefcaseBusiness, Bot, CheckSquare, CreditCard, LogOut, Plus, RefreshCw, Search, UsersRound, X } from 'lucide-react'
 import { logout } from '../components/Login.jsx'
-import { supabase } from '../lib/supabaseClient'
+import { supabase, supabaseUrl } from '../lib/supabaseClient'
 import CommercialAgent from './CommercialAgent.jsx'
 import CRMLeadsWorkspace from '../components/CRMLeadsWorkspace.jsx'
 import CRMActionInbox from '../components/CRMActionInbox.jsx'
 import CommercialPilot from './CommercialPilot.jsx'
 
 const STAGES = ['discovered', 'qualified', 'contacted', 'replied', 'interested', 'demo', 'trial', 'negotiating', 'won', 'lost', 'do_not_contact']
+
+// This console is deliberately fixed to the isolated technical tenant. Do
+// not turn these values into user-controlled inputs: the Edge Function also
+// validates the sandbox metadata and platform role on every request.
+const SANDBOX_BILLING = Object.freeze({
+  tenantId: 6,
+  planCode: 'starter',
+  provider: 'mercadopago',
+  environment: 'sandbox',
+})
+
+const SANDBOX_BILLING_MESSAGES = {
+  auth_required: 'La sesión expiró. Volvé a iniciar sesión.',
+  invalid_session: 'La sesión no es válida. Volvé a iniciar sesión.',
+  platform_admin_required: 'Sólo owner/admin de plataforma puede usar este control.',
+  provider_not_configured: 'Faltan variables privadas de Mercado Pago sandbox.',
+  non_sandbox_access_token: 'El Access Token no es TEST- o el entorno no es sandbox.',
+  production_provider_disabled: 'Mercado Pago de producción permanece bloqueado.',
+  sandbox_scope_required: 'La operación sólo está permitida para el tenant sandbox técnico.',
+  plan_mapping_missing: 'Falta el mapeo del plan starter en Supabase.',
+  plan_not_found: 'El plan starter no existe o está inactivo.',
+  checkout_intent_failed: 'No se pudo preparar el intento de checkout sandbox.',
+  checkout_persist_failed: 'El checkout se creó pero no se pudo registrar en Supabase.',
+  approval_url_missing: 'Mercado Pago no devolvió una URL de checkout.',
+  external_status_failed: 'No se pudo consultar el estado externo del checkout.',
+}
+
+function sanitizeSandboxError(error, fallback = 'No se pudo completar la operación sandbox.') {
+  const code = String(error?.code || '').trim()
+  return SANDBOX_BILLING_MESSAGES[code] || fallback
+}
+
+async function sandboxBillingApi(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw Object.assign(new Error(SANDBOX_BILLING_MESSAGES.auth_required), { code: 'auth_required' })
+  const response = await fetch(`${supabaseUrl}/functions/v1/billing-api/${path}`, {
+    method: options.method || 'GET',
+    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const code = payload?.error?.code || `http_${response.status}`
+    throw Object.assign(new Error(SANDBOX_BILLING_MESSAGES[code] || 'Error temporal de billing sandbox.'), { code })
+  }
+  return payload
+}
+
+async function auditSandboxAction(action, status, metadata = {}) {
+  const safeMetadata = {
+    tenant_id: SANDBOX_BILLING.tenantId,
+    plan_codigo: SANDBOX_BILLING.planCode,
+    proveedor_codigo: SANDBOX_BILLING.provider,
+    environment: SANDBOX_BILLING.environment,
+    status,
+    ...metadata,
+  }
+  const { error } = await supabase.rpc('record_billing_sandbox_audit', {
+    p_action: action,
+    p_status: status,
+    p_metadata: safeMetadata,
+  })
+  if (error) throw new Error('No se pudo registrar la auditoría de la operación sandbox.')
+}
 
 const emptyBusiness = {
   nombre: '',
@@ -34,6 +98,58 @@ function formatDate(value) {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(value))
 }
 
+function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarning, onAction }) {
+  if (!['owner', 'admin'].includes(role)) return null
+  const config = snapshot?.configStatus
+  const provider = snapshot?.provider
+  const plan = snapshot?.plan
+  const checkout = snapshot?.checkout
+  const external = snapshot?.externalStatus
+  const tenantReady = snapshot?.tenant?.metadata?.environment === SANDBOX_BILLING.environment
+    && snapshot?.tenant?.metadata?.technical === true
+
+  return (
+    <section className="panel sandbox-billing-console" aria-labelledby="sandbox-billing-title">
+      <div className="panel-header">
+        <div>
+          <p className="panel-kicker">Herramienta técnica</p>
+          <h2 className="panel-title" id="sandbox-billing-title">Mercado Pago · Sandbox</h2>
+          <p className="panel-subtitle">Operación fija para tenant técnico #{SANDBOX_BILLING.tenantId}, plan {SANDBOX_BILLING.planCode}. No modifica negocios reales ni habilita producción.</p>
+        </div>
+        <span className="status-pill">Sólo owner/admin</span>
+      </div>
+
+      {(error || auditWarning) && <div className="error-banner" role="alert">{error || auditWarning}</div>}
+      {notice && <div className="billing-notice" role="status">{notice}</div>}
+
+      <div className="sandbox-billing-actions">
+        <button type="button" className="btn" onClick={() => onAction('config-status')} disabled={busy}>Consultar config-status</button>
+        <button type="button" className="btn btn-primary" onClick={() => onAction('sync-plans')} disabled={busy}>Sincronizar starter</button>
+        <button type="button" className="btn btn-primary" onClick={() => onAction('checkout')} disabled={busy}>Generar checkout sandbox</button>
+        <button type="button" className="btn" onClick={() => onAction('external-status')} disabled={busy || !checkout?.id}>Consultar estado externo</button>
+      </div>
+
+      <div className="sandbox-billing-grid">
+        <div><span className="stat-label">Tenant técnico</span><strong>{tenantReady ? 'id=6 · válido' : 'No validado'}</strong></div>
+        <div><span className="stat-label">Proveedor</span><strong>{provider ? `${provider.codigo} · ${provider.entorno}` : 'Sin consultar'}</strong><small>{provider?.activo ? 'Activo global' : 'Global deshabilitado (correcto)'}</small></div>
+        <div><span className="stat-label">Plan externo</span><strong>{plan?.habilitado && plan.external_plan_id ? 'Habilitado' : 'Pendiente'}</strong><small>{plan?.external_plan_id || 'Sin external_plan_id'}</small></div>
+        <div><span className="stat-label">Producción</span><strong>{config?.production_enabled === false ? 'Bloqueada' : 'No validada'}</strong><small>{config?.token_kind === 'test' && config?.sandbox_token_valid ? 'Token TEST- válido (valor oculto)' : 'Token no validado'}</small></div>
+      </div>
+
+      <div className="sandbox-billing-details">
+        <div><span>Secretos configurados</span><strong>{config ? (config.token_configured && config.webhook_secret_configured ? 'Sí' : 'Incompletos') : 'Sin consultar'}</strong></div>
+        <div><span>Último checkout</span><strong>{checkout?.id ? `#${checkout.id} · ${checkout.estado}` : 'Todavía no existe'}</strong></div>
+        <div><span>Estado externo</span><strong>{external?.status || 'Sin consultar'}</strong></div>
+        <div><span>Suscripción</span><strong>No se activa por URL de retorno</strong></div>
+      </div>
+
+      {checkout?.checkout_url && <div className="sandbox-checkout-url"><span>checkout_url</span><a href={checkout.checkout_url} target="_blank" rel="noreferrer">{checkout.checkout_url}</a></div>}
+      {config?.missing_for_checkout?.length > 0 && <p className="panel-subtitle">Faltan para checkout: {config.missing_for_checkout.join(', ')}</p>}
+      {busy && <p className="panel-subtitle">Procesando operación sandbox…</p>}
+    </section>
+  )
+}
+
 export default function PlatformCRM({ role = 'owner' }) {
   const [businesses, setBusinesses] = useState([])
   const [leads, setLeads] = useState([])
@@ -45,7 +161,29 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [form, setForm] = useState(emptyBusiness)
   const [view, setView] = useState('businesses')
   const [billingOverview, setBillingOverview] = useState(null)
+  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, provider: null, plan: null, checkout: null, configStatus: null, externalStatus: null })
+  const [sandboxBusy, setSandboxBusy] = useState(false)
+  const [sandboxError, setSandboxError] = useState('')
+  const [sandboxNotice, setSandboxNotice] = useState('')
+  const [sandboxAuditWarning, setSandboxAuditWarning] = useState('')
   const canWrite = ['owner', 'admin', 'sales', 'automation'].includes(role)
+
+  const loadSandboxSnapshot = useCallback(async () => {
+    if (!['owner', 'admin'].includes(role)) return
+    const [tenantResult, providerResult, planResult, checkoutResult] = await Promise.all([
+      supabase.from('barberias').select('id, metadata').eq('id', SANDBOX_BILLING.tenantId).maybeSingle(),
+      supabase.from('saas_proveedores_pago').select('codigo, activo, entorno').eq('codigo', SANDBOX_BILLING.provider).maybeSingle(),
+      supabase.from('saas_plan_proveedores').select('plan_codigo, external_plan_id, external_product_id, habilitado, metadata').eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).maybeSingle(),
+      supabase.from('saas_billing_checkout_attempts').select('id, barberia_id, plan_codigo, proveedor_codigo, estado, checkout_url, external_checkout_id, created_at, updated_at').eq('barberia_id', SANDBOX_BILLING.tenantId).eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    setSandboxSnapshot((current) => ({
+      ...current,
+      tenant: tenantResult.data || null,
+      provider: providerResult.data || null,
+      plan: planResult.data || null,
+      checkout: checkoutResult.data || null,
+    }))
+  }, [role])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -61,10 +199,65 @@ export default function PlatformCRM({ role = 'owner' }) {
     setBusinesses(businessesResult.data || [])
     setLeads(leadsResult.data || [])
     setBillingOverview(billingResult.data || null)
+    await loadSandboxSnapshot()
     setLoading(false)
-  }, [role])
+  }, [loadSandboxSnapshot, role])
 
   useEffect(() => { load() }, [load])
+
+  const executeSandboxAction = async (action) => {
+    if (!['owner', 'admin'].includes(role)) return
+    if (action === 'sync-plans' && !window.confirm('Vas a sincronizar únicamente el plan starter en Mercado Pago sandbox. ¿Continuar?')) return
+    if (action === 'checkout' && !window.confirm('Vas a crear un checkout sandbox para el tenant técnico id=6. No se cobrará dinero real. ¿Continuar?')) return
+
+    setSandboxBusy(true)
+    setSandboxError('')
+    setSandboxNotice('')
+    setSandboxAuditWarning('')
+    let status = 'failed'
+    const auditMetadata = { action }
+    try {
+      if (action === 'config-status') {
+        const data = await sandboxBillingApi('config-status')
+        setSandboxSnapshot((current) => ({ ...current, configStatus: data }))
+        auditMetadata.token_kind = data?.token_kind || 'unknown'
+        auditMetadata.sandbox_token_valid = Boolean(data?.sandbox_token_valid)
+        auditMetadata.production_enabled = Boolean(data?.production_enabled)
+        setSandboxNotice('Config-status consultado sin exponer secretos.')
+      } else if (action === 'sync-plans') {
+        const data = await sandboxBillingApi('sync-plans', { method: 'POST', body: { proveedor_codigo: SANDBOX_BILLING.provider, plan_codigo: SANDBOX_BILLING.planCode } })
+        auditMetadata.result = data?.results?.[0]?.status || 'unknown'
+        setSandboxNotice('El plan starter fue sincronizado en sandbox.')
+        await loadSandboxSnapshot()
+      } else if (action === 'checkout') {
+        const data = await sandboxBillingApi('checkout', { method: 'POST', body: { tenant_id: SANDBOX_BILLING.tenantId, plan_codigo: SANDBOX_BILLING.planCode, proveedor_codigo: SANDBOX_BILLING.provider } })
+        auditMetadata.checkout_attempt_id = data?.checkout_attempt_id || null
+        auditMetadata.has_checkout_url = Boolean(data?.checkout_url)
+        auditMetadata.result = data?.status || 'unknown'
+        setSandboxNotice(data?.checkout_url ? 'Checkout sandbox creado. La suscripción no se activa por la URL de retorno.' : 'El checkout quedó preparado sin URL.')
+        await loadSandboxSnapshot()
+      } else if (action === 'external-status') {
+        const attemptId = sandboxSnapshot.checkout?.id
+        if (!attemptId) throw Object.assign(new Error('Todavía no existe un checkout sandbox.'), { code: 'external_status_failed' })
+        const data = await sandboxBillingApi('external-status', { method: 'POST', body: { tenant_id: SANDBOX_BILLING.tenantId, checkout_attempt_id: attemptId, proveedor_codigo: SANDBOX_BILLING.provider } })
+        auditMetadata.checkout_attempt_id = attemptId
+        auditMetadata.result = data?.status || 'unknown'
+        setSandboxSnapshot((current) => ({ ...current, externalStatus: data }))
+        setSandboxNotice('Estado externo consultado; ninguna suscripción fue activada.')
+      }
+      status = 'succeeded'
+    } catch (actionError) {
+      auditMetadata.error_code = actionError?.code || 'sandbox_action_failed'
+      setSandboxError(sanitizeSandboxError(actionError))
+    } finally {
+      try {
+        await auditSandboxAction(action, status, auditMetadata)
+      } catch {
+        setSandboxAuditWarning('La operación terminó, pero no se pudo registrar su auditoría.')
+      }
+      setSandboxBusy(false)
+    }
+  }
 
   const filteredBusinesses = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -181,14 +374,17 @@ export default function PlatformCRM({ role = 'owner' }) {
           <div className="stat-card"><span className="stat-label">Acciones vencidas</span><strong>{stats.nextActions}</strong></div>
         </section>
 
-        {view === 'pilot' ? <CommercialPilot /> : view === 'agent' ? <CommercialAgent /> : view === 'actions' ? <section className="panel platform-crm-panel"><CRMActionInbox role={role} /></section> : view === 'billing' ? <section className="panel platform-crm-panel">
-          <div className="panel-header"><div><h2 className="panel-title">Salud de las cuentas</h2><p className="panel-subtitle">Sólo lectura. Las transiciones se ejecutan por RPC y webhook verificado.</p></div></div>
-          {!billingOverview ? <div className="empty-state">No se pudo cargar el resumen de billing.</div> : <>
-            <div className="stats-grid platform-stats billing-platform-stats">{Object.entries(billingOverview.subscriptions_by_state || {}).map(([state, count]) => <div className="stat-card" key={state}><span className="stat-label">{stageLabel(state)}</span><strong>{count}</strong></div>)}</div>
-            <div className="table-scroll"><table className="table platform-table"><thead><tr><th>Negocio</th><th>Plan</th><th>Estado</th><th>Acceso</th><th>Trial</th><th>Periodo</th></tr></thead><tbody>{(billingOverview.tenants || []).map((tenant) => <tr key={tenant.barberia_id}><td><strong>{tenant.nombre}</strong></td><td>{tenant.plan_codigo}</td><td><span className="status-pill">{stageLabel(tenant.estado)}</span></td><td><span className="status-pill">{stageLabel(tenant.access_state)}</span></td><td>{formatDate(tenant.trial_ends_at)}</td><td>{formatDate(tenant.current_period_end)}</td></tr>)}</tbody></table></div>
-            <p className="panel-subtitle billing-platform-footnote">Webhooks pendientes: {billingOverview.pending_webhooks || 0} · Eventos internos pendientes: {billingOverview.pending_events || 0}</p>
-          </>}
-        </section> : view === 'leads' ? <section className="panel platform-crm-panel">
+        {view === 'pilot' ? <CommercialPilot /> : view === 'agent' ? <CommercialAgent /> : view === 'actions' ? <section className="panel platform-crm-panel"><CRMActionInbox role={role} /></section> : view === 'billing' ? <>
+          <section className="panel platform-crm-panel">
+            <div className="panel-header"><div><h2 className="panel-title">Salud de las cuentas</h2><p className="panel-subtitle">Sólo lectura. Las transiciones se ejecutan por RPC y webhook verificado.</p></div></div>
+            {!billingOverview ? <div className="empty-state">No se pudo cargar el resumen de billing.</div> : <>
+              <div className="stats-grid platform-stats billing-platform-stats">{Object.entries(billingOverview.subscriptions_by_state || {}).map(([state, count]) => <div className="stat-card" key={state}><span className="stat-label">{stageLabel(state)}</span><strong>{count}</strong></div>)}</div>
+              <div className="table-scroll"><table className="table platform-table"><thead><tr><th>Negocio</th><th>Plan</th><th>Estado</th><th>Acceso</th><th>Trial</th><th>Periodo</th></tr></thead><tbody>{(billingOverview.tenants || []).map((tenant) => <tr key={tenant.barberia_id}><td><strong>{tenant.nombre}</strong></td><td>{tenant.plan_codigo}</td><td><span className="status-pill">{stageLabel(tenant.estado)}</span></td><td><span className="status-pill">{stageLabel(tenant.access_state)}</span></td><td>{formatDate(tenant.trial_ends_at)}</td><td>{formatDate(tenant.current_period_end)}</td></tr>)}</tbody></table></div>
+              <p className="panel-subtitle billing-platform-footnote">Webhooks pendientes: {billingOverview.pending_webhooks || 0} · Eventos internos pendientes: {billingOverview.pending_events || 0}</p>
+            </>}
+          </section>
+          <SandboxBillingConsole role={role} snapshot={sandboxSnapshot} busy={sandboxBusy} error={sandboxError} notice={sandboxNotice} auditWarning={sandboxAuditWarning} onAction={executeSandboxAction} />
+        </> : view === 'leads' ? <section className="panel platform-crm-panel">
           <div className="panel-header"><div><h2 className="panel-title">Leads comerciales</h2><p className="panel-subtitle">Pipeline, scoring, seguimiento y exclusiones con auditoría. El CRM global sólo es visible para usuarios de plataforma.</p></div></div>
           <CRMLeadsWorkspace role={role} />
         </section> : <section className="panel platform-crm-panel">

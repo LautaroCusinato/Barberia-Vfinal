@@ -132,7 +132,10 @@ function providerStatus(provider: string, externalId: string, kind: 'checkout' |
 }
 
 async function externalStatus(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
-  const tenantId = await ownerTenant(admin, userId)
+  // Platform owners/admins may query the isolated technical sandbox tenant by
+  // passing tenant_id. Regular tenant owners keep the existing behaviour and
+  // can only query their own tenant.
+  const tenantId = await checkoutTenant(admin, userId, body)
   const requestedAttempt = body.checkout_attempt_id == null ? null : Number(body.checkout_attempt_id)
   if (requestedAttempt !== null && (!Number.isSafeInteger(requestedAttempt) || requestedAttempt <= 0)) throw Object.assign(new Error('Intento de checkout inválido.'), { status: 422, code: 'invalid_checkout_attempt' })
   const provider = body.proveedor_codigo ? String(body.proveedor_codigo).trim().toLowerCase() : null
