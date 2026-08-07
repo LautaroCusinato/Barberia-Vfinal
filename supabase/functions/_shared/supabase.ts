@@ -7,6 +7,21 @@ export function adminClient(): SupabaseClient {
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
 }
 
+/**
+ * Client used for RPCs that must evaluate the caller's auth.uid(). The
+ * service-role client intentionally has no end-user JWT context, so calling
+ * authorization-aware SECURITY DEFINER functions through it would reject a
+ * valid platform owner. The token is forwarded only in memory for this
+ * request and is never persisted or logged.
+ */
+export function requestClient(request: Request): SupabaseClient {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  const authorization = request.headers.get('Authorization') || ''
+  if (!url || !key || !authorization.startsWith('Bearer ')) throw Object.assign(new Error('Falta contexto de sesión.'), { status: 401, code: 'auth_required' })
+  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false }, global: { headers: { Authorization: authorization } } })
+}
+
 export async function authenticate(request: Request, admin: SupabaseClient): Promise<User> {
   const authorization = request.headers.get('Authorization') || ''
   if (!authorization.startsWith('Bearer ')) throw Object.assign(new Error('Autenticación requerida.'), { status: 401, code: 'auth_required' })

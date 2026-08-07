@@ -65,6 +65,20 @@ Deno.serve(async (request) => {
     const { error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: context.suscripcion_id, p_to_state: resource.normalizedStatus || normalizeStatus(provider as 'mercadopago' | 'paypal', resource.status), p_reason: `provider_event:${externalEventId}`, p_source: 'provider', p_provider_event_id: externalEventId, p_provider_event_at: minimal.updated_at || null })
     if (transitionError) throw Object.assign(new Error('No se pudo actualizar la suscripción.'), { status: 502, code: 'subscription_transition_failed' })
     const resourceType = String((resource as Record<string, unknown>).resourceType || (provider === 'paypal' ? 'payment' : 'preapproval'))
+    if (provider === 'mercadopago' && resourceType === 'preapproval' && checkoutAttempt?.suscripcion_id && resourceId) {
+      const { error: externalLinkError } = await admin.from('saas_suscripciones_externas').upsert({
+        suscripcion_id: checkoutAttempt.suscripcion_id,
+        barberia_id: checkoutAttempt.barberia_id,
+        proveedor_codigo: provider,
+        external_subscription_id: resourceId,
+        external_plan_id: checkoutAttempt.metadata?.external_plan_id || null,
+        estado_externo: resource.normalizedStatus || 'payment_review',
+        metadata: { source: 'verified_webhook', checkout_attempt_id: checkoutAttempt.id, environment: checkoutAttempt.metadata?.environment || 'sandbox' },
+      }, { onConflict: 'suscripcion_id,proveedor_codigo' })
+      if (externalLinkError) throw Object.assign(new Error('No se pudo vincular la suscripción externa.'), { status: 502, code: 'subscription_registration_failed' })
+      const { error: subscriptionLinkError } = await admin.from('saas_suscripciones').update({ provider, provider_subscription_id: resourceId }).eq('id', checkoutAttempt.suscripcion_id)
+      if (subscriptionLinkError) throw Object.assign(new Error('No se pudo vincular la suscripción interna.'), { status: 502, code: 'subscription_registration_failed' })
+    }
     if (resourceType === 'payment' && resourceId && resource.amount && resource.currency) {
       await admin.from('saas_billing_payments').upsert({ barberia_id: context.barberia_id, suscripcion_id: context.suscripcion_id, checkout_attempt_id: checkoutAttempt?.id || null, proveedor_codigo: provider, external_payment_id: resourceId, estado: resource.normalizedStatus === 'active' ? 'approved' : resource.normalizedStatus === 'past_due' ? 'failed' : 'review', amount: resource.amount, currency: resource.currency, paid_at: resource.normalizedStatus === 'active' ? new Date().toISOString() : null, metadata: { event_id: externalEventId, correlation_id: correlationId } }, { onConflict: 'proveedor_codigo,external_payment_id' })
     }

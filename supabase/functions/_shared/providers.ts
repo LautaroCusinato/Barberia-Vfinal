@@ -77,6 +77,14 @@ export async function mercadoPago(input: { externalPlanId?: string | null; email
   const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(input.idempotencyKey ? { 'X-Idempotency-Key': input.idempotencyKey } : {}) }
+  // A subscription associated with a plan must be created with a
+  // card_token_id. The hosted plan checkout is the safe sandbox entry point:
+  // Mercado Pago collects/tokenizes the buyer's test card and then emits the
+  // verified preapproval webhook. Never fabricate a card token server-side.
+  if (input.externalPlanId) {
+    const plan = await responseJson(await fetch(`${base}/preapproval_plan/${encodeURIComponent(input.externalPlanId)}`, { headers }), 'Mercado Pago')
+    return { externalId: null, checkoutUrl: plan.sandbox_init_point || plan.init_point || null, kind: 'subscription_plan' }
+  }
   const body = input.externalPlanId ? { preapproval_plan_id: input.externalPlanId, reason: input.planName, external_reference: input.tenantReference, payer_email: input.email || undefined, back_url: input.successUrl, status: 'pending' } : { external_reference: input.tenantReference, items: [{ title: input.planName, quantity: 1, unit_price: input.amount, currency_id: input.currency }], back_urls: { success: input.successUrl, failure: input.cancelUrl, pending: input.successUrl }, auto_return: 'approved', notification_url: input.webhookUrl }
   const path = input.externalPlanId ? '/preapproval' : '/checkout/preferences'
   const bodyJson = await responseJson(await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) }), 'Mercado Pago')

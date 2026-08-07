@@ -151,13 +151,13 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <button type="button" className="btn" onClick={() => onAction('config-status')} disabled={busy || Boolean(confirmAction)}>Consultar config-status</button>
         <button type="button" className="btn btn-primary" onClick={() => onAction('sync-plans')} disabled={busy || Boolean(confirmAction)}>Sincronizar starter</button>
         <button type="button" className="btn btn-primary" onClick={() => onAction('checkout')} disabled={busy || Boolean(confirmAction)}>Generar checkout sandbox</button>
-        <button type="button" className="btn" onClick={() => onAction('external-status')} disabled={busy || Boolean(confirmAction) || !checkout?.id}>Consultar estado externo</button>
+        <button type="button" className="btn" onClick={() => onAction('external-status')} disabled={busy || Boolean(confirmAction) || !checkout?.external_checkout_id}>Consultar estado externo</button>
       </div>
 
       <div className="sandbox-billing-grid">
         <div><span className="stat-label">Tenant técnico</span><strong>{tenantReady ? 'id=6 · válido' : snapshot?.tenant === null ? 'id=6 · backend valida' : 'No validado'}</strong></div>
         <div><span className="stat-label">Proveedor</span><strong>{provider ? `${provider.codigo} · ${provider.entorno}` : 'Sin consultar'}</strong><small>{provider?.activo ? 'Activo global' : 'Global deshabilitado (correcto)'}</small></div>
-        <div><span className="stat-label">Precio externo</span><strong>{price ? `${formatMoney(price.importe, price.moneda)} / ${price.periodicidad === 'yearly' ? 'año' : 'mes'}` : SANDBOX_PRICE_LABEL}</strong><small>{price?.habilitado && price.external_plan_id ? `Habilitado · ${price.external_plan_id}` : 'Pendiente de sincronizar'}</small></div>
+        <div><span className="stat-label">Precio externo</span><strong>{price ? `${price.moneda} ${formatMoney(price.importe, price.moneda)} / ${price.periodicidad === 'yearly' ? 'año' : 'mes'}` : SANDBOX_PRICE_LABEL}</strong><small>{price?.habilitado && price.external_plan_id ? `Habilitado · ${price.external_plan_id}` : 'Pendiente de sincronizar'}</small></div>
         <div><span className="stat-label">Producción</span><strong>{config?.production_enabled === false ? 'Bloqueada' : 'No validada'}</strong><small>{config?.token_kind === 'test' && config?.sandbox_token_valid ? 'Token TEST- válido (valor oculto)' : 'Token no validado'}</small></div>
       </div>
 

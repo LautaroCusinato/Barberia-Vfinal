@@ -1,4 +1,4 @@
-import { adminClient, authenticate, ownerTenant, platformRole } from '../_shared/supabase.ts'
+import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
 import { mercadoPago, mercadoPagoCredentialStatus, mercadoPagoExternalStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
@@ -83,8 +83,15 @@ async function checkout(request: Request, admin: ReturnType<typeof adminClient>,
   const { data: existing } = await admin.from('saas_billing_checkout_attempts').select('id, estado, checkout_url').eq('barberia_id', tenantId).eq('plan_codigo', planCode).eq('proveedor_codigo', provider).in('estado', ['created', 'pending_provider', 'ready']).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (existing?.id && existing.estado === 'ready' && existing.checkout_url) return json({ checkout_attempt_id: existing.id, status: 'ready', checkout_url: existing.checkout_url, idempotent: true })
 
-  const { data: intent, error: intentError } = await admin.rpc('create_billing_checkout_intent_with_price', { p_barberia_id: tenantId, p_plan_codigo: planCode, p_proveedor_codigo: provider, p_precio_id: externalPrice.id, p_idempotency_key: `edge-${crypto.randomUUID()}` })
+  const { data: intent, error: intentError } = await requestClient(request).rpc('create_billing_checkout_intent_with_price', { p_barberia_id: tenantId, p_plan_codigo: planCode, p_proveedor_codigo: provider, p_precio_id: externalPrice.id, p_idempotency_key: `edge-${crypto.randomUUID()}` })
   if (intentError) {
+    console.error(JSON.stringify({
+      code: 'checkout_intent_rpc_failed',
+      rpc_code: intentError.code || null,
+      rpc_message: String(intentError.message || '').slice(0, 180),
+      rpc_details: String(intentError.details || '').slice(0, 180),
+      rpc_hint: String(intentError.hint || '').slice(0, 180),
+    }))
     const { data: concurrent } = await admin.from('saas_billing_checkout_attempts').select('id, estado, checkout_url').eq('barberia_id', tenantId).eq('plan_codigo', planCode).eq('proveedor_codigo', provider).in('estado', ['created', 'pending_provider', 'ready']).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
     if (concurrent?.id && concurrent.checkout_url) return json({ checkout_attempt_id: concurrent.id, status: 'ready', checkout_url: concurrent.checkout_url, idempotent: true })
     if (concurrent?.id) return json({ checkout_attempt_id: concurrent.id, status: concurrent.estado, checkout_url: null, idempotent: true }, 202)
@@ -103,7 +110,7 @@ async function checkout(request: Request, admin: ReturnType<typeof adminClient>,
       ? await mercadoPago({ ...input, idempotencyKey: `mp-checkout:${intent.checkout_attempt_id}` })
       : await paypal(input)
     if (!result.checkoutUrl) throw Object.assign(new Error('El proveedor no devolvió URL de aprobación.'), { status: 502, code: 'approval_url_missing' })
-    const { error: checkoutUpdateError } = await admin.from('saas_billing_checkout_attempts').update({ estado: 'ready', checkout_url: result.checkoutUrl, external_checkout_id: result.externalId, metadata: { tenant_reference: reference, provider_kind: result.kind, environment: 'sandbox', price_id: externalPrice.id, pais_codigo: externalPrice.pais_codigo, currency: externalPrice.moneda, amount: externalPrice.importe } }).eq('id', intent.checkout_attempt_id)
+    const { error: checkoutUpdateError } = await admin.from('saas_billing_checkout_attempts').update({ estado: 'ready', checkout_url: result.checkoutUrl, external_checkout_id: result.externalId, metadata: { tenant_reference: reference, provider_kind: result.kind, environment: 'sandbox', price_id: externalPrice.id, external_plan_id: externalPrice.external_plan_id, pais_codigo: externalPrice.pais_codigo, currency: externalPrice.moneda, amount: externalPrice.importe } }).eq('id', intent.checkout_attempt_id)
     if (checkoutUpdateError) throw Object.assign(new Error('No se pudo registrar el checkout.'), { status: 502, code: 'checkout_persist_failed' })
     if (result.kind === 'subscription' && result.externalId) {
       const { data: subscription, error: subscriptionError } = await admin.from('saas_suscripciones').select('id').eq('barberia_id', tenantId).single()
