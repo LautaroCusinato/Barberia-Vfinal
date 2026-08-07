@@ -1,6 +1,6 @@
 # Estrategia E2E segura
 
-El proyecto usa Playwright para validar las superficies públicas en Chromium desktop y un perfil móvil equivalente a iPhone. Las pruebas públicas no envían formularios de registro, no crean reservas y no llaman a proveedores externos. La ruta `/demo` usa `sessionStorage` y servicios ficticios.
+El proyecto usa Playwright para validar las superficies públicas en Chromium desktop, tablet y móvil. La matriz incluye 390×844, 360×800, 768×1024, 1366×768 y 1920×1080. Las pruebas públicas no envían formularios de registro, no crean reservas y no llaman a proveedores externos. La ruta `/demo` usa `sessionStorage` y servicios ficticios.
 
 ## Instalación y ejecución
 
