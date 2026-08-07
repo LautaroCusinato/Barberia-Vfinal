@@ -20,7 +20,7 @@ Las pruebas que requieren autenticación o Supabase real están explícitamente 
 
 ## Cobertura preparada
 
-El spec público cubre landing, registro, recuperación, demo aislada, errores de reserva/invitación y recarga directa de rutas de Cloudflare en desktop y móvil. El bloque sandbox deja catalogados los flujos de registro/verificación, onboarding, trial, configuración, logo, servicios, empleados, horarios, reservas y solapamientos, invitaciones, roles, acceso denegado, plataforma, CRM, billing sin proveedor, suspensión, recuperación y cierre de sesión.
+El spec público cubre landing, registro, recuperación, demo aislada, errores de reserva/invitación y recarga directa de rutas de Cloudflare en desktop y móvil. El bloque sandbox deja catalogados 24 flujos: registro/verificación y duplicados, onboarding y reanudación, tenant/trial, configuración regional y slug, dashboard, branding, servicios, empleados, horarios, reservas y solapamientos, invitaciones, roles, aislamiento multi-tenant, acceso denegado, plataforma, CRM, billing sin proveedor, vencimiento/gracia, suspensión, recuperación/cambio de contraseña, cierre de sesión y responsive.
 
 Los flujos sandbox no se ejecutan automáticamente hasta que exista autorización y un proyecto dedicado. Esto evita que una ejecución CI pueda modificar tenants reales o disparar emails, WhatsApp, pagos o webhooks.
 
