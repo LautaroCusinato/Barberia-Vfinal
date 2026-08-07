@@ -4,12 +4,6 @@ import { mercadoPago, mercadoPagoExternalStatus, paypal, paypalExternalStatus, p
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 
-function providerFunction(provider: string) {
-  if (provider === 'mercadopago') return mercadoPago
-  if (provider === 'paypal') return paypal
-  throw Object.assign(new Error('Proveedor no soportado.'), { status: 422, code: 'unsupported_provider' })
-}
-
 async function checkout(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
   const tenantId = await ownerTenant(admin, userId)
   const planCode = String(body.plan_codigo || '').trim().toLowerCase()
@@ -18,14 +12,20 @@ async function checkout(request: Request, admin: ReturnType<typeof adminClient>,
   if (!PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
 
   const [{ data: providerRow }, { data: planProvider }, { data: tenant }] = await Promise.all([
-    admin.from('saas_proveedores_pago').select('codigo, activo, entorno').eq('codigo', provider).maybeSingle(),
+    admin.from('saas_proveedores_pago').select('codigo, activo, entorno, metadata').eq('codigo', provider).maybeSingle(),
     admin.from('saas_plan_proveedores').select('external_plan_id, external_product_id, habilitado').eq('plan_codigo', planCode).eq('proveedor_codigo', provider).maybeSingle(),
     admin.from('barberias').select('id, nombre, billing_email').eq('id', tenantId).single(),
   ])
   if (!providerRow) throw Object.assign(new Error('Proveedor no registrado.'), { status: 422, code: 'provider_not_registered' })
-  if (!providerRow.activo) throw Object.assign(new Error('El proveedor sandbox todavía no está habilitado.'), { status: 409, code: 'provider_disabled' })
-  const config = providerConfigured(provider as 'mercadopago' | 'paypal')
+  if (provider === 'mercadopago' && providerRow.entorno !== 'sandbox') throw Object.assign(new Error('Mercado Pago de producción está deshabilitado.'), { status: 409, code: 'production_provider_disabled' })
+  const config = providerConfigured(provider as 'mercadopago' | 'paypal', provider === 'mercadopago' ? 'checkout' : 'all')
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
+  if (!providerRow.activo && provider === 'mercadopago') {
+    const { error: activationError } = await admin.from('saas_proveedores_pago').update({ activo: true, entorno: 'sandbox', metadata: { ...(providerRow.metadata || {}), sandbox_enabled_at: new Date().toISOString() } }).eq('codigo', provider).eq('entorno', 'sandbox')
+    if (activationError) throw Object.assign(new Error('No se pudo habilitar Mercado Pago sandbox.'), { status: 502, code: 'provider_activation_failed' })
+    providerRow.activo = true
+  }
+  if (!providerRow.activo) throw Object.assign(new Error('El proveedor sandbox todavía no está habilitado.'), { status: 409, code: 'provider_disabled' })
 
   const { data: existing } = await admin.from('saas_billing_checkout_attempts').select('id, estado, checkout_url').eq('barberia_id', tenantId).eq('plan_codigo', planCode).eq('proveedor_codigo', provider).in('estado', ['created', 'pending_provider', 'ready']).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (existing?.id && existing.estado === 'ready' && existing.checkout_url) return json({ checkout_attempt_id: existing.id, status: 'ready', checkout_url: existing.checkout_url, idempotent: true })
@@ -40,24 +40,30 @@ async function checkout(request: Request, admin: ReturnType<typeof adminClient>,
   if (!intent?.checkout_attempt_id) throw Object.assign(new Error('El checkout no devolvió un intento válido.'), { status: 502, code: 'checkout_intent_invalid' })
   const { data: plan } = await admin.from('saas_planes').select('codigo, nombre, descripcion, precio_mensual, moneda, periodicidad').eq('codigo', planCode).single()
   if (!plan || !tenant) throw Object.assign(new Error('Plan o tenant inexistente.'), { status: 404, code: 'billing_context_missing' })
-  const reference = `billing:${intent.checkout_attempt_id}:${crypto.randomUUID()}`
-  const baseUrl = Deno.env.get('APP_BASE_URL') || new URL(request.url).origin
+  const reference = `billing:${intent.checkout_attempt_id}`
+  const baseUrl = String(Deno.env.get('APP_BASE_URL') || '').trim().replace(/\/$/, '')
+  if (!/^https:\/\//i.test(baseUrl)) throw Object.assign(new Error('Falta APP_BASE_URL HTTPS para los retornos del checkout.'), { status: 503, code: 'app_base_url_not_configured' })
   const webhookUrl = `${Deno.env.get('SUPABASE_URL') || new URL(request.url).origin}/functions/v1/billing-webhooks/${provider}`
-  const create = providerFunction(provider)
   try {
-    const result = await create({ externalPlanId: planProvider?.external_plan_id || null, email: tenant.billing_email, tenantReference: reference, planName: plan.nombre, amount: Number(plan.precio_mensual), currency: plan.moneda, successUrl: `${baseUrl}/facturacion?billing=success`, cancelUrl: `${baseUrl}/facturacion?billing=cancel`, webhookUrl })
+    const input = { externalPlanId: planProvider?.habilitado ? planProvider.external_plan_id : null, email: tenant.billing_email, tenantReference: reference, planName: plan.nombre, amount: Number(plan.precio_mensual), currency: plan.moneda, successUrl: `${baseUrl}/facturacion?billing=success`, cancelUrl: `${baseUrl}/facturacion?billing=cancel`, webhookUrl }
+    const result = provider === 'mercadopago'
+      ? await mercadoPago({ ...input, idempotencyKey: `mp-checkout:${intent.checkout_attempt_id}` })
+      : await paypal(input)
     if (!result.checkoutUrl) throw Object.assign(new Error('El proveedor no devolvió URL de aprobación.'), { status: 502, code: 'approval_url_missing' })
-    await admin.from('saas_billing_checkout_attempts').update({ estado: 'ready', checkout_url: result.checkoutUrl, external_checkout_id: result.externalId, metadata: { tenant_reference: reference, provider_kind: result.kind } }).eq('id', intent.checkout_attempt_id)
+    const { error: checkoutUpdateError } = await admin.from('saas_billing_checkout_attempts').update({ estado: 'ready', checkout_url: result.checkoutUrl, external_checkout_id: result.externalId, metadata: { tenant_reference: reference, provider_kind: result.kind, environment: 'sandbox' } }).eq('id', intent.checkout_attempt_id)
+    if (checkoutUpdateError) throw Object.assign(new Error('No se pudo registrar el checkout.'), { status: 502, code: 'checkout_persist_failed' })
     if (result.kind === 'subscription' && result.externalId) {
-      const { data: subscription } = await admin.from('saas_suscripciones').select('id').eq('barberia_id', tenantId).single()
-      if (subscription) {
-        await admin.from('saas_suscripciones_externas').upsert({ suscripcion_id: subscription.id, barberia_id: tenantId, proveedor_codigo: provider, external_subscription_id: result.externalId, external_plan_id: planProvider?.external_plan_id || null, estado_externo: 'pending', metadata: { reference } }, { onConflict: 'suscripcion_id,proveedor_codigo' })
-        await admin.from('saas_suscripciones').update({ provider, provider_subscription_id: result.externalId }).eq('id', subscription.id)
-      }
+      const { data: subscription, error: subscriptionError } = await admin.from('saas_suscripciones').select('id').eq('barberia_id', tenantId).single()
+      if (subscriptionError || !subscription) throw Object.assign(new Error('No se encontró la suscripción interna.'), { status: 502, code: 'subscription_registration_failed' })
+      const { error: externalError } = await admin.from('saas_suscripciones_externas').upsert({ suscripcion_id: subscription.id, barberia_id: tenantId, proveedor_codigo: provider, external_subscription_id: result.externalId, external_plan_id: planProvider?.external_plan_id || null, estado_externo: 'pending', metadata: { reference, environment: 'sandbox' } }, { onConflict: 'suscripcion_id,proveedor_codigo' })
+      if (externalError) throw Object.assign(new Error('No se pudo registrar la suscripción externa.'), { status: 502, code: 'subscription_registration_failed' })
+      const { error: subscriptionUpdateError } = await admin.from('saas_suscripciones').update({ provider, provider_subscription_id: result.externalId }).eq('id', subscription.id)
+      if (subscriptionUpdateError) throw Object.assign(new Error('No se pudo vincular la suscripción interna.'), { status: 502, code: 'subscription_registration_failed' })
     }
     return json({ checkout_attempt_id: intent.checkout_attempt_id, status: 'ready', checkout_url: result.checkoutUrl })
   } catch (error) {
-    await admin.from('saas_billing_checkout_attempts').update({ estado: 'failed', metadata: { tenant_reference: reference, error_code: error?.code || 'provider_error' } }).eq('id', intent.checkout_attempt_id)
+    const retryable = ['checkout_persist_failed', 'subscription_registration_failed'].includes(error?.code)
+    await admin.from('saas_billing_checkout_attempts').update({ estado: retryable ? 'pending_provider' : 'failed', metadata: { tenant_reference: reference, error_code: error?.code || 'provider_error', retryable } }).eq('id', intent.checkout_attempt_id)
     throw error
   }
 }
@@ -67,19 +73,28 @@ async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>
   if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
   const provider = String(body.proveedor_codigo || '').trim().toLowerCase()
   if (!PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
-  const config = providerConfigured(provider as 'mercadopago' | 'paypal')
+  const config = providerConfigured(provider as 'mercadopago' | 'paypal', provider === 'mercadopago' ? 'plan_sync' : 'all')
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
-  const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo').eq('codigo', provider).single()
-  if (!providerRow?.activo) throw Object.assign(new Error('El proveedor está deshabilitado.'), { status: 409, code: 'provider_disabled' })
+  const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo, entorno, metadata').eq('codigo', provider).single()
+  if (!providerRow) throw Object.assign(new Error('Proveedor no registrado.'), { status: 422, code: 'provider_not_registered' })
+  if (provider === 'mercadopago' && providerRow.entorno !== 'sandbox') throw Object.assign(new Error('Mercado Pago de producción está deshabilitado.'), { status: 409, code: 'production_provider_disabled' })
+  if (!providerRow.activo && provider === 'mercadopago') {
+    const { error: activationError } = await admin.from('saas_proveedores_pago').update({ activo: true, entorno: 'sandbox', metadata: { ...(providerRow.metadata || {}), sandbox_enabled_at: new Date().toISOString() } }).eq('codigo', provider).eq('entorno', 'sandbox')
+    if (activationError) throw Object.assign(new Error('No se pudo habilitar Mercado Pago sandbox.'), { status: 502, code: 'provider_activation_failed' })
+    providerRow.activo = true
+  }
+  if (!providerRow.activo) throw Object.assign(new Error('El proveedor está deshabilitado.'), { status: 409, code: 'provider_disabled' })
   const { data: plans } = await admin.from('saas_planes').select('codigo, nombre, descripcion, precio_mensual, moneda, periodicidad').eq('activo', true).order('codigo')
   const results = []
   for (const plan of plans || []) {
-    const { data: mapping } = await admin.from('saas_plan_proveedores').select('id, external_plan_id, external_product_id, habilitado').eq('plan_codigo', plan.codigo).eq('proveedor_codigo', provider).single()
+    const { data: mapping, error: mappingError } = await admin.from('saas_plan_proveedores').select('id, external_plan_id, external_product_id, habilitado').eq('plan_codigo', plan.codigo).eq('proveedor_codigo', provider).single()
+    if (mappingError || !mapping) throw Object.assign(new Error('Falta el mapeo interno del plan.'), { status: 502, code: 'plan_mapping_missing' })
     if (mapping?.external_plan_id && mapping.habilitado) { results.push({ plan: plan.codigo, status: 'already_synced' }); continue }
     const result = provider === 'mercadopago'
-      ? await syncMercadoPagoPlan({ name: plan.nombre, description: plan.descripcion, amount: Number(plan.precio_mensual), currency: plan.moneda, periodicity: plan.periodicidad })
+      ? await syncMercadoPagoPlan({ name: plan.nombre, description: plan.descripcion, amount: Number(plan.precio_mensual), currency: plan.moneda, periodicity: plan.periodicidad, externalReference: `plan-${plan.codigo}`, idempotencyKey: `mp-plan:${plan.codigo}` })
       : await syncPayPalPlan({ name: plan.nombre, description: plan.descripcion, amount: Number(plan.precio_mensual), currency: plan.moneda, periodicity: plan.periodicidad, externalProductId: mapping?.external_product_id })
-    await admin.from('saas_plan_proveedores').update({ external_plan_id: result.externalPlanId, external_product_id: result.externalProductId, habilitado: Boolean(result.externalPlanId), metadata: { synced_at: new Date().toISOString(), environment: 'sandbox' } }).eq('id', mapping.id)
+    const { error: mappingUpdateError } = await admin.from('saas_plan_proveedores').update({ external_plan_id: result.externalPlanId, external_product_id: result.externalProductId, habilitado: Boolean(result.externalPlanId), metadata: { synced_at: new Date().toISOString(), environment: 'sandbox' } }).eq('id', mapping.id)
+    if (mappingUpdateError) throw Object.assign(new Error('No se pudo guardar la sincronización del plan.'), { status: 502, code: 'plan_mapping_persist_failed' })
     results.push({ plan: plan.codigo, status: 'synced' })
   }
   return json({ provider, environment: 'sandbox', results })
@@ -106,7 +121,7 @@ async function externalStatus(admin: ReturnType<typeof adminClient>, userId: str
   const externalId = String(row.external_checkout_id || row.external_subscription_id || '')
   if (!externalId || (provider && provider !== currentProvider)) return json({ status: 'not_linked', checked_at: new Date().toISOString() })
   const kind = requestedAttempt ? 'checkout' : 'subscription'
-  const config = providerConfigured(currentProvider as 'mercadopago' | 'paypal')
+  const config = providerConfigured(currentProvider as 'mercadopago' | 'paypal', currentProvider === 'mercadopago' ? 'status' : 'all')
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
   const result = await providerStatus(currentProvider, externalId, kind)
   return json({ provider: currentProvider, kind, status: result.normalizedStatus, provider_status: result.status, amount: result.amount, currency: result.currency, checked_at: new Date().toISOString() })
@@ -146,6 +161,26 @@ async function reconcile(admin: ReturnType<typeof adminClient>, userId: string, 
   return json({ provider: provider || 'all', environment: 'sandbox', ...summary, checked_at: new Date().toISOString() })
 }
 
+async function configurationStatus(admin: ReturnType<typeof adminClient>, userId: string) {
+  const role = await platformRole(admin, userId)
+  if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
+  const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo, entorno').eq('codigo', 'mercadopago').maybeSingle()
+  const checkout = providerConfigured('mercadopago', 'checkout')
+  const webhook = providerConfigured('mercadopago', 'webhook')
+  const appBaseUrlConfigured = /^https:\/\//i.test(String(Deno.env.get('APP_BASE_URL') || '').trim())
+  return json({
+    provider: 'mercadopago',
+    environment: 'sandbox',
+    production_enabled: false,
+    database_enabled: Boolean(providerRow?.activo && providerRow?.entorno === 'sandbox'),
+    token_configured: checkout.configured,
+    webhook_secret_configured: webhook.configured,
+    app_base_url_configured: appBaseUrlConfigured,
+    missing_for_checkout: [...checkout.missing, ...(appBaseUrlConfigured ? [] : ['APP_BASE_URL'])],
+    missing_for_webhook: webhook.missing,
+  })
+}
+
 Deno.serve(async (request) => {
   const correlationId = requestId(request)
   try {
@@ -160,6 +195,7 @@ Deno.serve(async (request) => {
       if (error) throw Object.assign(new Error('No se pudo consultar facturación.'), { status: 502, code: 'billing_status_failed' })
       return json(data)
     }
+    if (request.method === 'GET' && route === 'config-status') return await configurationStatus(admin, user.id)
     const body = await readJson(request)
     if (request.method === 'POST' && route === 'checkout') return await checkout(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'external-status') return await externalStatus(admin, user.id, body)

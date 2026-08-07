@@ -44,7 +44,7 @@ Deno.serve(async (request) => {
     for (const link of externalLinks || []) {
       const provider = String(link.proveedor_codigo) as 'mercadopago' | 'paypal'
       const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo').eq('codigo', provider).maybeSingle()
-      if (!providerRow?.activo || !providerConfigured(provider).configured) { reconciliation.skipped += 1; continue }
+      if (!providerRow?.activo || !providerConfigured(provider, provider === 'mercadopago' ? 'status' : 'all').configured) { reconciliation.skipped += 1; continue }
       try {
         const result = await providerStatus(provider, String(link.external_subscription_id))
         await admin.from('saas_suscripciones_externas').update({ estado_externo: result.normalizedStatus, current_period_start: result.currentPeriodStart, current_period_end: result.currentPeriodEnd, cancel_at_period_end: result.cancelAtPeriodEnd, last_synced_at: new Date().toISOString(), metadata: { last_reconciliation_status: result.status, correlation_id: correlationId } }).eq('id', link.id)

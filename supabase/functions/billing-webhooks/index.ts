@@ -41,7 +41,17 @@ Deno.serve(async (request) => {
 
     const resourceId = resource.id
     const { data: externalSubscription } = await admin.from('saas_suscripciones_externas').select('suscripcion_id, barberia_id, external_subscription_id').eq('proveedor_codigo', provider).eq('external_subscription_id', resourceId).maybeSingle()
-    const { data: checkoutAttempt } = await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('proveedor_codigo', provider).eq('external_checkout_id', resourceId).maybeSingle()
+    let { data: checkoutAttempt } = await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('proveedor_codigo', provider).eq('external_checkout_id', resourceId).maybeSingle()
+    // En una notificación de pago, Mercado Pago entrega el ID del pago, no el
+    // ID de la preferencia. El external_reference estable permite recuperar el
+    // intento original sin confiar en datos enviados por el navegador.
+    if (!checkoutAttempt) {
+      const reference = String((resource as Record<string, unknown>).externalReference || '')
+      const match = /^billing:(\d+)$/.exec(reference)
+      if (match) {
+        checkoutAttempt = (await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('id', Number(match[1])).eq('proveedor_codigo', provider).maybeSingle()).data
+      }
+    }
     const context = externalSubscription || checkoutAttempt
     if (!context?.suscripcion_id || !context?.barberia_id) {
       await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'external_subscription_unlinked', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
@@ -54,7 +64,8 @@ Deno.serve(async (request) => {
     }
     const { error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: context.suscripcion_id, p_to_state: resource.normalizedStatus || normalizeStatus(provider as 'mercadopago' | 'paypal', resource.status), p_reason: `provider_event:${externalEventId}`, p_source: 'provider', p_provider_event_id: externalEventId, p_provider_event_at: minimal.updated_at || null })
     if (transitionError) throw Object.assign(new Error('No se pudo actualizar la suscripción.'), { status: 502, code: 'subscription_transition_failed' })
-    if (resourceId && resource.amount && resource.currency) {
+    const resourceType = String((resource as Record<string, unknown>).resourceType || (provider === 'paypal' ? 'payment' : 'preapproval'))
+    if (resourceType === 'payment' && resourceId && resource.amount && resource.currency) {
       await admin.from('saas_billing_payments').upsert({ barberia_id: context.barberia_id, suscripcion_id: context.suscripcion_id, checkout_attempt_id: checkoutAttempt?.id || null, proveedor_codigo: provider, external_payment_id: resourceId, estado: resource.normalizedStatus === 'active' ? 'approved' : resource.normalizedStatus === 'past_due' ? 'failed' : 'review', amount: resource.amount, currency: resource.currency, paid_at: resource.normalizedStatus === 'active' ? new Date().toISOString() : null, metadata: { event_id: externalEventId, correlation_id: correlationId } }, { onConflict: 'proveedor_codigo,external_payment_id' })
     }
     await admin.from('saas_billing_webhook_events').update({ estado: 'processed', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
