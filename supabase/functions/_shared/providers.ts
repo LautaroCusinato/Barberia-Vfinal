@@ -24,6 +24,20 @@ function mercadoPagoEnvironment() {
   return environment
 }
 
+export function mercadoPagoCredentialStatus() {
+  const token = String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') || '').trim()
+  const kind = token.startsWith('TEST-') ? 'test' : token.startsWith('APP_USR-') ? 'production' : token ? 'unknown' : 'missing'
+  return { configured: Boolean(token), kind, sandbox: kind === 'test' }
+}
+
+function mercadoPagoAccessToken() {
+  mercadoPagoEnvironment()
+  const status = mercadoPagoCredentialStatus()
+  if (!status.configured) throw new ProviderNotConfigured('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN'])
+  if (!status.sandbox) throw new ProviderError('Se requiere un Access Token TEST- de Mercado Pago; las credenciales de producción están bloqueadas.', 409, 'non_sandbox_access_token')
+  return String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN'))
+}
+
 function requiredEnv(provider: ProviderCode, capability: ProviderCapability = 'all') {
   if (provider === 'mercadopago') {
     // El token alcanza para crear/sincronizar checkout y consultar estados.
@@ -55,10 +69,9 @@ export function providerConfigured(provider: ProviderCode, capability: ProviderC
 }
 
 export async function mercadoPago(input: { externalPlanId?: string | null; email?: string | null; tenantReference: string; planName: string; amount: number; currency: string; successUrl: string; cancelUrl: string; webhookUrl: string; idempotencyKey?: string }) {
-  mercadoPagoEnvironment()
-  requireEnv('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN'])
+  const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
-  const headers = { Authorization: `Bearer ${Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')}`, 'Content-Type': 'application/json', ...(input.idempotencyKey ? { 'X-Idempotency-Key': input.idempotencyKey } : {}) }
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(input.idempotencyKey ? { 'X-Idempotency-Key': input.idempotencyKey } : {}) }
   const body = input.externalPlanId ? { preapproval_plan_id: input.externalPlanId, reason: input.planName, external_reference: input.tenantReference, payer_email: input.email || undefined, back_url: input.successUrl, status: 'pending' } : { external_reference: input.tenantReference, items: [{ title: input.planName, quantity: 1, unit_price: input.amount, currency_id: input.currency }], back_urls: { success: input.successUrl, failure: input.cancelUrl, pending: input.successUrl }, auto_return: 'approved', notification_url: input.webhookUrl }
   const path = input.externalPlanId ? '/preapproval' : '/checkout/preferences'
   const bodyJson = await responseJson(await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) }), 'Mercado Pago')
@@ -66,10 +79,9 @@ export async function mercadoPago(input: { externalPlanId?: string | null; email
 }
 
 export async function syncMercadoPagoPlan(input: { name: string; description?: string | null; amount: number; currency: string; periodicity: string; externalReference: string; idempotencyKey: string }) {
-  mercadoPagoEnvironment()
-  requireEnv('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN'])
+  const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
-  const response = await fetch(`${base}/preapproval_plan`, { method: 'POST', headers: { Authorization: `Bearer ${Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': input.idempotencyKey }, body: JSON.stringify({ reason: input.name, external_reference: input.externalReference, auto_recurring: { frequency: input.periodicity === 'yearly' ? 12 : 1, frequency_type: 'months', transaction_amount: input.amount, currency_id: input.currency } }) })
+  const response = await fetch(`${base}/preapproval_plan`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': input.idempotencyKey }, body: JSON.stringify({ reason: input.name, external_reference: input.externalReference, auto_recurring: { frequency: input.periodicity === 'yearly' ? 12 : 1, frequency_type: 'months', transaction_amount: input.amount, currency_id: input.currency } }) })
   const body = await responseJson(response, 'Mercado Pago')
   return { externalPlanId: body.id || null, externalProductId: null }
 }
@@ -106,7 +118,8 @@ export async function syncPayPalPlan(input: { name: string; description?: string
 }
 
 export async function verifyMercadoPago(payload: Record<string, unknown>, headers: Headers) {
-  requireEnv('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET'])
+  mercadoPagoAccessToken()
+  requireEnv('Mercado Pago', ['MERCADOPAGO_WEBHOOK_SECRET'])
   const signature = headers.get('x-signature') || ''
   const requestId = headers.get('x-request-id') || ''
   const notificationId = String((payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
@@ -119,14 +132,13 @@ export async function verifyMercadoPago(payload: Record<string, unknown>, header
 }
 
 export async function mercadoPagoResource(payload: Record<string, unknown>) {
-  mercadoPagoEnvironment()
-  requireEnv('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN'])
+  const token = mercadoPagoAccessToken()
   const id = String((payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
   if (!id) throw new ProviderError('Evento Mercado Pago sin recurso.', 422, 'resource_id_missing')
   const event = String(payload.type || payload.topic || '').toLowerCase()
   const resource = event.includes('payment') || event === 'payment' ? 'payments' : 'preapproval'
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
-  const response = await fetch(`${base}/v1/${resource}/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')}` } })
+  const response = await fetch(`${base}/v1/${resource}/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } })
   const body = await responseJson(response, 'Mercado Pago')
   return { id, status: body.status, normalizedStatus: mpStatus(body.status), amount: Number(body.transaction_amount || body.auto_recurring?.transaction_amount || 0) || null, currency: body.currency_id || body.auto_recurring?.currency_id || null, externalReference: body.external_reference || null, resourceType: resource === 'payments' ? 'payment' : 'preapproval', resource: body }
 }
@@ -135,11 +147,10 @@ export async function mercadoPagoResource(payload: Record<string, unknown>) {
  * IDs provistos por el navegador como fuente de verdad: el caller resuelve el
  * ID desde la base y sólo pasa el tipo de recurso. */
 export async function mercadoPagoExternalStatus(input: { externalId: string; kind: 'checkout' | 'subscription' }) {
-  mercadoPagoEnvironment()
-  requireEnv('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN'])
+  const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const resource = input.kind === 'subscription' ? 'preapproval' : 'checkout/preferences'
-  const response = await fetch(`${base}/v1/${resource}/${encodeURIComponent(input.externalId)}`, { headers: { Authorization: `Bearer ${Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')}` } })
+  const response = await fetch(`${base}/v1/${resource}/${encodeURIComponent(input.externalId)}`, { headers: { Authorization: `Bearer ${token}` } })
   const body = await responseJson(response, 'Mercado Pago')
   return {
     status: body.status,

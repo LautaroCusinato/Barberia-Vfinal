@@ -23,9 +23,10 @@ El código rechaza cualquier `MERCADOPAGO_ENVIRONMENT` distinto de `sandbox`. La
 
 1. Cargar los secretos anteriores.
 2. Iniciar sesión como owner/admin de plataforma.
-3. Ejecutar `POST /functions/v1/billing-api/sync-plans` con `{ "proveedor_codigo": "mercadopago" }`.
-4. Verificar que los planes `starter`, `pro` y `business` tengan `external_plan_id` y `habilitado = true`.
-5. Desde el panel del tenant, elegir Mercado Pago y un plan. La respuesta contiene `checkout_url` (`sandbox_init_point`/`init_point`) para abrir en otra pestaña.
+3. Ejecutar `POST /functions/v1/billing-api/sync-plans` con `{ "proveedor_codigo": "mercadopago", "plan_codigo": "starter" }`. La API exige un único plan por operación.
+4. Verificar que únicamente `starter` tenga `external_plan_id` y `habilitado = true` para este ensayo.
+5. El ensayo usa el tenant técnico `austral-mp-sandbox` (marcado `environment=sandbox`, `technical=true`). El checkout solo acepta ese tenant y el plan `starter`; Barbería Central y Barbería Nueva quedan bloqueadas para Mercado Pago.
+6. Desde una sesión owner/admin de plataforma, solicitar el checkout técnico enviando `tenant_id` junto con el plan. La respuesta contiene `checkout_url` (`sandbox_init_point`/`init_point`) para abrir en otra pestaña.
 6. Configurar el webhook en Mercado Pago apuntando a:
 
 ```text
@@ -41,7 +42,7 @@ El webhook exige `x-signature` y `x-request-id`, vuelve a consultar el recurso e
 - La base impide dos checkouts activos por tenant/plan/proveedor.
 - La suscripción interna se vincula en `saas_suscripciones_externas` antes de devolver el checkout listo.
 - No se guardan tokens, tarjetas ni payloads completos del proveedor.
-- La activación automática sólo ocurre con entorno sandbox y token válido; producción permanece bloqueada.
+- El proveedor global `saas_proveedores_pago` permanece deshabilitado; la habilitación del ensayo es una autorización por metadata del tenant técnico y el plan `starter`. Producción permanece bloqueada.
 
 ## Qué falta antes de probar
 

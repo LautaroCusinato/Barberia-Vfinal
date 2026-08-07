@@ -1,11 +1,30 @@
 import { adminClient, authenticate, ownerTenant, platformRole } from '../_shared/supabase.ts'
 import { errorJson, json, readJson, requestId } from '../_shared/http.ts'
-import { mercadoPago, mercadoPagoExternalStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { mercadoPago, mercadoPagoCredentialStatus, mercadoPagoExternalStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 
+async function checkoutTenant(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  // Platform owners/admins may exercise billing against an isolated technical
+  // tenant without becoming a member of it. This is deliberately restricted
+  // to rows explicitly marked as sandbox, so production tenants can never be
+  // selected through this escape hatch.
+  if (body.tenant_id != null) {
+    const role = await platformRole(admin, userId)
+    if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
+    const tenantId = Number(body.tenant_id)
+    if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw Object.assign(new Error('Tenant sandbox inválido.'), { status: 422, code: 'invalid_sandbox_tenant' })
+    const { data: tenant, error } = await admin.from('barberias').select('id, metadata').eq('id', tenantId).maybeSingle()
+    if (error) throw Object.assign(new Error('No se pudo resolver el tenant sandbox.'), { status: 500, code: 'tenant_lookup_failed' })
+    const metadata = tenant?.metadata && typeof tenant.metadata === 'object' ? tenant.metadata as Record<string, unknown> : {}
+    if (!tenant || metadata.environment !== 'sandbox' || metadata.technical !== true) throw Object.assign(new Error('Solo se permiten tenants técnicos marcados como sandbox.'), { status: 403, code: 'sandbox_tenant_required' })
+    return tenantId
+  }
+  return ownerTenant(admin, userId)
+}
+
 async function checkout(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
-  const tenantId = await ownerTenant(admin, userId)
+  const tenantId = await checkoutTenant(admin, userId, body)
   const planCode = String(body.plan_codigo || '').trim().toLowerCase()
   const provider = String(body.proveedor_codigo || '').trim().toLowerCase()
   if (!/^[a-z][a-z0-9_-]{1,39}$/.test(planCode)) throw Object.assign(new Error('Plan inválido.'), { status: 422, code: 'invalid_plan' })
@@ -14,18 +33,22 @@ async function checkout(request: Request, admin: ReturnType<typeof adminClient>,
   const [{ data: providerRow }, { data: planProvider }, { data: tenant }] = await Promise.all([
     admin.from('saas_proveedores_pago').select('codigo, activo, entorno, metadata').eq('codigo', provider).maybeSingle(),
     admin.from('saas_plan_proveedores').select('external_plan_id, external_product_id, habilitado').eq('plan_codigo', planCode).eq('proveedor_codigo', provider).maybeSingle(),
-    admin.from('barberias').select('id, nombre, billing_email').eq('id', tenantId).single(),
+    admin.from('barberias').select('id, nombre, billing_email, metadata').eq('id', tenantId).single(),
   ])
   if (!providerRow) throw Object.assign(new Error('Proveedor no registrado.'), { status: 422, code: 'provider_not_registered' })
   if (provider === 'mercadopago' && providerRow.entorno !== 'sandbox') throw Object.assign(new Error('Mercado Pago de producción está deshabilitado.'), { status: 409, code: 'production_provider_disabled' })
+  const tenantMetadata = tenant?.metadata && typeof tenant.metadata === 'object' ? tenant.metadata as Record<string, unknown> : {}
+  const sandboxBillingEnabled = provider === 'mercadopago'
+    && tenantMetadata.environment === 'sandbox'
+    && tenantMetadata.technical === true
+    && tenantMetadata.billing_provider === 'mercadopago'
+    && tenantMetadata.billing_enabled === true
+    && tenantMetadata.billing_plan === planCode
+  if (provider === 'mercadopago' && !sandboxBillingEnabled) throw Object.assign(new Error('Mercado Pago sandbox está habilitado únicamente para el tenant técnico y plan de prueba.'), { status: 403, code: 'sandbox_scope_required' })
   const config = providerConfigured(provider as 'mercadopago' | 'paypal', provider === 'mercadopago' ? 'checkout' : 'all')
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
-  if (!providerRow.activo && provider === 'mercadopago') {
-    const { error: activationError } = await admin.from('saas_proveedores_pago').update({ activo: true, entorno: 'sandbox', metadata: { ...(providerRow.metadata || {}), sandbox_enabled_at: new Date().toISOString() } }).eq('codigo', provider).eq('entorno', 'sandbox')
-    if (activationError) throw Object.assign(new Error('No se pudo habilitar Mercado Pago sandbox.'), { status: 502, code: 'provider_activation_failed' })
-    providerRow.activo = true
-  }
-  if (!providerRow.activo) throw Object.assign(new Error('El proveedor sandbox todavía no está habilitado.'), { status: 409, code: 'provider_disabled' })
+  if (provider === 'mercadopago' && !mercadoPagoCredentialStatus().sandbox) throw Object.assign(new Error('Se requiere un Access Token TEST- de Mercado Pago.'), { status: 409, code: 'non_sandbox_access_token' })
+  if (!providerRow.activo && provider !== 'mercadopago') throw Object.assign(new Error('El proveedor sandbox todavía no está habilitado.'), { status: 409, code: 'provider_disabled' })
 
   const { data: existing } = await admin.from('saas_billing_checkout_attempts').select('id, estado, checkout_url').eq('barberia_id', tenantId).eq('plan_codigo', planCode).eq('proveedor_codigo', provider).in('estado', ['created', 'pending_provider', 'ready']).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (existing?.id && existing.estado === 'ready' && existing.checkout_url) return json({ checkout_attempt_id: existing.id, status: 'ready', checkout_url: existing.checkout_url, idempotent: true })
@@ -73,18 +96,20 @@ async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>
   if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
   const provider = String(body.proveedor_codigo || '').trim().toLowerCase()
   if (!PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
+  const planCode = String(body.plan_codigo || '').trim().toLowerCase()
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(planCode)) throw Object.assign(new Error('Para sincronizar se debe indicar un único plan válido.'), { status: 422, code: 'invalid_plan' })
   const config = providerConfigured(provider as 'mercadopago' | 'paypal', provider === 'mercadopago' ? 'plan_sync' : 'all')
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
+  if (provider === 'mercadopago' && !mercadoPagoCredentialStatus().sandbox) throw Object.assign(new Error('Se requiere un Access Token TEST- de Mercado Pago.'), { status: 409, code: 'non_sandbox_access_token' })
   const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo, entorno, metadata').eq('codigo', provider).single()
   if (!providerRow) throw Object.assign(new Error('Proveedor no registrado.'), { status: 422, code: 'provider_not_registered' })
   if (provider === 'mercadopago' && providerRow.entorno !== 'sandbox') throw Object.assign(new Error('Mercado Pago de producción está deshabilitado.'), { status: 409, code: 'production_provider_disabled' })
-  if (!providerRow.activo && provider === 'mercadopago') {
-    const { error: activationError } = await admin.from('saas_proveedores_pago').update({ activo: true, entorno: 'sandbox', metadata: { ...(providerRow.metadata || {}), sandbox_enabled_at: new Date().toISOString() } }).eq('codigo', provider).eq('entorno', 'sandbox')
-    if (activationError) throw Object.assign(new Error('No se pudo habilitar Mercado Pago sandbox.'), { status: 502, code: 'provider_activation_failed' })
-    providerRow.activo = true
-  }
-  if (!providerRow.activo) throw Object.assign(new Error('El proveedor está deshabilitado.'), { status: 409, code: 'provider_disabled' })
-  const { data: plans } = await admin.from('saas_planes').select('codigo, nombre, descripcion, precio_mensual, moneda, periodicidad').eq('activo', true).order('codigo')
+  // Mercado Pago plan synchronization is a platform sandbox operation. It
+  // must not flip the global provider flag, which stays disabled for
+  // production tenants until a separate activation policy is approved.
+  if (!providerRow.activo && provider !== 'mercadopago') throw Object.assign(new Error('El proveedor está deshabilitado.'), { status: 409, code: 'provider_disabled' })
+  const { data: plans } = await admin.from('saas_planes').select('codigo, nombre, descripcion, precio_mensual, moneda, periodicidad').eq('codigo', planCode).eq('activo', true).limit(1)
+  if (!plans?.length) throw Object.assign(new Error('El plan solicitado no existe o está inactivo.'), { status: 404, code: 'plan_not_found' })
   const results = []
   for (const plan of plans || []) {
     const { data: mapping, error: mappingError } = await admin.from('saas_plan_proveedores').select('id, external_plan_id, external_product_id, habilitado').eq('plan_codigo', plan.codigo).eq('proveedor_codigo', provider).single()
@@ -167,6 +192,7 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
   const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo, entorno').eq('codigo', 'mercadopago').maybeSingle()
   const checkout = providerConfigured('mercadopago', 'checkout')
   const webhook = providerConfigured('mercadopago', 'webhook')
+  const credential = mercadoPagoCredentialStatus()
   const appBaseUrlConfigured = /^https:\/\//i.test(String(Deno.env.get('APP_BASE_URL') || '').trim())
   return json({
     provider: 'mercadopago',
@@ -174,6 +200,8 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
     production_enabled: false,
     database_enabled: Boolean(providerRow?.activo && providerRow?.entorno === 'sandbox'),
     token_configured: checkout.configured,
+    token_kind: credential.kind,
+    sandbox_token_valid: credential.sandbox,
     webhook_secret_configured: webhook.configured,
     app_base_url_configured: appBaseUrlConfigured,
     missing_for_checkout: [...checkout.missing, ...(appBaseUrlConfigured ? [] : ['APP_BASE_URL'])],
