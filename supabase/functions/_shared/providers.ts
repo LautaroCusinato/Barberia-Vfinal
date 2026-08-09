@@ -200,6 +200,8 @@ export async function mercadoPagoPreapprovalDetails(preapprovalId: string) {
     nextPaymentDate: String(body.next_payment_date || '') || null,
     amount: Number(body.auto_recurring?.transaction_amount) || null,
     currency: String(body.auto_recurring?.currency_id || '').toUpperCase() || null,
+    frequency: Number(body.auto_recurring?.frequency) || null,
+    frequencyType: String(body.auto_recurring?.frequency_type || '').toLowerCase() || null,
     raw: sanitizeProviderPayload(body),
   }
 }

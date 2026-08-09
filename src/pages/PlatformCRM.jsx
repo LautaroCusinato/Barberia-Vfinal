@@ -17,6 +17,7 @@ const SANDBOX_BILLING = Object.freeze({
   planCode: 'starter',
   provider: 'mercadopago',
   environment: 'sandbox',
+  preapprovalId: 'f031bb4cdde44e78badbd6da4b5caa67',
 })
 const SANDBOX_PRICE_LABEL = 'ARS 15.000 / mes'
 
@@ -36,6 +37,12 @@ const SANDBOX_BILLING_MESSAGES = {
   checkout_persist_failed: 'El checkout se creó pero no se pudo registrar en Supabase.',
   approval_url_missing: 'Mercado Pago no devolvió una URL de checkout.',
   external_status_failed: 'No se pudo consultar el estado externo del checkout.',
+  sandbox_preapproval_inconsistent: 'La suscripción externa no coincide con el contrato sandbox autorizado.',
+  sandbox_plan_inconsistent: 'El plan externo no coincide con el vendedor, aplicación o precio sandbox autorizado.',
+  sandbox_subscription_conflict: 'La suscripción externa ya está vinculada a otro registro.',
+  sandbox_price_inconsistent: 'El precio sandbox actual no coincide con el plan autorizado.',
+  sandbox_tenant_inconsistent: 'El tenant técnico sandbox no cumple el contrato de billing.',
+  sandbox_audit_failed: 'La reconciliación terminó sin auditoría completa.',
   network_error: 'No se pudo conectar con billing sandbox. Reintentá en unos segundos.',
 }
 
@@ -137,10 +144,12 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       {notice && <div className="billing-notice" role="status">{notice}</div>}
 
       {confirmAction && <div className="sandbox-confirmation" role="alert">
-        <strong>{confirmAction === 'sync-plans' ? 'Confirmar sincronización' : 'Confirmar checkout sandbox'}</strong>
+        <strong>{confirmAction === 'sync-plans' ? 'Confirmar sincronización' : confirmAction === 'reconcile-sandbox' ? 'Confirmar reconciliación' : 'Confirmar checkout sandbox'}</strong>
         <span>{confirmAction === 'sync-plans'
           ? 'Se actualizará únicamente el plan starter de Mercado Pago sandbox.'
-          : 'Se generará un checkout para el tenant técnico #6. No se cobrará dinero real.'}</span>
+          : confirmAction === 'reconcile-sandbox'
+            ? `Se consultará la suscripción existente ${SANDBOX_BILLING.preapprovalId} y se vinculará únicamente al tenant técnico #6. No se crea ningún pago.`
+            : 'Se generará un checkout para el tenant técnico #6. No se cobrará dinero real.'}</span>
         <div className="sandbox-confirmation-actions">
           <button type="button" className="btn btn-primary" onClick={() => onAction(confirmAction)} disabled={busy}>Confirmar</button>
           <button type="button" className="btn" onClick={() => onAction('cancel-confirmation')} disabled={busy}>Cancelar</button>
@@ -151,6 +160,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <button type="button" className="btn" onClick={() => onAction('config-status')} disabled={busy || Boolean(confirmAction)}>Consultar config-status</button>
         <button type="button" className="btn btn-primary" onClick={() => onAction('sync-plans')} disabled={busy || Boolean(confirmAction)}>Sincronizar starter</button>
         <button type="button" className="btn btn-primary" onClick={() => onAction('checkout')} disabled={busy || Boolean(confirmAction)}>Generar checkout sandbox</button>
+        <button type="button" className="btn" onClick={() => onAction('reconcile-sandbox')} disabled={busy || Boolean(confirmAction)}>Reconciliar suscripción existente</button>
         <button type="button" className="btn" onClick={() => onAction('external-status')} disabled={busy || Boolean(confirmAction) || !checkout?.external_checkout_id}>Consultar estado externo</button>
       </div>
 
@@ -164,6 +174,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       <div className="sandbox-billing-details">
         <div><span>Secretos configurados</span><strong>{config ? (config.token_configured && config.webhook_secret_configured ? 'Sí' : 'Incompletos') : 'Sin consultar'}</strong></div>
         <div><span>Último checkout</span><strong>{checkout?.id ? `#${checkout.id} · ${checkout.estado}` : 'Todavía no existe'}</strong></div>
+        <div><span>Preapproval a reconciliar</span><strong>{SANDBOX_BILLING.preapprovalId}</strong></div>
         <div><span>Estado externo</span><strong>{external?.status || 'Sin consultar'}</strong></div>
         <div><span>Suscripción</span><strong>No se activa por URL de retorno</strong></div>
       </div>
@@ -251,7 +262,7 @@ export default function PlatformCRM({ role = 'owner' }) {
       setSandboxConfirmAction('')
       return
     }
-    if (['sync-plans', 'checkout'].includes(action) && sandboxConfirmAction !== action) {
+    if (['sync-plans', 'checkout', 'reconcile-sandbox'].includes(action) && sandboxConfirmAction !== action) {
       setSandboxConfirmAction(action)
       setSandboxError('')
       setSandboxNotice('')
@@ -285,6 +296,13 @@ export default function PlatformCRM({ role = 'owner' }) {
         auditMetadata.result = data?.status || 'unknown'
         setSandboxNotice(data?.checkout_url ? 'Checkout sandbox creado. La suscripción no se activa por la URL de retorno.' : 'El checkout quedó preparado sin URL.')
         await loadSandboxSnapshot()
+      } else if (action === 'reconcile-sandbox') {
+        const data = await sandboxBillingApi('reconcile-sandbox', { method: 'POST', body: { preapproval_id: SANDBOX_BILLING.preapprovalId } })
+        auditMetadata.preapproval_id = SANDBOX_BILLING.preapprovalId
+        auditMetadata.result = data?.normalized_status || data?.status || 'unknown'
+        auditMetadata.idempotent = Boolean(data?.idempotent)
+        setSandboxNotice(data?.idempotent ? 'La suscripción sandbox ya estaba reconciliada.' : 'Suscripción sandbox reconciliada y registrada como activa.')
+        await load()
       } else if (action === 'external-status') {
         const attemptId = sandboxSnapshot.checkout?.id
         if (!attemptId) throw Object.assign(new Error('Todavía no existe un checkout sandbox.'), { code: 'external_status_failed' })

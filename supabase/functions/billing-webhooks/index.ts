@@ -61,17 +61,30 @@ Deno.serve(async (request) => {
       const verifiedResource = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
       const planId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
       if (planId) {
-        const { data: price } = await admin.from('saas_plan_precios').select('id, plan_codigo').eq('external_plan_id', planId).eq('proveedor_codigo', 'mercadopago').eq('entorno', 'sandbox').eq('activo', true).maybeSingle()
+        const { data: price } = await admin.from('saas_plan_precios').select('id, plan_codigo, external_plan_id').eq('external_plan_id', planId).eq('proveedor_codigo', 'mercadopago').eq('entorno', 'sandbox').eq('activo', true).maybeSingle()
         if (price) {
-          checkoutAttempt = (await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('barberia_id', 6).eq('plan_codigo', price.plan_codigo).eq('proveedor_codigo', provider).in('estado', ['ready', 'pending_provider', 'created']).order('created_at', { ascending: false }).limit(1).maybeSingle()).data
+          const candidate = (await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('barberia_id', 6).eq('plan_codigo', price.plan_codigo).eq('proveedor_codigo', provider).in('estado', ['ready', 'pending_provider', 'created']).order('created_at', { ascending: false }).limit(1).maybeSingle()).data
+          const candidatePlanId = String(candidate?.metadata?.external_plan_id || '')
+          // Never let a historical checkout from an obsolete plan become the
+          // context for a current subscription event. Amount/currency alone
+          // are insufficient because the old and new sandbox plans share them.
+          if (candidate && candidatePlanId === String(price.external_plan_id)) checkoutAttempt = candidate
         }
       }
+    }
+    if (checkoutAttempt && provider === 'mercadopago' && (resource as Record<string, unknown>).resourceType === 'preapproval') {
+      const verifiedResource = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
+      const verifiedPlanId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
+      const attemptPlanId = String(checkoutAttempt.metadata?.external_plan_id || '')
+      if (!verifiedPlanId || !attemptPlanId || verifiedPlanId !== attemptPlanId) checkoutAttempt = null
     }
     const context = externalSubscription || checkoutAttempt
     if (!context?.suscripcion_id || !context?.barberia_id) {
       await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'external_subscription_unlinked', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
       return json({ received: true, processed: false, reason: 'external_subscription_unlinked' }, 202)
     }
+    const { error: contextLinkError } = await admin.from('saas_billing_webhook_events').update({ barberia_id: context.barberia_id, suscripcion_id: context.suscripcion_id }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
+    if (contextLinkError) throw Object.assign(new Error('No se pudo vincular el contexto del webhook.'), { status: 500, code: 'webhook_context_link_failed' })
     const expected = checkoutAttempt ? { amount: Number(checkoutAttempt.amount), currency: checkoutAttempt.currency } : null
     if (expected && resource.amount && (Math.abs(expected.amount - resource.amount) > 0.01 || expected.currency !== resource.currency)) {
       await admin.from('saas_billing_webhook_events').update({ estado: 'failed', error_code: 'amount_or_currency_mismatch', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)

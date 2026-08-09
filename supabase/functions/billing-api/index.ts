@@ -3,6 +3,13 @@ import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/ht
 import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
+const SANDBOX_BILLING = Object.freeze({
+  tenantId: 6,
+  planCode: 'starter',
+  provider: 'mercadopago',
+  environment: 'sandbox',
+  externalPlanId: '63a35af17150492f92dbc459c686a775',
+})
 
 function normalizeCountryCode(value: unknown) {
   const raw = String(value || '').trim().toUpperCase()
@@ -240,6 +247,111 @@ async function reconcile(admin: ReturnType<typeof adminClient>, userId: string, 
   return json({ provider: provider || 'all', environment: 'sandbox', ...summary, checked_at: new Date().toISOString() })
 }
 
+async function reconcileSandboxPreapproval(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  const role = await platformRole(admin, userId)
+  if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
+  const preapprovalId = String(body.preapproval_id || '').trim()
+  if (!/^[A-Za-z0-9_-]{8,120}$/.test(preapprovalId)) throw Object.assign(new Error('Preapproval sandbox inválido.'), { status: 422, code: 'invalid_sandbox_preapproval' })
+
+  const [{ data: tenant }, { data: providerRow }, { data: price }, { data: subscription }] = await Promise.all([
+    admin.from('barberias').select('id, metadata').eq('id', SANDBOX_BILLING.tenantId).maybeSingle(),
+    admin.from('saas_proveedores_pago').select('codigo, activo, entorno').eq('codigo', SANDBOX_BILLING.provider).maybeSingle(),
+    admin.from('saas_plan_precios').select('id, plan_codigo, proveedor_codigo, moneda, importe, periodicidad, entorno, external_plan_id, habilitado, activo').eq('id', 1).maybeSingle(),
+    admin.from('saas_suscripciones').select('id, barberia_id, plan_codigo, estado, provider, provider_subscription_id, state_version').eq('barberia_id', SANDBOX_BILLING.tenantId).maybeSingle(),
+  ])
+  const tenantMetadata = tenant?.metadata && typeof tenant.metadata === 'object' ? tenant.metadata as Record<string, unknown> : {}
+  if (!tenant || tenantMetadata.environment !== SANDBOX_BILLING.environment || tenantMetadata.technical !== true || tenantMetadata.billing_enabled !== true || tenantMetadata.billing_provider !== SANDBOX_BILLING.provider || tenantMetadata.billing_plan !== SANDBOX_BILLING.planCode) {
+    throw Object.assign(new Error('El tenant sandbox técnico no cumple el contrato de billing.'), { status: 409, code: 'sandbox_tenant_inconsistent' })
+  }
+  if (!providerRow || providerRow.entorno !== SANDBOX_BILLING.environment) throw Object.assign(new Error('Mercado Pago de producción está bloqueado.'), { status: 409, code: 'production_provider_disabled' })
+  if (!price || price.plan_codigo !== SANDBOX_BILLING.planCode || price.proveedor_codigo !== SANDBOX_BILLING.provider || price.entorno !== SANDBOX_BILLING.environment || price.external_plan_id !== SANDBOX_BILLING.externalPlanId || !price.activo || !price.habilitado || String(price.moneda).toUpperCase() !== 'ARS' || Number(price.importe) !== 15000 || price.periodicidad !== 'monthly') {
+    throw Object.assign(new Error('El precio sandbox actual no coincide con el plan autorizado.'), { status: 409, code: 'sandbox_price_inconsistent' })
+  }
+  if (!subscription || subscription.plan_codigo !== SANDBOX_BILLING.planCode) throw Object.assign(new Error('El tenant sandbox no tiene una suscripción starter.'), { status: 409, code: 'sandbox_subscription_missing' })
+
+  const currentUser = await mercadoPagoCurrentUser()
+  if (currentUser.id !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID) throw Object.assign(new Error('La credencial no pertenece al vendedor sandbox autorizado.'), { status: 409, code: 'sandbox_seller_mismatch' })
+  const [external, plan] = await Promise.all([
+    mercadoPagoPreapprovalDetails(preapprovalId),
+    mercadoPagoPlanDetails(SANDBOX_BILLING.externalPlanId),
+  ])
+  const normalizedStatus = normalizeStatus('mercadopago', external.status || '')
+  if (external.id !== preapprovalId || external.collectorId !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID || external.planId !== SANDBOX_BILLING.externalPlanId || external.amount !== 15000 || external.currency !== 'ARS' || external.frequency !== 1 || external.frequencyType !== 'months' || normalizedStatus !== 'active') {
+    throw Object.assign(new Error('La suscripción externa no coincide con el contrato sandbox autorizado.'), { status: 409, code: 'sandbox_preapproval_inconsistent' })
+  }
+  if (plan.collectorId !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID || plan.applicationId == null || external.applicationId !== plan.applicationId || plan.amount !== 15000 || plan.currency !== 'ARS' || plan.frequency !== 1 || plan.frequencyType !== 'months') {
+    throw Object.assign(new Error('El plan externo no coincide con el vendedor, aplicación o precio sandbox autorizado.'), { status: 409, code: 'sandbox_plan_inconsistent' })
+  }
+
+  const [{ data: externalById, error: externalByIdError }, { data: existingForSubscription, error: existingForSubscriptionError }] = await Promise.all([
+    admin.from('saas_suscripciones_externas').select('id, suscripcion_id, barberia_id, external_subscription_id, external_plan_id, estado_externo, metadata').eq('proveedor_codigo', SANDBOX_BILLING.provider).eq('external_subscription_id', preapprovalId).maybeSingle(),
+    admin.from('saas_suscripciones_externas').select('id, suscripcion_id, barberia_id, external_subscription_id, external_plan_id, estado_externo, metadata').eq('suscripcion_id', subscription.id).eq('proveedor_codigo', SANDBOX_BILLING.provider).maybeSingle(),
+  ])
+  if (externalByIdError || existingForSubscriptionError) throw Object.assign(new Error('No se pudo verificar el vínculo externo sandbox.'), { status: 502, code: 'sandbox_link_lookup_failed' })
+  if (externalById && (externalById.barberia_id !== SANDBOX_BILLING.tenantId || externalById.suscripcion_id !== subscription.id)) throw Object.assign(new Error('La suscripción externa ya está vinculada a otro tenant.'), { status: 409, code: 'sandbox_subscription_conflict' })
+  if (existingForSubscription && existingForSubscription.external_subscription_id !== preapprovalId) throw Object.assign(new Error('El tenant sandbox ya tiene otra suscripción externa vinculada.'), { status: 409, code: 'sandbox_subscription_conflict' })
+
+  const providerEventId = `reconcile:${SANDBOX_BILLING.provider}:${preapprovalId}:${normalizedStatus}`
+  const now = new Date().toISOString()
+  const externalMetadata = {
+    source: 'sandbox_reconciliation',
+    environment: SANDBOX_BILLING.environment,
+    tenant_id: SANDBOX_BILLING.tenantId,
+    plan_codigo: SANDBOX_BILLING.planCode,
+    external_plan_id: SANDBOX_BILLING.externalPlanId,
+    preapproval_id: preapprovalId,
+    application_id: external.applicationId,
+    collector_id: external.collectorId,
+    payer_id: external.payerId,
+    external_reference: external.externalReference,
+    verified_status: external.status,
+  }
+  const { error: externalLinkError } = await admin.from('saas_suscripciones_externas').upsert({
+    suscripcion_id: subscription.id,
+    barberia_id: SANDBOX_BILLING.tenantId,
+    proveedor_codigo: SANDBOX_BILLING.provider,
+    external_subscription_id: preapprovalId,
+    external_plan_id: SANDBOX_BILLING.externalPlanId,
+    estado_externo: normalizedStatus,
+    current_period_start: external.dateCreated,
+    current_period_end: external.nextPaymentDate,
+    cancel_at_period_end: false,
+    last_synced_at: now,
+    metadata: externalMetadata,
+  }, { onConflict: 'suscripcion_id,proveedor_codigo' })
+  if (externalLinkError) throw Object.assign(new Error('No se pudo vincular la suscripción externa sandbox.'), { status: 502, code: 'subscription_registration_failed' })
+  const { error: subscriptionLinkError } = await admin.from('saas_suscripciones').update({ provider: SANDBOX_BILLING.provider, provider_subscription_id: preapprovalId, updated_at: now }).eq('id', subscription.id)
+  if (subscriptionLinkError) throw Object.assign(new Error('No se pudo vincular la suscripción interna sandbox.'), { status: 502, code: 'subscription_registration_failed' })
+  const { data: transition, error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: subscription.id, p_to_state: normalizedStatus, p_reason: `sandbox_reconciliation:${preapprovalId}`, p_source: 'reconciliation', p_provider_event_id: providerEventId, p_provider_event_at: external.lastModified || external.dateCreated || null })
+  if (transitionError) throw Object.assign(new Error('No se pudo actualizar la suscripción sandbox.'), { status: 502, code: 'subscription_transition_failed' })
+  const { error: auditError } = await admin.from('saas_billing_events').upsert({
+    event_name: 'subscription.sandbox_reconciled',
+    barberia_id: SANDBOX_BILLING.tenantId,
+    suscripcion_id: subscription.id,
+    dedupe_key: `sandbox-reconcile:${SANDBOX_BILLING.provider}:${preapprovalId}`,
+    payload: { ...externalMetadata, normalized_status: normalizedStatus, provider_event_id: providerEventId },
+  }, { onConflict: 'dedupe_key' })
+  if (auditError) throw Object.assign(new Error('La reconciliación terminó sin auditoría completa.'), { status: 502, code: 'sandbox_audit_failed' })
+
+  return json({
+    provider: SANDBOX_BILLING.provider,
+    environment: SANDBOX_BILLING.environment,
+    tenant_id: SANDBOX_BILLING.tenantId,
+    plan_codigo: SANDBOX_BILLING.planCode,
+    external_plan_id: SANDBOX_BILLING.externalPlanId,
+    preapproval_id: preapprovalId,
+    status: external.status,
+    normalized_status: normalizedStatus,
+    application_id: external.applicationId,
+    collector_id: external.collectorId,
+    payer_id: external.payerId,
+    external_reference: external.externalReference,
+    transition,
+    idempotent: Boolean(transition?.idempotent || existingForSubscription?.external_subscription_id === preapprovalId),
+    reconciled_at: now,
+  })
+}
+
 async function configurationStatus(admin: ReturnType<typeof adminClient>, userId: string) {
   const role = await platformRole(admin, userId)
   if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
@@ -407,6 +519,7 @@ Deno.serve(async (request) => {
     if (request.method === 'POST' && route === 'checkout') return await checkout(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'external-status') return await externalStatus(admin, user.id, body)
     if (request.method === 'POST' && route === 'sync-plans') return await syncPlans(request, admin, user.id, body)
+    if (request.method === 'POST' && route === 'reconcile-sandbox') return await reconcileSandboxPreapproval(admin, user.id, body)
     if (request.method === 'POST' && route === 'reconcile') return await reconcile(admin, user.id, body)
     return errorJson('Ruta de billing inexistente.', 404, 'route_not_found')
   } catch (error) {
