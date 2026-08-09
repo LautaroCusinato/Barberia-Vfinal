@@ -1,6 +1,6 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
-import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, normalizeStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 const SANDBOX_BILLING = Object.freeze({
@@ -247,7 +247,9 @@ async function reconcile(admin: ReturnType<typeof adminClient>, userId: string, 
   return json({ provider: provider || 'all', environment: 'sandbox', ...summary, checked_at: new Date().toISOString() })
 }
 
-async function reconcileSandboxPreapproval(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+async function reconcileSandboxPreapproval(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  let stage = 'authorize'
+  try {
   const role = await platformRole(admin, userId)
   if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
   const preapprovalId = String(body.preapproval_id || '').trim()
@@ -269,8 +271,10 @@ async function reconcileSandboxPreapproval(admin: ReturnType<typeof adminClient>
   }
   if (!subscription || subscription.plan_codigo !== SANDBOX_BILLING.planCode) throw Object.assign(new Error('El tenant sandbox no tiene una suscripción starter.'), { status: 409, code: 'sandbox_subscription_missing' })
 
+  stage = 'verify_provider_identity'
   const currentUser = await mercadoPagoCurrentUser()
   if (currentUser.id !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID) throw Object.assign(new Error('La credencial no pertenece al vendedor sandbox autorizado.'), { status: 409, code: 'sandbox_seller_mismatch' })
+  stage = 'fetch_provider_resources'
   const [external, plan] = await Promise.all([
     mercadoPagoPreapprovalDetails(preapprovalId),
     mercadoPagoPlanDetails(SANDBOX_BILLING.externalPlanId),
@@ -306,6 +310,7 @@ async function reconcileSandboxPreapproval(admin: ReturnType<typeof adminClient>
     external_reference: external.externalReference,
     verified_status: external.status,
   }
+  stage = 'persist_external_subscription'
   const { error: externalLinkError } = await admin.from('saas_suscripciones_externas').upsert({
     suscripcion_id: subscription.id,
     barberia_id: SANDBOX_BILLING.tenantId,
@@ -320,10 +325,13 @@ async function reconcileSandboxPreapproval(admin: ReturnType<typeof adminClient>
     metadata: externalMetadata,
   }, { onConflict: 'suscripcion_id,proveedor_codigo' })
   if (externalLinkError) throw Object.assign(new Error('No se pudo vincular la suscripción externa sandbox.'), { status: 502, code: 'subscription_registration_failed' })
+  stage = 'link_internal_subscription'
   const { error: subscriptionLinkError } = await admin.from('saas_suscripciones').update({ provider: SANDBOX_BILLING.provider, provider_subscription_id: preapprovalId, updated_at: now }).eq('id', subscription.id)
   if (subscriptionLinkError) throw Object.assign(new Error('No se pudo vincular la suscripción interna sandbox.'), { status: 502, code: 'subscription_registration_failed' })
-  const { data: transition, error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: subscription.id, p_to_state: normalizedStatus, p_reason: `sandbox_reconciliation:${preapprovalId}`, p_source: 'reconciliation', p_provider_event_id: providerEventId, p_provider_event_at: external.lastModified || external.dateCreated || null })
+  stage = 'transition_internal_subscription'
+  const { data: transition, error: transitionError } = await requestClient(request).rpc('transition_saas_subscription', { p_subscription_id: subscription.id, p_to_state: normalizedStatus, p_reason: `sandbox_reconciliation:${preapprovalId}`, p_source: 'reconciliation', p_provider_event_id: providerEventId, p_provider_event_at: external.lastModified || external.dateCreated || null })
   if (transitionError) throw Object.assign(new Error('No se pudo actualizar la suscripción sandbox.'), { status: 502, code: 'subscription_transition_failed' })
+  stage = 'write_audit_event'
   const { error: auditError } = await admin.from('saas_billing_events').upsert({
     event_name: 'subscription.sandbox_reconciled',
     barberia_id: SANDBOX_BILLING.tenantId,
@@ -350,6 +358,9 @@ async function reconcileSandboxPreapproval(admin: ReturnType<typeof adminClient>
     idempotent: Boolean(transition?.idempotent || existingForSubscription?.external_subscription_id === preapprovalId),
     reconciled_at: now,
   })
+  } catch (error) {
+    throw Object.assign(error instanceof Error ? error : new Error('Sandbox reconciliation failed.'), { stage })
+  }
 }
 
 async function configurationStatus(admin: ReturnType<typeof adminClient>, userId: string) {
@@ -519,11 +530,11 @@ Deno.serve(async (request) => {
     if (request.method === 'POST' && route === 'checkout') return await checkout(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'external-status') return await externalStatus(admin, user.id, body)
     if (request.method === 'POST' && route === 'sync-plans') return await syncPlans(request, admin, user.id, body)
-    if (request.method === 'POST' && route === 'reconcile-sandbox') return await reconcileSandboxPreapproval(admin, user.id, body)
+    if (request.method === 'POST' && route === 'reconcile-sandbox') return await reconcileSandboxPreapproval(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'reconcile') return await reconcile(admin, user.id, body)
     return errorJson('Ruta de billing inexistente.', 404, 'route_not_found')
   } catch (error) {
-    console.error(JSON.stringify({ correlation_id: correlationId, code: error?.code || 'billing_api_error', provider_status: Number.isSafeInteger(error?.status) ? error.status : null, provider_code: error?.providerCode || null, provider_detail: error?.providerDetail || null }))
+    console.error(JSON.stringify({ correlation_id: correlationId, code: error?.code || 'billing_api_error', stage: error?.stage || null, message: String(error?.message || '').replace(/(?:TEST|APP_USR)-[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 180) || null, provider_status: Number.isSafeInteger(error?.status) ? error.status : null, provider_code: error?.providerCode || null, provider_detail: error?.providerDetail || null }))
     return errorJson(error?.message || 'Error temporal de billing.', error?.status || 500, error?.code || 'billing_api_error')
   }
 })
