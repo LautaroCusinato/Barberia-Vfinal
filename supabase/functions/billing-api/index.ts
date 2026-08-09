@@ -1,6 +1,6 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
-import { mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 
@@ -76,7 +76,6 @@ async function checkout(request: Request, admin: ReturnType<typeof adminClient>,
   if (provider === 'mercadopago' && !sandboxBillingEnabled) throw Object.assign(new Error('Mercado Pago sandbox está habilitado únicamente para el tenant técnico y plan de prueba.'), { status: 403, code: 'sandbox_scope_required' })
   const config = providerConfigured(provider as 'mercadopago' | 'paypal', provider === 'mercadopago' ? 'checkout' : 'all')
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
-  if (provider === 'mercadopago' && !mercadoPagoCredentialStatus().sandbox) throw Object.assign(new Error('Se requiere un Access Token TEST- de Mercado Pago.'), { status: 409, code: 'non_sandbox_access_token' })
   if (!providerRow.activo && provider !== 'mercadopago') throw Object.assign(new Error('El proveedor sandbox todavía no está habilitado.'), { status: 409, code: 'provider_disabled' })
   const externalPrice = await resolveExternalPrice(admin, tenantId, planCode, provider, providerRow.entorno)
 
@@ -139,7 +138,6 @@ async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>
   if (!/^[a-z][a-z0-9_-]{1,39}$/.test(planCode)) throw Object.assign(new Error('Para sincronizar se debe indicar un único plan válido.'), { status: 422, code: 'invalid_plan' })
   const config = providerConfigured(provider as 'mercadopago' | 'paypal', provider === 'mercadopago' ? 'plan_sync' : 'all')
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
-  if (provider === 'mercadopago' && !mercadoPagoCredentialStatus().sandbox) throw Object.assign(new Error('Se requiere un Access Token TEST- de Mercado Pago.'), { status: 409, code: 'non_sandbox_access_token' })
   const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo, entorno, metadata').eq('codigo', provider).single()
   if (!providerRow) throw Object.assign(new Error('Proveedor no registrado.'), { status: 422, code: 'provider_not_registered' })
   const externalPrice = await resolveExternalPrice(admin, requestedTenantId, planCode, provider, providerRow.entorno)
@@ -252,26 +250,31 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
   const appBaseUrlConfigured = /^https:\/\//i.test(String(Deno.env.get('APP_BASE_URL') || '').trim())
   let externalPlanCheck: Record<string, unknown> = { configured: false, reachable: false }
   const { data: sandboxPrice } = await admin.from('saas_plan_precios').select('external_plan_id, importe, moneda, periodicidad, entorno, pais_codigo, activo, habilitado').eq('id', 1).eq('plan_codigo', 'starter').eq('proveedor_codigo', 'mercadopago').maybeSingle()
-  if (credential.sandbox && sandboxPrice?.external_plan_id && sandboxPrice.entorno === 'sandbox' && sandboxPrice.activo) {
+  let sandboxTokenValid = false
+  if (credential.configured && sandboxPrice?.external_plan_id && sandboxPrice.entorno === 'sandbox' && sandboxPrice.activo) {
     try {
-      const [external, currentUser] = await Promise.all([
-        mercadoPagoPlanDetails(String(sandboxPrice.external_plan_id)),
-        mercadoPagoCurrentUser(),
-      ])
-      externalPlanCheck = {
-        configured: true,
-        reachable: true,
-        plan_id: external.id,
-        application_id: external.applicationId,
-        collector_id: external.collectorId,
-        status: external.status,
-        amount: external.amount,
-        currency: external.currency,
-        periodicity: external.frequency === 12 && external.frequencyType === 'months' ? 'yearly' : external.frequencyType === 'months' ? 'monthly' : null,
-        current_token_user_id: currentUser.id,
-        current_token_country_id: currentUser.countryId,
-        seller_matches_current_token: Boolean(external.collectorId && currentUser.id && external.collectorId === currentUser.id),
-        matches_internal_price: external.amount === Number(sandboxPrice.importe) && external.currency === String(sandboxPrice.moneda).toUpperCase(),
+      const currentUser = await mercadoPagoCurrentUser()
+      sandboxTokenValid = currentUser.id === EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
+      if (sandboxTokenValid) {
+        const external = await mercadoPagoPlanDetails(String(sandboxPrice.external_plan_id))
+        externalPlanCheck = {
+          configured: true,
+          reachable: true,
+          plan_id: external.id,
+          application_id: external.applicationId,
+          collector_id: external.collectorId,
+          status: external.status,
+          amount: external.amount,
+          currency: external.currency,
+          periodicity: external.frequency === 12 && external.frequencyType === 'months' ? 'yearly' : external.frequencyType === 'months' ? 'monthly' : null,
+          current_token_user_id: currentUser.id,
+          current_token_country_id: currentUser.countryId,
+          seller_matches_current_token: Boolean(external.collectorId && currentUser.id && external.collectorId === currentUser.id),
+          expected_sandbox_seller_id: EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID,
+          matches_internal_price: external.amount === Number(sandboxPrice.importe) && external.currency === String(sandboxPrice.moneda).toUpperCase(),
+        }
+      } else {
+        externalPlanCheck = { configured: true, reachable: false, current_token_user_id: currentUser.id, expected_sandbox_seller_id: EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, error_code: 'sandbox_seller_mismatch' }
       }
       console.log(JSON.stringify({
         code: 'sandbox_external_plan_check',
@@ -286,6 +289,17 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
       externalPlanCheck = { configured: true, reachable: false, error_code: error?.code || 'external_plan_check_failed' }
       console.error(JSON.stringify({ code: 'sandbox_external_plan_check_failed', error_code: externalPlanCheck.error_code }))
     }
+  } else if (credential.configured) {
+    // Even before a plan is mapped, validate the seller identity. This keeps
+    // the status endpoint honest for APP_USR credentials and never trusts a
+    // token prefix.
+    try {
+      const currentUser = await mercadoPagoCurrentUser()
+      sandboxTokenValid = currentUser.id === EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
+      externalPlanCheck = { configured: true, reachable: false, current_token_user_id: currentUser.id, expected_sandbox_seller_id: EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, error_code: sandboxTokenValid ? 'external_plan_not_configured' : 'sandbox_seller_mismatch' }
+    } catch (error) {
+      externalPlanCheck = { configured: true, reachable: false, error_code: error?.code || 'sandbox_identity_check_failed' }
+    }
   }
   return json({
     provider: 'mercadopago',
@@ -294,7 +308,7 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
     database_enabled: Boolean(providerRow?.activo && providerRow?.entorno === 'sandbox'),
     token_configured: checkout.configured,
     token_kind: credential.kind,
-    sandbox_token_valid: credential.sandbox,
+    sandbox_token_valid: sandboxTokenValid,
     webhook_secret_configured: webhook.configured,
     app_base_url_configured: appBaseUrlConfigured,
     missing_for_checkout: [...checkout.missing, ...(appBaseUrlConfigured ? [] : ['APP_BASE_URL'])],

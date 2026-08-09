@@ -25,7 +25,7 @@ const SANDBOX_BILLING_MESSAGES = {
   invalid_session: 'La sesión no es válida. Volvé a iniciar sesión.',
   platform_admin_required: 'Sólo owner/admin de plataforma puede usar este control.',
   provider_not_configured: 'Faltan variables privadas de Mercado Pago sandbox.',
-  non_sandbox_access_token: 'El Access Token no es TEST- o el entorno no es sandbox.',
+  sandbox_seller_mismatch: 'La credencial no pertenece al vendedor TEST autorizado.',
   production_provider_disabled: 'Mercado Pago de producción permanece bloqueado.',
   sandbox_scope_required: 'La operación sólo está permitida para el tenant sandbox técnico.',
   plan_mapping_missing: 'Falta el mapeo del plan starter en Supabase.',
@@ -158,7 +158,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <div><span className="stat-label">Tenant técnico</span><strong>{tenantReady ? 'id=6 · válido' : snapshot?.tenant === null ? 'id=6 · backend valida' : 'No validado'}</strong></div>
         <div><span className="stat-label">Proveedor</span><strong>{provider ? `${provider.codigo} · ${provider.entorno}` : 'Sin consultar'}</strong><small>{provider?.activo ? 'Activo global' : 'Global deshabilitado (correcto)'}</small></div>
         <div><span className="stat-label">Precio externo</span><strong>{price ? `${price.moneda} ${formatMoney(price.importe, price.moneda)} / ${price.periodicidad === 'yearly' ? 'año' : 'mes'}` : SANDBOX_PRICE_LABEL}</strong><small>{price?.habilitado && price.external_plan_id ? `Habilitado · ${price.external_plan_id}` : 'Pendiente de sincronizar'}</small></div>
-        <div><span className="stat-label">Producción</span><strong>{config?.production_enabled === false ? 'Bloqueada' : 'No validada'}</strong><small>{config?.token_kind === 'test' && config?.sandbox_token_valid ? 'Token TEST- válido (valor oculto)' : 'Token no validado'}</small></div>
+        <div><span className="stat-label">Producción</span><strong>{config?.production_enabled === false ? 'Bloqueada' : 'No validada'}</strong><small>{config?.sandbox_token_valid ? 'Vendedor TEST validado (token oculto)' : 'Token no validado'}</small></div>
       </div>
 
       <div className="sandbox-billing-details">
@@ -173,6 +173,11 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <div><span>Vendedor externo</span><strong>User ID {config.external_plan_check.collector_id || 'no informado'}</strong></div>
         <div><span>Vendedor del token actual</span><strong>{config.external_plan_check.current_token_user_id || 'no informado'}{config.external_plan_check.seller_matches_current_token ? ' · coincide' : ' · revisar'}</strong></div>
         <div><span>Aplicación externa</span><strong>{config.external_plan_check.application_id || 'no informada'}</strong></div>
+      </div>}
+      {!config?.external_plan_check?.reachable && config?.external_plan_check?.current_token_user_id && <div className="sandbox-billing-details">
+        <div><span>Usuario de la credencial</span><strong>{config.external_plan_check.current_token_user_id}</strong></div>
+        <div><span>Vendedor sandbox esperado</span><strong>{config.external_plan_check.expected_sandbox_seller_id || '3595396521'}</strong></div>
+        <div><span>Validación</span><strong>{config.external_plan_check.error_code === 'sandbox_seller_mismatch' ? 'No coincide · operación detenida' : 'Pendiente'}</strong></div>
       </div>}
 
       {checkout?.checkout_url && <div className="sandbox-checkout-url"><span>checkout_url</span><a href={checkout.checkout_url} target="_blank" rel="noreferrer">{checkout.checkout_url}</a></div>}

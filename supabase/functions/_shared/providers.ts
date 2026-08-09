@@ -24,17 +24,26 @@ function mercadoPagoEnvironment() {
   return environment
 }
 
+/**
+ * The sandbox is intentionally bound to one Mercado Pago TEST seller.  A
+ * credential prefix is not an identity signal: depending on the product,
+ * Mercado Pago can issue APP_USR credentials for a TEST seller as well.
+ */
+export const EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID = 3595396521
+
 export function mercadoPagoCredentialStatus() {
   const token = String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') || '').trim()
-  const kind = token.startsWith('TEST-') ? 'test' : token.startsWith('APP_USR-') ? 'production' : token ? 'unknown' : 'missing'
-  return { configured: Boolean(token), kind, sandbox: kind === 'test' }
+  const kind = token.startsWith('TEST-') ? 'test' : token ? 'unverified' : 'missing'
+  // `sandbox` is deliberately false until /users/me has confirmed the
+  // allow-listed TEST seller.  This prevents a configured but unverified
+  // APP_USR token from being treated as safe by status consumers.
+  return { configured: Boolean(token), kind, sandbox: false }
 }
 
 function mercadoPagoAccessToken() {
   mercadoPagoEnvironment()
   const status = mercadoPagoCredentialStatus()
   if (!status.configured) throw new ProviderNotConfigured('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN'])
-  if (!status.sandbox) throw new ProviderError('Se requiere un Access Token TEST- de Mercado Pago; las credenciales de producción están bloqueadas.', 409, 'non_sandbox_access_token')
   return String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN'))
 }
 
@@ -74,6 +83,7 @@ export function providerConfigured(provider: ProviderCode, capability: ProviderC
 }
 
 export async function mercadoPago(input: { externalPlanId?: string | null; email?: string | null; tenantReference: string; planName: string; amount: number; currency: string; successUrl: string; cancelUrl: string; webhookUrl: string; idempotencyKey?: string }) {
+  await mercadoPagoSandboxIdentity()
   const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(input.idempotencyKey ? { 'X-Idempotency-Key': input.idempotencyKey } : {}) }
@@ -92,6 +102,7 @@ export async function mercadoPago(input: { externalPlanId?: string | null; email
 }
 
 export async function syncMercadoPagoPlan(input: { name: string; description?: string | null; amount: number; currency: string; periodicity: string; externalReference: string; backUrl: string; idempotencyKey: string }) {
+  await mercadoPagoSandboxIdentity()
   const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const response = await fetch(`${base}/preapproval_plan`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': input.idempotencyKey }, body: JSON.stringify({ reason: input.name, external_reference: input.externalReference, back_url: input.backUrl, auto_recurring: { frequency: input.periodicity === 'yearly' ? 12 : 1, frequency_type: 'months', transaction_amount: input.amount, currency_id: input.currency } }) })
@@ -101,6 +112,7 @@ export async function syncMercadoPagoPlan(input: { name: string; description?: s
 
 /** Read-only ownership/configuration check for the isolated sandbox plan. */
 export async function mercadoPagoPlanDetails(externalPlanId: string) {
+  await mercadoPagoSandboxIdentity()
   const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const body = await responseJson(await fetch(`${base}/preapproval_plan/${encodeURIComponent(externalPlanId)}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
@@ -127,6 +139,19 @@ export async function mercadoPagoCurrentUser() {
     countryId: String(body.country_id || '').trim().toUpperCase() || null,
     siteId: String(body.site_id || '').trim().toUpperCase() || null,
   }
+}
+
+/**
+ * Validate the configured credential against Mercado Pago itself.  No token
+ * value is ever returned, logged, or included in an error.  The exact seller
+ * allow-list is only active while the environment is explicitly sandbox.
+ */
+export async function mercadoPagoSandboxIdentity() {
+  const currentUser = await mercadoPagoCurrentUser()
+  if (currentUser.id !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID) {
+    throw new ProviderError('La credencial de Mercado Pago no pertenece al vendedor sandbox autorizado.', 409, 'sandbox_seller_mismatch')
+  }
+  return currentUser
 }
 
 export async function paypal(input: { externalPlanId?: string | null; tenantReference: string; amount: number; currency: string; successUrl: string; cancelUrl: string }) {
@@ -161,7 +186,7 @@ export async function syncPayPalPlan(input: { name: string; description?: string
 }
 
 export async function verifyMercadoPago(payload: Record<string, unknown>, headers: Headers) {
-  mercadoPagoAccessToken()
+  await mercadoPagoSandboxIdentity()
   requireEnv('Mercado Pago', ['MERCADOPAGO_WEBHOOK_SECRET'])
   const signature = headers.get('x-signature') || ''
   const requestId = headers.get('x-request-id') || ''
@@ -175,6 +200,7 @@ export async function verifyMercadoPago(payload: Record<string, unknown>, header
 }
 
 export async function mercadoPagoResource(payload: Record<string, unknown>) {
+  await mercadoPagoSandboxIdentity()
   const token = mercadoPagoAccessToken()
   const id = String((payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
   if (!id) throw new ProviderError('Evento Mercado Pago sin recurso.', 422, 'resource_id_missing')
@@ -190,6 +216,7 @@ export async function mercadoPagoResource(payload: Record<string, unknown>) {
  * IDs provistos por el navegador como fuente de verdad: el caller resuelve el
  * ID desde la base y sólo pasa el tipo de recurso. */
 export async function mercadoPagoExternalStatus(input: { externalId: string; kind: 'checkout' | 'subscription' }) {
+  await mercadoPagoSandboxIdentity()
   const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const resource = input.kind === 'subscription' ? 'preapproval' : 'checkout/preferences'
