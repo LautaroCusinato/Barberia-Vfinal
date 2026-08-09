@@ -1,6 +1,6 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
-import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 
@@ -251,9 +251,11 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
   let externalPlanCheck: Record<string, unknown> = { configured: false, reachable: false }
   const { data: sandboxPrice } = await admin.from('saas_plan_precios').select('external_plan_id, importe, moneda, periodicidad, entorno, pais_codigo, activo, habilitado').eq('id', 1).eq('plan_codigo', 'starter').eq('proveedor_codigo', 'mercadopago').maybeSingle()
   let sandboxTokenValid = false
+  let currentTokenUser: { id: number | null; countryId: string | null } | null = null
   if (credential.configured && sandboxPrice?.external_plan_id && sandboxPrice.entorno === 'sandbox' && sandboxPrice.activo) {
     try {
       const currentUser = await mercadoPagoCurrentUser()
+      currentTokenUser = { id: currentUser.id, countryId: currentUser.countryId }
       sandboxTokenValid = currentUser.id === EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
       if (sandboxTokenValid) {
         const external = await mercadoPagoPlanDetails(String(sandboxPrice.external_plan_id))
@@ -272,6 +274,7 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
           seller_matches_current_token: Boolean(external.collectorId && currentUser.id && external.collectorId === currentUser.id),
           expected_sandbox_seller_id: EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID,
           matches_internal_price: external.amount === Number(sandboxPrice.importe) && external.currency === String(sandboxPrice.moneda).toUpperCase(),
+          sanitized_response: external.raw,
         }
       } else {
         externalPlanCheck = { configured: true, reachable: false, current_token_user_id: currentUser.id, expected_sandbox_seller_id: EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, error_code: 'sandbox_seller_mismatch' }
@@ -286,8 +289,76 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
         matches_internal_price: externalPlanCheck.matches_internal_price,
       }))
     } catch (error) {
-      externalPlanCheck = { configured: true, reachable: false, error_code: error?.code || 'external_plan_check_failed' }
-      console.error(JSON.stringify({ code: 'sandbox_external_plan_check_failed', error_code: externalPlanCheck.error_code }))
+      externalPlanCheck = {
+        configured: true,
+        reachable: false,
+        current_token_user_id: currentTokenUser?.id || null,
+        expected_sandbox_seller_id: EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID,
+        error_code: error?.code || 'external_plan_check_failed',
+        provider_code: error?.providerCode || null,
+        provider_status: Number.isSafeInteger(error?.status) ? error.status : null,
+        provider_payload: error?.providerPayload || null,
+      }
+      if (sandboxTokenValid) {
+        try {
+          externalPlanCheck.subscription_search = await mercadoPagoPreapprovalSearch(String(sandboxPrice.external_plan_id))
+        } catch (searchError) {
+          externalPlanCheck.subscription_search_error = {
+            error_code: searchError?.code || 'subscription_search_failed',
+            provider_code: searchError?.providerCode || null,
+            provider_status: Number.isSafeInteger(searchError?.status) ? searchError.status : null,
+            provider_payload: searchError?.providerPayload || null,
+          }
+        }
+      }
+      console.error(JSON.stringify({ code: 'sandbox_external_plan_check_failed', error_code: externalPlanCheck.error_code, provider_code: externalPlanCheck.provider_code, provider_status: externalPlanCheck.provider_status }))
+    }
+    if (sandboxTokenValid && sandboxPrice?.external_plan_id && !externalPlanCheck.subscription_search) {
+      console.log(JSON.stringify({
+        code: 'sandbox_subscription_search_begin',
+        plan_id: String(sandboxPrice.external_plan_id),
+        token_user_id: currentTokenUser?.id || null,
+      }))
+      try {
+        externalPlanCheck.subscription_search = await mercadoPagoPreapprovalSearch(String(sandboxPrice.external_plan_id))
+        const firstPreapprovalId = externalPlanCheck.subscription_search?.results?.[0]?.id
+        if (firstPreapprovalId) {
+          try {
+            externalPlanCheck.subscription_details = await mercadoPagoPreapprovalDetails(String(firstPreapprovalId))
+          } catch (detailError) {
+            externalPlanCheck.subscription_details_error = {
+              error_code: detailError?.code || 'subscription_detail_failed',
+              provider_code: detailError?.providerCode || null,
+              provider_status: Number.isSafeInteger(detailError?.status) ? detailError.status : null,
+              provider_payload: detailError?.providerPayload || null,
+            }
+          }
+        }
+        console.log(JSON.stringify({
+          code: 'sandbox_subscription_search_finished',
+          plan_id: String(sandboxPrice.external_plan_id),
+          paging: externalPlanCheck.subscription_search?.paging || null,
+          results: externalPlanCheck.subscription_search?.results || [],
+          subscription_details: externalPlanCheck.subscription_details || null,
+          subscription_details_error: externalPlanCheck.subscription_details_error || null,
+        }))
+      } catch (searchError) {
+        externalPlanCheck.subscription_search_error = {
+          error_code: searchError?.code || 'subscription_search_failed',
+          provider_code: searchError?.providerCode || null,
+          provider_status: Number.isSafeInteger(searchError?.status) ? searchError.status : null,
+          provider_payload: searchError?.providerPayload || null,
+        }
+        console.error(JSON.stringify({ code: 'sandbox_subscription_search_failed', error_code: externalPlanCheck.subscription_search_error.error_code, provider_code: externalPlanCheck.subscription_search_error.provider_code, provider_status: externalPlanCheck.subscription_search_error.provider_status, provider_payload: externalPlanCheck.subscription_search_error.provider_payload || null, provider_message: String(searchError?.message || '').replace(/(?:TEST|APP_USR)-[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 180) || null }))
+      }
+    }
+    if (externalPlanCheck.subscription_search) {
+      console.log(JSON.stringify({
+        code: 'sandbox_subscription_search',
+        plan_id: externalPlanCheck.plan_id,
+        paging: externalPlanCheck.subscription_search.paging,
+        results: externalPlanCheck.subscription_search.results,
+      }))
     }
   } else if (credential.configured) {
     // Even before a plan is mapped, validate the seller identity. This keeps

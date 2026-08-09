@@ -10,7 +10,7 @@ export class ProviderNotConfigured extends Error {
 }
 
 export class ProviderError extends Error {
-  constructor(message: string, public status = 502, public code = 'provider_error', public providerCode: string | null = null, public providerDetail: string | null = null) { super(message) }
+  constructor(message: string, public status = 502, public code = 'provider_error', public providerCode: string | null = null, public providerDetail: string | null = null, public providerPayload: unknown = null) { super(message) }
 }
 
 function requireEnv(provider: string, names: string[]) {
@@ -47,6 +47,16 @@ function mercadoPagoAccessToken() {
   return String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN'))
 }
 
+function sanitizeProviderPayload(value: unknown): unknown {
+  if (typeof value === 'string') return value.replace(/(?:TEST|APP_USR)-[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 500)
+  if (Array.isArray(value)) return value.slice(0, 50).map(sanitizeProviderPayload)
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).slice(0, 80).map(([key, item]) => {
+    const normalized = key.toLowerCase()
+    return [key, /(token|secret|password|authorization|card|cvv|security_code)/.test(normalized) ? '[redacted]' : sanitizeProviderPayload(item)]
+  }))
+  return value
+}
+
 function requiredEnv(provider: ProviderCode, capability: ProviderCapability = 'all') {
   if (provider === 'mercadopago') {
     // El token alcanza para crear/sincronizar checkout y consultar estados.
@@ -64,7 +74,7 @@ async function responseJson(response: Response, provider: string) {
     const cause = Array.isArray(body?.cause) ? body.cause[0] : null
     const providerCode = String(body?.error || body?.code || cause?.code || '').trim().slice(0, 120) || null
     const providerDetail = String(body?.message || '').replace(/(?:TEST|APP_USR)-[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 180) || null
-    throw new ProviderError(body?.message || `Respuesta ${response.status} de ${provider}.`, response.status, 'provider_error', providerCode, providerDetail)
+    throw new ProviderError(body?.message || `Respuesta ${response.status} de ${provider}.`, response.status, 'provider_error', providerCode, providerDetail, sanitizeProviderPayload(body))
   }
   return body
 }
@@ -125,6 +135,7 @@ export async function mercadoPagoPlanDetails(externalPlanId: string) {
     currency: String(body.auto_recurring?.currency_id || '').toUpperCase() || null,
     frequency: Number(body.auto_recurring?.frequency) || null,
     frequencyType: String(body.auto_recurring?.frequency_type || '').toLowerCase() || null,
+    raw: sanitizeProviderPayload(body),
   }
 }
 
@@ -138,6 +149,58 @@ export async function mercadoPagoCurrentUser() {
     nickname: String(body.nickname || '').trim() || null,
     countryId: String(body.country_id || '').trim().toUpperCase() || null,
     siteId: String(body.site_id || '').trim().toUpperCase() || null,
+  }
+}
+
+/** Read-only search used by the isolated sandbox diagnostic. */
+export async function mercadoPagoPreapprovalSearch(planId?: string | null) {
+  // The caller performs /users/me immediately before the plan lookup and
+  // passes only the fixed sandbox plan. Avoid a second identity request here
+  // so a transient provider read cannot mask the subscription search result.
+  const token = mercadoPagoAccessToken()
+  const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
+  // The subscriptions search endpoint only accepts its documented filters
+  // (including pagination). Mercado Pago rejects the generic `sort`/`criteria`
+  // pair with HTTP 400, so ordering is intentionally left to the provider.
+  const params = new URLSearchParams({ limit: '50' })
+  if (planId) params.set('preapproval_plan_id', planId)
+  const body = await responseJson(await fetch(`${base}/preapproval/search?${params.toString()}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
+  const results = Array.isArray(body.results) ? body.results : []
+  return {
+    paging: body.paging && typeof body.paging === 'object' ? { total: Number(body.paging.total) || 0, limit: Number(body.paging.limit) || 0, offset: Number(body.paging.offset) || 0 } : null,
+    results: results.slice(0, 50).map((item: Record<string, unknown>) => ({
+      id: String(item.id || '') || null,
+      payerId: Number(item.payer_id) || null,
+      collectorId: Number(item.collector_id) || null,
+      planId: String(item.preapproval_plan_id || '') || null,
+      status: String(item.status || '').toLowerCase() || null,
+      applicationId: Number(item.application_id) || null,
+      externalReference: String(item.external_reference || '') || null,
+      dateCreated: String(item.date_created || '') || null,
+      lastModified: String(item.last_modified || '') || null,
+    })),
+  }
+}
+
+/** Read-only detail lookup for a preapproval returned by the seller search. */
+export async function mercadoPagoPreapprovalDetails(preapprovalId: string) {
+  const token = mercadoPagoAccessToken()
+  const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
+  const body = await responseJson(await fetch(`${base}/preapproval/${encodeURIComponent(preapprovalId)}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
+  return {
+    id: String(body.id || preapprovalId) || null,
+    payerId: Number(body.payer_id) || null,
+    collectorId: Number(body.collector_id) || null,
+    planId: String(body.preapproval_plan_id || '') || null,
+    status: String(body.status || '').toLowerCase() || null,
+    applicationId: Number(body.application_id) || null,
+    externalReference: String(body.external_reference || '') || null,
+    dateCreated: String(body.date_created || '') || null,
+    lastModified: String(body.last_modified || '') || null,
+    nextPaymentDate: String(body.next_payment_date || '') || null,
+    amount: Number(body.auto_recurring?.transaction_amount) || null,
+    currency: String(body.auto_recurring?.currency_id || '').toUpperCase() || null,
+    raw: sanitizeProviderPayload(body),
   }
 }
 
