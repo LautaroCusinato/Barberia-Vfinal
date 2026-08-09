@@ -191,7 +191,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <div><span>Validación</span><strong>{config.external_plan_check.error_code === 'sandbox_seller_mismatch' ? 'No coincide · operación detenida' : 'Pendiente'}</strong></div>
       </div>}
 
-      {checkout?.checkout_url && <div className="sandbox-checkout-url"><span>checkout_url</span><a href={checkout.checkout_url} target="_blank" rel="noreferrer">{checkout.checkout_url}</a></div>}
+      {checkout?.checkout_url && !['expired', 'obsolete', 'failed'].includes(checkout.estado) && <div className="sandbox-checkout-url"><span>checkout_url</span><a href={checkout.checkout_url} target="_blank" rel="noreferrer">{checkout.checkout_url}</a></div>}
       {config?.missing_for_checkout?.length > 0 && <p className="panel-subtitle">Faltan para checkout: {config.missing_for_checkout.join(', ')}</p>}
       {busy && <p className="panel-subtitle">Procesando operación sandbox…</p>}
     </section>
