@@ -149,6 +149,10 @@ export function Toast({ tone = 'info', children, onClose }) {
   return <div className={joinClass('ui-toast', 'ui-toast-' + tone)} role={tone === 'danger' ? 'alert' : 'status'} aria-live="polite"><span>{children}</span>{onClose && <IconButton label="Cerrar" onClick={onClose}><X size={15} /></IconButton>}</div>
 }
 
+export function LiveRegion({ assertive = false, children, className = '' }) {
+  return <div className={joinClass('ui-live-region', className)} role={assertive ? 'alert' : 'status'} aria-live={assertive ? 'assertive' : 'polite'} aria-atomic="true">{children}</div>
+}
+
 export function Tooltip({ label, children }) {
   const id = useId()
   return <span className="ui-tooltip-wrap"><span aria-describedby={id}>{children}</span><span id={id} role="tooltip" className="ui-tooltip">{label}</span></span>

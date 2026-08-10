@@ -142,6 +142,7 @@
 .ui-form-field > label { color: var(--ink-soft); font-size: .8rem; font-weight: 700; }
 .ui-field-hint { color: var(--ink-faint); font-size: .75rem; }
 .ui-field-error { color: var(--rose-text); font-size: .75rem; }
+.ui-live-region { min-width: 0; }
 .ui-toast { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-md); }
 .ui-toast-success { border-color: var(--green); background: var(--green-soft); color: var(--green-text); }
 .ui-toast-danger { border-color: var(--rose); background: var(--rose-soft); color: var(--rose-text); }
