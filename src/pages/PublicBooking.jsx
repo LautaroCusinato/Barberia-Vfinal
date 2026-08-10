@@ -7,7 +7,8 @@ import { PREFIJO_AR, soloDigitos } from '../lib/text'
 import './PublicBooking.css'
 
 const STEPS = [{ label: 'Servicio', short: 'Servicio' }, { label: 'Profesional', short: 'Profesional' }, { label: 'Fecha y hora', short: 'Fecha/hora' }, { label: 'Tus datos', short: 'Datos' }, { label: 'Confirmación', short: 'Confirmar' }]
-const PHONE_HINT = 'Formato: 0000-0000 después de +54 9 11.'
+const PHONE_HINT = 'Formato: +54 9 11 0000-0000. Completá los 8 dígitos locales.'
+const PHONE_ERROR = 'Ingresá tu número completo: 8 dígitos después de +54 9 11. ' + PHONE_HINT
 const dateKey = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
 const formatTime = (time) => String(time || '').slice(0, 5)
 const normalizeCurrency = (currency) => /^[A-Z]{3}$/.test(String(currency || '').toUpperCase()) ? String(currency).toUpperCase() : 'ARS'
@@ -186,7 +187,7 @@ export default function PublicBooking({ slug }) {
     if (!servicio || !barbero || !hora) { setError('Elegí un profesional y un horario para continuar.'); return }
     const nextErrors = {}
     if (!nombre.trim()) nextErrors.nombre = 'Ingresá tu nombre y apellido.'
-    if (!phoneIsValid) nextErrors.telefono = 'Ingresá tu número completo: 8 dígitos después de +54 9 11.'
+    if (!phoneIsValid) nextErrors.telefono = PHONE_ERROR
     if (!isValidEmail(email)) nextErrors.email = 'Revisá el formato del email.'
     if (Object.keys(nextErrors).length) { setFieldErrors(nextErrors); setError('Revisá los datos marcados antes de confirmar.'); return }
     setFieldErrors({})

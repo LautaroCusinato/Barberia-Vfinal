@@ -1,0 +1,431 @@
+/* Austral Design System · Sprint 7 · Product Polish
+ * Shared presentation layer only. It does not own data, routing or domain
+ * behavior; it makes existing states, controls and surfaces feel consistent.
+ */
+
+:root {
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent);
+  --surface-hover: color-mix(in srgb, var(--surface-muted) 72%, var(--surface));
+  --motion-enter: 180ms;
+  --motion-exit: 140ms;
+}
+
+@keyframes polish-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes polish-pop {
+  from { opacity: 0; transform: scale(.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+:where(.btn, .ui-button, .btn-icon-plain, .ui-icon-button, .theme-toggle, .nav-item, .mobile-tab-item, .mobile-mas-item, .slot-chip, .service-chip, .day-toggle, .choice-card, .time-list button, .professional-list button, .service-list button, .demo-services button, .marketing-button, .booking-button) {
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard), opacity var(--motion-fast) var(--ease-standard);
+}
+
+:where(.btn, .ui-button, .btn-icon-plain, .ui-icon-button, .theme-toggle, .nav-item, .mobile-tab-item, .mobile-mas-item, .slot-chip, .service-chip, .day-toggle, .choice-card, .time-list button, .professional-list button, .service-list button, .demo-services button, .marketing-button, .booking-button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
+:where(.btn, .ui-button, .btn-icon-plain, .ui-icon-button, .theme-toggle, .nav-item, .mobile-tab-item, .mobile-mas-item, .slot-chip, .service-chip, .day-toggle, .choice-card, .time-list button, .professional-list button, .service-list button, .demo-services button, .marketing-button, .booking-button):disabled,
+:where(.btn, .ui-button, .btn-icon-plain, .ui-icon-button)[aria-disabled="true"] {
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+:where(.btn, .ui-button):active:not(:disabled),
+:where(.btn-icon-plain, .ui-icon-button, .mobile-tab-item, .mobile-mas-item):active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn,
+.ui-button {
+  min-height: var(--control-md);
+}
+
+.btn[aria-busy="true"],
+.ui-button[aria-busy="true"] {
+  cursor: wait;
+}
+
+.btn svg,
+.ui-button svg,
+.btn-icon-plain svg,
+.ui-icon-button svg,
+.status-pill svg,
+.ui-badge svg {
+  flex: 0 0 auto;
+}
+
+.panel,
+.stat-card,
+.ops-card,
+.barbero-card,
+.booking-card,
+.booking-summary,
+.auth-card,
+.login-box,
+.onboarding-card,
+.error-boundary-card {
+  transition: background-color var(--motion-base) var(--ease-standard), border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.panel:hover,
+.stat-card:hover,
+.ops-card:hover,
+.barbero-card:hover {
+  border-color: color-mix(in srgb, var(--border-strong) 80%, var(--accent));
+}
+
+.page-header,
+.platform-page-header,
+.booking-intro,
+.onboarding-card,
+.auth-card,
+.error-boundary-card {
+  animation: polish-enter var(--motion-enter) var(--ease-standard) both;
+}
+
+.empty-state,
+.ui-empty-state {
+  min-height: 156px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-muted) 36%, var(--surface));
+  color: var(--ink-soft);
+}
+
+.empty-state svg,
+.ui-empty-state svg {
+  color: var(--accent);
+}
+
+.empty-state p,
+.ui-empty-state p {
+  max-width: 38rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.error-banner,
+.login-error,
+.booking-error,
+.ui-toast-danger {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  line-height: 1.45;
+  border-color: color-mix(in srgb, var(--rose) 34%, var(--border));
+  background: var(--rose-soft);
+  color: var(--rose-text);
+}
+
+.error-banner > .btn-icon-plain,
+.error-banner > .ui-icon-button {
+  margin-left: auto;
+  color: inherit;
+}
+
+.settings-notice,
+.auth-message,
+.ui-toast-success {
+  border-color: color-mix(in srgb, var(--green) 32%, var(--border));
+  background: var(--green-soft);
+  color: var(--green-text);
+}
+
+.settings-notice,
+.auth-message {
+  animation: polish-pop var(--motion-enter) var(--ease-standard) both;
+}
+
+.route-loading,
+.settings-loading,
+.billing-empty,
+.booking-inline-loading,
+.booking-loading-card {
+  color: var(--ink-soft);
+}
+
+.route-loading {
+  min-height: 100dvh;
+  padding: var(--space-6) var(--space-4) calc(var(--space-8) + var(--safe-bottom));
+}
+
+.route-loading .skeleton {
+  height: 12px;
+  border-radius: 999px;
+}
+
+.centered-state__eyebrow {
+  margin: 0 0 var(--space-1);
+  color: var(--accent);
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.skeleton,
+.ui-skeleton {
+  will-change: background-position;
+}
+
+.table-scroll {
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.table-scroll:focus-within {
+  border-radius: var(--radius-sm);
+  box-shadow: var(--focus-ring);
+}
+
+.table th,
+.management-table th,
+.platform-table th,
+.crm-leads-table th {
+  font-variant-numeric: tabular-nums;
+}
+
+.status-pill,
+.ui-badge,
+.score-badge,
+.priority-badge {
+  min-height: 26px;
+  line-height: 1;
+}
+
+.modal-overlay,
+.ui-overlay {
+  overscroll-behavior: contain;
+  animation: polish-pop var(--motion-enter) var(--ease-standard) both;
+}
+
+.modal-box,
+.ui-modal,
+.ui-sheet {
+  overscroll-behavior: contain;
+}
+
+.modal-actions,
+.ui-page-actions,
+.page-actions,
+.sandbox-billing-actions,
+.onboarding-actions {
+  flex-wrap: wrap;
+}
+
+.mobile-tabbar {
+  height: calc(68px + var(--safe-bottom));
+  min-height: 68px;
+  padding-bottom: var(--safe-bottom);
+  background: color-mix(in srgb, var(--surface) 96%, var(--accent-soft));
+  box-shadow: 0 -8px 28px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.mobile-tab-item {
+  min-height: 48px;
+  padding: 7px 4px;
+}
+
+.mobile-tab-item.active {
+  font-weight: 800;
+}
+
+.mobile-mas-sheet {
+  padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+  animation: polish-enter var(--motion-enter) var(--ease-standard) both;
+}
+
+.app-shell {
+  min-height: 100dvh;
+}
+
+.main {
+  padding-bottom: calc(3rem + var(--safe-bottom));
+}
+
+.demo-shell {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.demo-hero p:not(.page-kicker),
+.demo-footer,
+.demo-brand small {
+  color: var(--ink-soft);
+}
+
+.demo-controls,
+.demo-grid .panel {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.demo-services button {
+  min-height: 96px;
+}
+
+.demo-services button:hover,
+.demo-services button.selected {
+  border-color: var(--demo-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--demo-accent) 20%, transparent);
+}
+
+.demo-success {
+  border: 1px solid color-mix(in srgb, var(--green) 32%, var(--border));
+}
+
+.booking-button:focus-visible,
+.booking-theme-toggle:focus-visible,
+.booking-card button:focus-visible,
+.booking-card input:focus-visible,
+.booking-card select:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--booking-accent) 28%, transparent);
+}
+
+@media (max-width: 860px) {
+  .main {
+    padding-inline: clamp(12px, 3vw, 20px);
+    padding-bottom: calc(4.75rem + var(--safe-bottom));
+  }
+
+  .page-actions .btn,
+  .page-actions .ui-button,
+  .toolbar-row > .btn,
+  .toolbar-row > .ui-button {
+    min-height: var(--control-lg);
+  }
+
+  .modal-overlay,
+  .ui-overlay {
+    padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  }
+
+  .modal-box,
+  .ui-modal {
+    max-height: calc(100dvh - 24px - var(--safe-bottom));
+  }
+
+  .ui-sheet {
+    max-height: calc(90dvh - var(--safe-bottom));
+  }
+
+  .panel,
+  .stat-card,
+  .ops-card,
+  .barbero-card {
+    border-radius: var(--radius-md);
+  }
+
+  .crm-leads-table {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .page-header,
+  .platform-page-header {
+    margin-bottom: var(--space-4);
+  }
+
+  .page-title {
+    font-size: 1.45rem;
+  }
+
+  .panel-title {
+    line-height: 1.3;
+  }
+
+  .empty-state,
+  .ui-empty-state {
+    min-height: 132px;
+    padding-block: var(--space-6);
+  }
+
+  .demo-shell {
+    padding-bottom: calc(2.5rem + var(--safe-bottom));
+  }
+
+  .demo-services button,
+  .demo-booking .btn,
+  .demo-booking .ui-button {
+    min-height: var(--control-lg);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #171513;
+    --surface: #211e1a;
+    --surface-muted: #2b261f;
+    --surface-sunken: #352e25;
+    --ink: #f1ece4;
+    --ink-soft: #b9b0a4;
+    --ink-faint: #81786d;
+    --accent: #c8954b;
+    --accent-strong: #e0b56f;
+    --accent-soft: #3b2d1c;
+    --accent-soft-2: #4a3924;
+    --rose: #d68178;
+    --rose-soft: #3a2522;
+    --rose-text: #e5a39b;
+    --amber: #d8a24d;
+    --amber-soft: #3d301d;
+    --amber-text: #e3b66f;
+    --blue: #7fb0c5;
+    --blue-soft: #1f3038;
+    --blue-text: #9cc6d8;
+    --violet: #bba2c9;
+    --violet-soft: #31283a;
+    --violet-text: #d2b9de;
+    --green: #7fbc93;
+    --green-soft: #22301f;
+    --green-text: #9ad1aa;
+    --border: #332d25;
+    --border-strong: #4a4034;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, .25);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, .35), 0 1px 2px rgba(0, 0, 0, .25);
+    --shadow-md: 0 4px 14px rgba(0, 0, 0, .35), 0 1px 3px rgba(0, 0, 0, .3);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .3);
+    --overlay: rgba(0, 0, 0, .62);
+  }
+
+  .demo-shell:not([data-theme="light"]) {
+    --bg: #171513;
+    --surface: #211e1a;
+    --surface-muted: #2b261f;
+    --ink: #f1ece4;
+    --ink-soft: #b9b0a4;
+    --ink-faint: #81786d;
+    --border: #332d25;
+    --border-strong: #4a4034;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-header,
+  .platform-page-header,
+  .booking-intro,
+  .onboarding-card,
+  .auth-card,
+  .error-boundary-card,
+  .settings-notice,
+  .auth-message,
+  .modal-overlay,
+  .ui-overlay,
+  .mobile-mas-sheet {
+    animation: none;
+  }
+}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowRight, CheckCircle2, KeyRound, Mail, Scissors, UserRound } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, PRODUCT_NAME } from '../lib/tenant'
+import { PasswordField } from '../components/ui'
 
 function go(path) {
   window.location.assign(path)
@@ -90,12 +91,12 @@ export default function Signup() {
           </div>
           <div className="modal-field">
             <label className="modal-label" htmlFor="signup-password"><KeyRound size={13} /> Contraseña</label>
-            <input id="signup-password" className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
+            <PasswordField id="signup-password" className="text-input" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
             <span className="field-hint">Mínimo 8 caracteres.</span>
           </div>
           <div className="modal-field">
             <label className="modal-label" htmlFor="signup-confirm"><KeyRound size={13} /> Repetir contraseña</label>
-            <input id="signup-confirm" className="text-input" type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" minLength={8} required />
+            <PasswordField id="signup-confirm" className="text-input" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" minLength={8} required />
           </div>
           {error && <p className="login-error" role="alert">{error}</p>}
           <button type="submit" className="btn btn-primary auth-full-button" disabled={loading}>

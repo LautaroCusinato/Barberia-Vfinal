@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Lock, Mail, KeyRound, Scissors, UserPlus, HelpCircle } from 'lucide-react'
+import { Lock, Mail, KeyRound, Scissors, UserPlus, HelpCircle, LoaderCircle } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME } from '../lib/tenant'
+import { PasswordField } from './ui'
 
 export async function logout() {
   if (isSupabaseConfigured) {
@@ -52,17 +53,17 @@ export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME 
 
         <form onSubmit={submit}>
           <div className="modal-field">
-            <label className="modal-label"><Mail size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Email</label>
-            <input className="text-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+            <label className="modal-label" htmlFor="login-email"><Mail size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Email</label>
+            <input id="login-email" className="text-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoFocus required />
           </div>
           <div className="modal-field">
-            <label className="modal-label"><KeyRound size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Contrasena</label>
-            <input className="text-input" type="password" value={pass} onChange={(e) => setPass(e.target.value)} />
+            <label className="modal-label" htmlFor="login-password"><KeyRound size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Contraseña</label>
+            <PasswordField id="login-password" className="text-input" value={pass} onChange={(e) => setPass(e.target.value)} autoComplete="current-password" required />
           </div>
           {error && <p className="login-error" role="alert">{error}</p>}
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }} disabled={loading}>
-            <Lock size={14} />
-            {loading ? 'Entrando...' : 'Entrar'}
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }} disabled={loading} aria-busy={loading}>
+            {loading ? <LoaderCircle className="spin" size={14} aria-hidden="true" /> : <Lock size={14} aria-hidden="true" />}
+            {loading ? 'Entrando…' : 'Entrar'}
           </button>
         </form>
         <div className="login-links">

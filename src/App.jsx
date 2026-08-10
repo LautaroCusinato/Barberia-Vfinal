@@ -91,7 +91,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
 
   const reportError = (mensaje, error) => {
     console.error(mensaje, error)
-    setDbError(`${mensaje}: ${error?.message || 'error desconocido'}`)
+    // El detalle técnico queda sólo en observabilidad; el panel muestra una
+    // instrucción comprensible y nunca expone códigos/RPC al usuario.
+    setDbError(mensaje)
   }
 
   const todayKey = todayInClinicTZ()
@@ -903,14 +905,12 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
         )}
 
         {dbError && (
-          <div
-            className="demo-banner"
-            style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)', cursor: 'pointer' }}
-            onClick={() => setDbError('')}
-          >
+          <div className="error-banner" role="alert" aria-live="assertive">
             <AlertTriangle size={15} />
-            {dbError}
-            <X size={14} style={{ marginLeft: 'auto' }} />
+            <span>{dbError}. Podés reintentar o cerrar este aviso.</span>
+            <button className="btn-icon-plain" type="button" onClick={() => setDbError('')} aria-label="Cerrar aviso de error" title="Cerrar aviso">
+              <X size={14} />
+            </button>
           </div>
         )}
 

@@ -13,6 +13,7 @@ import './components/agenda.css'
 import './components/management.css'
 import './components/platform.css'
 import './components/landing.css'
+import './components/polish.css'
 
 const PublicBooking = lazy(() => import('./pages/PublicBooking.jsx'))
 const PlatformCRM = PlatformCRMPage
@@ -28,13 +29,14 @@ installGlobalObservability()
 // Pantalla chica y centrada para los estados intermedios (cargando la
 // barberia, error, o el selector cuando el usuario pertenece a mas de una).
 function EstadoCentrado({ children }) {
-  return <div className="centered-state"><div className="centered-state__card">{children}</div></div>
+  return <main className="centered-state"><div className="centered-state__card">{children}</div></main>
 }
 
 function SelectorBarberia({ opciones, onElegir }) {
   return (
     <EstadoCentrado>
-      <p style={{ fontWeight: 700, marginBottom: 16 }}>¿Con cuál barbería querés entrar?</p>
+      <p className="centered-state__eyebrow">Tus negocios</p>
+      <h1 className="centered-state__title">¿Con cuál negocio querés entrar?</h1>
       <div className="centered-state__actions">
         {opciones.map((o) => (
           <button
@@ -53,7 +55,8 @@ function SelectorBarberia({ opciones, onElegir }) {
 function SelectorWorkspace({ opciones, platformRole, onElegirNegocio }) {
   return (
     <EstadoCentrado>
-      <p style={{ fontWeight: 700, marginBottom: 8 }}>¿A qué workspace querés entrar?</p>
+      <p className="centered-state__eyebrow">Workspace</p>
+      <h1 className="centered-state__title">¿A qué workspace querés entrar?</h1>
       <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
         Tu cuenta tiene permisos de plataforma y también acceso a un negocio.
       </p>
@@ -81,7 +84,8 @@ function SelectorWorkspace({ opciones, platformRole, onElegirNegocio }) {
 function SinBarberia() {
   return (
     <EstadoCentrado>
-      <p style={{ fontWeight: 700, marginBottom: 8 }}>Creá tu primer negocio</p>
+      <p className="centered-state__eyebrow">Austral Automatizaciones</p>
+      <h1 className="centered-state__title">Creá tu primer negocio</h1>
       <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
         Tu cuenta está lista. Completá el asistente para activar tu prueba gratuita de 14 días.
       </p>

@@ -55,6 +55,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
                 <button
                   key={id}
                   className={`nav-item ${view === id ? 'active' : ''}`}
+                  aria-current={view === id ? 'page' : undefined}
                   onClick={() => setView(id)}
                 >
                   <Icon size={17} strokeWidth={2} />
@@ -69,7 +70,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
         </nav>
 
         <div className="sidebar-footer">
-          <button className="theme-toggle" onClick={onToggleBot}>
+          <button className="theme-toggle" type="button" aria-pressed={botActivo} onClick={onToggleBot}>
             <span className="theme-toggle-label">
               <Bot size={14} />
               Bot de WhatsApp
@@ -78,7 +79,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
               <span className="theme-switch-knob" />
             </span>
           </button>
-          <button className="theme-toggle" onClick={onToggleTheme}>
+          <button className="theme-toggle" type="button" aria-pressed={isDark} onClick={onToggleTheme}>
             <span className="theme-toggle-label">
               {isDark ? <Moon size={14} /> : <Sun size={14} />}
               Modo {isDark ? 'oscuro' : 'claro'}
@@ -91,8 +92,8 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             <span className="live-dot" />
             <span>Conectado a WhatsApp via n8n</span>
           </div>
-          {onAccountSecurity && <button className="theme-toggle" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
-          <button className="theme-toggle" onClick={onLogout}>
+          {onAccountSecurity && <button className="theme-toggle" type="button" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
+          <button className="theme-toggle" type="button" onClick={onLogout}>
             <span className="theme-toggle-label">
               <LogOut size={14} />
               Cerrar sesion
@@ -105,7 +106,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
         <div className="mobile-mas-overlay" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setMostrarMas(false) }}>
           <FocusTrap onEscape={() => setMostrarMas(false)} className="mobile-mas-sheet" role="dialog" aria-modal="true" aria-label="Más secciones">
             <div className="mobile-mas-header">
-              <span>Más secciones</span>
+              <h2>Más secciones</h2>
               <button className="btn-icon-plain" onClick={() => setMostrarMas(false)} aria-label="Cerrar">
                 <X size={18} />
               </button>
@@ -114,6 +115,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
               <button
                 key={id}
                 className={'mobile-mas-item ' + (view === id ? 'active' : '')}
+                aria-current={view === id ? 'page' : undefined}
                 onClick={() => irA(id)}
               >
                 <Icon size={18} strokeWidth={2} />
@@ -129,6 +131,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
           <button
             key={id}
             className={`mobile-tab-item ${view === id ? 'active' : ''}`}
+            aria-current={view === id ? 'page' : undefined}
             onClick={() => irA(id)}
           >
             <Icon size={20} strokeWidth={2} />

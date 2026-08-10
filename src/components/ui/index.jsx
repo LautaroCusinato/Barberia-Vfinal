@@ -7,7 +7,7 @@ const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),input:not([disabled])
 const joinClass = (...values) => values.filter(Boolean).join(' ')
 
 export const Button = forwardRef(function Button({ variant = 'default', size = 'md', className = '', type = 'button', loading = false, disabled = false, children, ...props }, ref) {
-  return <button ref={ref} type={type} className={joinClass('ui-button', 'ui-button-' + variant, 'ui-button-' + size, className)} disabled={loading || disabled} {...props}>{loading && <Spinner size="1em" />}{children}</button>
+  return <button ref={ref} type={type} className={joinClass('ui-button', 'ui-button-' + variant, 'ui-button-' + size, className)} disabled={loading || disabled} aria-busy={loading || undefined} {...props}>{loading && <Spinner size="1em" />}{children}</button>
 })
 
 export const IconButton = forwardRef(function IconButton({ label, className = '', type = 'button', children, ...props }, ref) {
@@ -68,6 +68,8 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
     returnFocusRef.current = document.activeElement
     const container = containerRef.current
     if (!container) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     const focusFirst = () => {
       const target = container.querySelector('[data-autofocus], ' + FOCUSABLE_SELECTOR)
       target?.focus()
@@ -95,6 +97,7 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
     return () => {
       window.cancelAnimationFrame(frame)
       container.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
       returnFocusRef.current?.focus?.()
     }
   }, [onEscape, open])
