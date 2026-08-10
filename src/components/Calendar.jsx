@@ -65,6 +65,15 @@ function toMinutes(hora) {
   return h * 60 + m
 }
 
+function formatCurrentTime(date) {
+  return new Intl.DateTimeFormat('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Argentina/Buenos_Aires',
+  }).format(date)
+}
+
 export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, onNewTurno, barberos = [], bloqueos = [] }) {
   const initial = parseISO(todayKey)
   const [month, setMonth] = useState(initial)
@@ -141,7 +150,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
     return (mapaBarberoSeleccionado[day.getDay()] || []).filter((block) => block.break)
   }
   const hasBreaks = barberos.some((barbero) => Object.values(parseHorarioBarbero(barbero.horario) || {}).some((blocks) => blocks.some((block) => block.break)))
-  const currentTimeLabel = format(now, 'HH:mm')
+  const currentTimeLabel = formatCurrentTime(now)
 
   const turnosDelDia = (byDate[selectedKey] || [])
     .slice()
