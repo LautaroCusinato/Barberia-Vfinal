@@ -12,6 +12,7 @@ import './index.css'
 import './components/agenda.css'
 import './components/management.css'
 import './components/platform.css'
+import './components/landing.css'
 
 const PublicBooking = lazy(() => import('./pages/PublicBooking.jsx'))
 const PlatformCRM = PlatformCRMPage
