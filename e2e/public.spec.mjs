@@ -49,6 +49,67 @@ test.describe('superficies públicas sin efectos externos', () => {
       await expect(page.locator('#root')).toBeVisible()
     }
   })
+
+  async function mockBookingBackend(page, { createError = false } = {}) {
+    let createCalls = 0
+    await page.route('**/rest/v1/rpc/catalogo_reserva_publica', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ barberia: { nombre: 'Demo Booking', moneda: 'ARS', zona_horaria: 'America/Argentina/Buenos_Aires', color_principal: '#9b6a2f', direccion: 'Calle Demo 123' }, servicios: [{ id: 1, nombre: 'Corte clásico', descripcion: 'Corte y terminación', precio: 15000, duracion_min: 30 }, { id: 2, nombre: 'Barba', descripcion: 'Perfilado completo', precio: 10000, duracion_min: 30 }] }) }))
+    await page.route('**/rest/v1/rpc/horarios_disponibles_reserva_publica', async (route) => {
+      const request = route.request()
+      const body = request.postDataJSON?.() || {}
+      const slots = body.p_fecha === '2099-01-02' ? [] : [{ barbero_id: 7, barbero_nombre: 'Marta Demo', barbero_color: '#2d9464', duracion_min: 30, hora: '10:00:00' }, { barbero_id: 7, barbero_nombre: 'Marta Demo', barbero_color: '#2d9464', duracion_min: 30, hora: '10:30:00' }]
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(slots) })
+    })
+    await page.route('**/rest/v1/rpc/crear_reserva_publica', async (route) => {
+      createCalls += 1
+      if (createError) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: '23P01', message: 'Ese horario acaba de ocuparse. Elegí otro horario.' }) })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ turno_id: 99, fecha: '2026-08-10', hora: '10:00:00', duracion_min: 30 }]) })
+    })
+    return () => createCalls
+  }
+
+  async function openMockBooking(page, options) {
+    const createCalls = await mockBookingBackend(page, options)
+    await page.goto('/reservar/barberia-central')
+    const title = page.getByRole('heading', { name: /elegí tu próximo turno/i })
+    await page.waitForTimeout(1000)
+    if (!(await title.count())) test.skip(true, 'Requiere VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para montar la reserva pública.')
+    await expect(title).toBeVisible()
+    return createCalls
+  }
+
+  test('reserva pública guiada cubre selección, validación, dark mode y confirmación mock', async ({ page }) => {
+    const createCalls = await openMockBooking(page)
+    await expect(page.getByRole('button', { name: /barba.*ARS 10\.000/i })).toHaveAttribute('aria-pressed', 'false')
+    await page.getByRole('button', { name: /barba.*ARS 10\.000/i }).click()
+    await expect(page.getByRole('button', { name: /barba.*ARS 10\.000/i })).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('button', { name: /marta demo/i }).click()
+    await page.getByRole('button', { name: '10:00' }).click()
+    await page.getByLabel('Nombre y apellido').fill('Cliente Demo')
+    await page.getByLabel('Teléfono').fill('1234')
+    await page.getByRole('button', { name: 'Confirmar reserva' }).click()
+    await expect(page.getByText(/ingresá tu número completo/i)).toBeVisible()
+    await page.getByLabel('Teléfono').fill('11223344')
+    await page.getByRole('button', { name: 'Activar modo oscuro' }).click()
+    await expect(page.locator('main.public-booking')).toHaveAttribute('data-theme', 'dark')
+    await page.getByRole('button', { name: 'Confirmar reserva' }).click()
+    await expect(page.getByRole('heading', { name: /turno reservado/i })).toBeVisible()
+    expect(createCalls()).toBe(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+
+  test('reserva pública comunica ausencia de disponibilidad y error de ocupación', async ({ page }) => {
+    await openMockBooking(page, { createError: true })
+    await page.getByLabel('Fecha elegida').fill('2099-01-02')
+    await expect(page.getByRole('heading', { name: /no hay profesionales disponibles/i })).toBeVisible()
+    await page.getByLabel('Fecha elegida').fill('2026-08-10')
+    await expect(page.getByRole('button', { name: /marta demo/i })).toBeVisible()
+    await page.getByRole('button', { name: /marta demo/i }).click()
+    await page.getByRole('button', { name: '10:00' }).click()
+    await page.getByLabel('Nombre y apellido').fill('Cliente Demo')
+    await page.getByLabel('Teléfono').fill('11223344')
+    await page.getByRole('button', { name: 'Confirmar reserva' }).click()
+    await expect(page.getByText(/horario acaba de ocuparse/i)).toBeVisible()
+  })
 })
 
 test.describe('flujos reales con Supabase aislado', () => {
