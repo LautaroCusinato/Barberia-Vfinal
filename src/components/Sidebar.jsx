@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { LayoutDashboard, Calendar, MessageCircle, Users, StickyNote, Sun, Moon, Bot, LogOut, BarChart3, Scissors, BriefcaseBusiness, Users2, MoreHorizontal, X, ShieldCheck, CreditCard, Settings2 } from 'lucide-react'
+import { FocusTrap } from './ui'
 
 const ITEMS = [
   { id: 'resumen', label: 'Resumen', Icon: LayoutDashboard },
@@ -101,8 +102,8 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
       </aside>
 
       {mostrarMas && (
-        <div className="mobile-mas-overlay" onClick={() => setMostrarMas(false)}>
-          <div className="mobile-mas-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="mobile-mas-overlay" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setMostrarMas(false) }}>
+          <FocusTrap onEscape={() => setMostrarMas(false)} className="mobile-mas-sheet" role="dialog" aria-modal="true" aria-label="Más secciones">
             <div className="mobile-mas-header">
               <span>Más secciones</span>
               <button className="btn-icon-plain" onClick={() => setMostrarMas(false)} aria-label="Cerrar">
@@ -112,14 +113,14 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             {TABBAR_MAS.map(({ id, label, Icon }) => (
               <button
                 key={id}
-                className={`mobile-mas-item ${view === id ? 'active' : ''}`}
+                className={'mobile-mas-item ' + (view === id ? 'active' : '')}
                 onClick={() => irA(id)}
               >
                 <Icon size={18} strokeWidth={2} />
                 {label}
               </button>
             ))}
-          </div>
+          </FocusTrap>
         </div>
       )}
 

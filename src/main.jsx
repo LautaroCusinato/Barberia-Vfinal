@@ -24,45 +24,18 @@ installGlobalObservability()
 // Pantalla chica y centrada para los estados intermedios (cargando la
 // barberia, error, o el selector cuando el usuario pertenece a mas de una).
 function EstadoCentrado({ children }) {
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg)',
-        padding: '1.5rem',
-      }}
-    >
-      <div
-        style={{
-          background: 'var(--surface)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '2rem',
-          maxWidth: 380,
-          width: '100%',
-          textAlign: 'center',
-          color: 'var(--ink)',
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  )
+  return <div className="centered-state"><div className="centered-state__card">{children}</div></div>
 }
 
 function SelectorBarberia({ opciones, onElegir }) {
   return (
     <EstadoCentrado>
       <p style={{ fontWeight: 700, marginBottom: 16 }}>¿Con cuál barbería querés entrar?</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="centered-state__actions">
         {opciones.map((o) => (
           <button
             key={o.barberia_id}
             className="btn btn-primary"
-            style={{ width: '100%', justifyContent: 'center' }}
             onClick={() => onElegir(o.barberia_id)}
           >
             {o.barberias?.nombre || `Barbería #${o.barberia_id}`}
@@ -80,10 +53,9 @@ function SelectorWorkspace({ opciones, platformRole, onElegirNegocio }) {
       <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
         Tu cuenta tiene permisos de plataforma y también acceso a un negocio.
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="centered-state__actions">
         <button
           className="btn btn-primary"
-          style={{ width: '100%', justifyContent: 'center' }}
           onClick={() => window.location.assign('/plataforma')}
         >
           Plataforma · {platformRole || 'owner'}
@@ -92,7 +64,6 @@ function SelectorWorkspace({ opciones, platformRole, onElegirNegocio }) {
           <button
             key={o.barberia_id}
             className="btn"
-            style={{ width: '100%', justifyContent: 'center' }}
             onClick={() => onElegirNegocio(o.barberia_id)}
           >
             Negocio · {o.barberias?.nombre || `Barbería #${o.barberia_id}`}
@@ -110,7 +81,7 @@ function SinBarberia() {
       <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
         Tu cuenta está lista. Completá el asistente para activar tu prueba gratuita de 14 días.
       </p>
-      <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }} onClick={() => window.location.assign('/onboarding')}>Configurar negocio</button>
+      <div className="centered-state__actions"><button className="btn btn-primary" onClick={() => window.location.assign('/onboarding')}>Configurar negocio</button></div>
       <button className="btn" onClick={() => logout()}>Cerrar sesión</button>
     </EstadoCentrado>
   )

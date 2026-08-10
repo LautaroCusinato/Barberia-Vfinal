@@ -79,7 +79,7 @@ export default function PublicBooking({ slug }) {
   const confirmar = async (event) => {
     event.preventDefault()
     if (!servicio || !barbero || !hora) { setError('Elegí un profesional y un horario.'); return }
-    if (soloDigitos(telefono).length !== 13) { setError('Ingresá los 8 dígitos de tu teléfono.'); return }
+    if (soloDigitos(telefono).length !== 13) { setError('Ingresá tu número completo: 8 dígitos después de +54 9 11.'); return }
     setError('')
     setLoadingSlots(true)
     // Reconsultamos primero, para no confirmar una opción que cambió mientras el formulario estaba abierto.
