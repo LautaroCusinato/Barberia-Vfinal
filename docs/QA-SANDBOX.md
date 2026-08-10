@@ -1,18 +1,18 @@
 # Austral SaaS — entorno Supabase QA/E2E
 
-Estado: **preparado para intervención manual, todavía no aprovisionado**.
+Estado: **esquema aplicado; datos QA pendientes de credenciales locales**.
 
 Esta preparación aplica **Austral SaaS Architecture** (proyecto aislado, RLS/RPC versionados, credenciales fuera del repositorio, doble confirmación para mutaciones) y **Austral Design System** (la evidencia visual autenticada se ejecutará sólo sobre fixtures QA marcados y eliminables).
 
 ## Estado actual
 
-- Proyecto QA creado: **no**. El conector administrativo de Supabase devolvió `Transport closed`.
+- Proyecto QA creado: **sí**, `cmsymmszlzikqpvfqjre` (`Austral SaaS QA`, `sa-east-1`, activo).
 - Proyecto productivo `ssagttjdgtypxjcgdnrw`: no tocado.
-- Migraciones aplicadas: ninguna.
+- Migraciones aplicadas: esquema base + 40 migraciones permitidas + compatibilidad QA legacy.
 - Usuarios QA creados: ninguno.
 - Fixtures creados: ninguno.
 - Pagos, webhooks, WhatsApp, n8n y Evolution: no ejecutados.
-- `project ref` QA: pendiente de creación manual.
+- `project ref` productivo `ssagttjdgtypxjcgdnrw`: explícitamente bloqueado.
 
 ## Arquitectura objetivo
 
@@ -55,7 +55,7 @@ E2E_QA_PASSWORD=<password-qa-local-no-real-users>
 
 `E2E_ALLOWED_PROJECT_REF` es una segunda barrera: debe coincidir exactamente con el proyecto QA. El guard rechaza el proyecto productivo, URLs que no correspondan al ref, prefijos distintos y secretos de Mercado Pago, PayPal, Evolution, DeepSeek o n8n.
 
-Cuando termines, avisame **sólo** el `project ref` y que las variables quedaron guardadas fuera del repositorio. No pegues keys ni passwords.
+Cuando termines, avisame sólo que las variables quedaron guardadas fuera del repositorio. No pegues keys ni passwords.
 
 ## Esquema y migraciones
 
@@ -66,7 +66,7 @@ El proyecto QA debe recibir el esquema esperado por `main`, incluyendo RLS, RPC,
 
 Tampoco se deben ejecutar migraciones futuras que nombren Central, Nueva, Evolution productivo o Mercado Pago. Después de recibir el ref QA se hará una revisión final del plan de migraciones y se aplicarán sólo las migraciones estructurales/funcionales seguras, sin datos productivos.
 
-El comando `npm run e2e:qa:migration-plan` sólo analiza y lista migraciones; no se conecta ni aplica cambios. Su salida identifica los archivos sensibles que requieren revisión manual antes de aplicar el esquema al proyecto QA.
+El comando `npm run e2e:qa:migration-plan` sólo analiza y lista migraciones; no se conecta ni aplica cambios. La migración QA-only `supabase/qa-migrations/20260810000000_legacy_function_compatibility.sql` cubre tres funciones legacy que no estaban en el baseline versionado y que son requeridas por los grants endurecidos; no pertenece al stream de producción.
 
 ## Fixtures y usuarios
 
@@ -107,7 +107,7 @@ Billing usa proveedor mock y eventos sintéticos. No se configuran Access Tokens
 
 La suite autenticada queda gated hasta que exista este proyecto y sus fixtures. Se repetirán Auth, onboarding, aislamiento multi-tenant, roles, dashboard, Agenda, gestión, reserva, CRM, Plataforma, billing mock, recuperación y responsive en 390×844, 768×1024 y 1366×768, light/dark. No se afirmará `passed` mientras no se ejecute sobre QA.
 
-En la ejecución local de esta etapa, Playwright reportó 47 escenarios públicos pasados y 145 escenarios sandbox omitidos por el guard; no se conectó a Supabase ni se modificaron datos.
+En la ejecución local previa, Playwright reportó 48 escenarios públicos pasados y 144 escenarios sandbox omitidos por el guard. La suite autenticada aún no puede ejecutarse hasta crear usuarios/fixtures.
 
 La evidencia se guardará en `docs/authenticated-qa/` y el informe se actualizará en `docs/AUTHENTICATED-QA.md` sin incluir cookies, tokens, headers o secretos.
 
@@ -117,4 +117,4 @@ El rollback normal es ejecutar el dry-run y luego el cleanup marcado. Si se requ
 
 ## Siguiente paso exacto
 
-Crear manualmente el proyecto y guardar sus variables fuera del repositorio. Detenerse ahí y avisar el `project ref`; recién entonces se podrá aplicar el esquema QA, sembrar fixtures y ejecutar los escenarios autenticados.
+Guardar las variables QA fuera del repositorio y avisar sólo que quedaron configuradas. El esquema ya está aplicado; después se podrán sembrar fixtures, ejecutar el dry-run de cleanup y comenzar la matriz autenticada.
