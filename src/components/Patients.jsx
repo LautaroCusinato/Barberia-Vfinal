@@ -30,13 +30,14 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
   const notasPorPaciente = (nombre) => (notas || []).filter((n) => n.paciente === nombre).length
 
   return (
-    <div>
+    <div className="management-screen management-clients">
       <div className="toolbar-row">
         <div className="search-bar toolbar-search">
           <Search size={16} style={{ color: 'var(--ink-faint)' }} />
           <input
             className="search-input"
-            placeholder="Buscar por nombre o telefono..."
+            placeholder="Buscar por nombre o teléfono…"
+            aria-label="Buscar clientes por nombre o teléfono"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -64,7 +65,7 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
         </div>
       ) : (
         <div className="table-scroll">
-        <table className="table">
+        <table className="table management-table">
           <thead>
             <tr>
               <th>Cliente</th>
@@ -93,10 +94,10 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
                       {p.nombre}
                     </div>
                   </td>
-                  <td>{formatTelefonoDisplay(p.telefono)}</td>
+                  <td data-label="Teléfono" className="management-phone">{formatTelefonoDisplay(p.telefono)}</td>
                   <td>{p.ultima_visita || '—'}</td>
                   <td>{p.proximo_turno || '—'}</td>
-                  <td>
+                  <td data-label="Notas">
                     <button
                       className="btn"
                       style={{ padding: '5px 10px', fontSize: 11.5 }}
@@ -106,7 +107,7 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
                       {cantidad > 0 ? cantidad : 'Ver'}
                     </button>
                   </td>
-                  <td>
+                  <td data-label="Acciones">
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                       <button className="btn-icon-plain" onClick={() => setEditando(p)} aria-label="Editar cliente" title="Editar cliente">
                         <Pencil size={14} />

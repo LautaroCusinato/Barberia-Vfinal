@@ -80,7 +80,7 @@ export default function Barberos({
   }, [seleccionado])
 
   return (
-    <div className="equipo-container">
+    <div className="management-screen management-employees equipo-container">
       <div className="stats-row">
         <div className="stat-card">
           <div>

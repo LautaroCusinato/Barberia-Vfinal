@@ -1,0 +1,646 @@
+/* Austral Design System · Sprint 4
+ * Visual layer for the internal business workspace. These rules are scoped to
+ * management screens and intentionally do not change data, callbacks or RPCs.
+ */
+
+.management-screen {
+  --management-card-padding: clamp(14px, 2vw, 22px);
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding-bottom: calc(var(--space-6) + var(--safe-bottom));
+}
+
+.management-screen .panel {
+  border-color: color-mix(in srgb, var(--border) 88%, var(--accent));
+  box-shadow: var(--shadow-sm);
+}
+
+.management-screen .panel-title {
+  min-height: var(--control-md);
+  margin-bottom: var(--space-4);
+}
+
+.management-screen .panel-title-icon {
+  color: var(--ink);
+}
+
+.management-screen .panel-title-icon svg {
+  color: var(--accent);
+}
+
+.management-screen .text-input,
+.management-screen .search-input,
+.management-screen select,
+.management-screen textarea {
+  min-height: var(--control-md);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.management-screen button:focus-visible,
+.management-screen input:focus-visible,
+.management-screen select:focus-visible,
+.management-screen textarea:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.management-screen .toolbar-row {
+  align-items: stretch;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.management-screen .toolbar-search {
+  flex: 1 1 280px;
+  min-height: var(--control-lg);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-xs);
+}
+
+.management-screen .toolbar-row > .btn {
+  min-height: var(--control-lg);
+  border-radius: var(--radius-control);
+  padding-inline: var(--space-4);
+  font-weight: 750;
+}
+
+.management-screen .empty-state {
+  min-height: 190px;
+  display: grid;
+  place-content: center;
+  gap: var(--space-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-muted) 42%, var(--surface));
+}
+
+.management-screen .empty-state p {
+  color: var(--ink-soft);
+  font-weight: 650;
+}
+
+/* Clientes: the dense desktop table becomes readable cards below 640px. */
+.management-clients .table-scroll {
+  overflow: visible;
+}
+
+.management-clients .management-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+}
+
+.management-clients .management-table th {
+  padding-block: 11px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.management-clients .management-table td {
+  padding-block: 14px;
+  color: var(--ink-soft);
+  vertical-align: middle;
+}
+
+.management-clients .management-table td:first-child {
+  color: var(--ink);
+}
+
+.management-clients .management-table tbody tr {
+  transition: background-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.management-clients .management-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent-soft) 35%, transparent);
+}
+
+.management-clients .management-phone {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.management-clients .management-table td:last-child > div {
+  min-height: var(--control-md);
+  align-items: center;
+}
+
+/* Operación: service cards, team identity and schedule/break hierarchy. */
+.management-operations {
+  gap: var(--space-5);
+}
+
+.management-operations .ops-config-hero {
+  padding: var(--management-card-padding);
+  border-left: 3px solid var(--accent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 65%, var(--surface)), var(--surface));
+}
+
+.management-operations .ops-config-hero .panel-title {
+  margin-bottom: var(--space-2);
+}
+
+.management-operations .ops-counts span {
+  min-height: var(--control-md);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.management-operations .two-col {
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.management-operations .management-section {
+  min-width: 0;
+  padding: var(--management-card-padding);
+}
+
+.management-operations .management-section > .panel-title {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: calc(var(--management-card-padding) * -1) calc(var(--management-card-padding) * -1) var(--space-4);
+  padding: var(--space-3) var(--management-card-padding);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.management-add-action {
+  min-height: var(--control-md);
+  padding-inline: var(--space-3);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.management-add-action:hover {
+  background: var(--accent-soft-2);
+}
+
+.management-service-row,
+.management-employee-row {
+  border-color: var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+
+.management-service-row:hover,
+.management-employee-row:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.management-service-row .ops-edit-main,
+.management-employee-row .ops-edit-main {
+  gap: var(--space-3);
+}
+
+.management-field,
+.management-operations .ops-edit-main label,
+.management-operations .ops-field-label {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .01em;
+}
+
+.management-service-row .management-field-primary input,
+.management-service-row .management-field-description input {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.management-service-row .management-service-meta {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.management-service-row .management-service-meta label {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.management-service-row .management-service-meta input {
+  border-color: transparent;
+  background: var(--surface);
+}
+
+.management-employee-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.management-employee-row .ops-avatar {
+  width: 46px;
+  height: 46px;
+  border: 3px solid var(--surface);
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px var(--border), var(--shadow-sm);
+  font-size: 13px;
+}
+
+.management-employee-head {
+  align-items: end;
+}
+
+.management-employee-head .management-color-field {
+  max-width: 120px;
+}
+
+.management-specialties,
+.management-work-days,
+.management-break-field {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.management-specialties::before,
+.management-work-days::before,
+.management-break-field > span::before {
+  color: var(--accent-strong);
+}
+
+.management-work-days .day-toggle-row {
+  gap: var(--space-2);
+}
+
+.management-work-days .day-toggle {
+  min-width: 42px;
+  min-height: var(--control-md);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.management-hours-range,
+.management-break-range {
+  gap: var(--space-3);
+}
+
+.management-break-field {
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-soft) 45%, var(--surface));
+}
+
+.management-break-field .management-break-range select {
+  border-color: color-mix(in srgb, var(--amber) 38%, var(--border));
+  background: var(--surface);
+}
+
+.management-break-field .ops-inline-error {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--rose-soft);
+  color: var(--rose-text);
+}
+
+/* Equipo: KPI hierarchy and professional cards. */
+.management-employees {
+  gap: var(--space-5);
+}
+
+.management-employees .stats-row {
+  margin-bottom: 0;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.management-employees .stat-card {
+  min-height: 96px;
+  border-color: var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.management-employees .barberos-grid {
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.management-employees .barbero-card {
+  min-height: 188px;
+  border-radius: var(--radius-lg);
+  border-color: var(--border);
+  background: linear-gradient(145deg, var(--surface), color-mix(in srgb, var(--surface-muted) 30%, var(--surface)));
+  box-shadow: var(--shadow-sm);
+}
+
+.management-employees .barbero-card:hover,
+.management-employees .barbero-card.active {
+  border-color: var(--barbero-color, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--barbero-color, var(--accent)) 18%, transparent), var(--shadow-md);
+}
+
+.management-employees .barbero-card-top .ops-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  font-size: 13px;
+}
+
+.management-employees .barbero-card-metrics {
+  padding-block: var(--space-3);
+  border-block: 1px solid var(--border);
+}
+
+.management-employees .barbero-metric-value {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.management-employees .barbero-metric-label {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.management-employees .barbero-card-next {
+  min-height: 34px;
+  color: var(--ink-soft);
+}
+
+.management-employees .equipo-detalle {
+  margin-top: 0;
+  border-top: 3px solid var(--accent);
+}
+
+/* Configuración: a calm, grouped settings workspace. */
+.management-settings {
+  gap: var(--space-4);
+}
+
+.management-settings .page-header {
+  margin-bottom: var(--space-1);
+}
+
+.management-settings .settings-grid {
+  gap: var(--space-4);
+}
+
+.management-settings .settings-card {
+  padding: var(--management-card-padding);
+  border-radius: var(--radius-lg);
+}
+
+.management-settings .settings-card > .panel-title {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.management-settings .settings-fields label,
+.management-settings .settings-two label,
+.management-settings .settings-three label {
+  color: var(--ink-soft);
+}
+
+.management-settings .settings-card .text-input {
+  margin-top: 1px;
+}
+
+.management-settings .logo-preview {
+  min-height: 132px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-muted) 40%, var(--surface));
+}
+
+.management-settings .settings-check {
+  min-height: var(--control-lg);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.management-settings .settings-actions {
+  position: sticky;
+  bottom: calc(var(--space-3) + var(--safe-bottom));
+  z-index: var(--z-sticky);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.management-settings .settings-actions .btn {
+  min-height: var(--control-lg);
+  border-radius: var(--radius-control);
+}
+
+.management-settings .member-row {
+  min-height: 58px;
+  padding-block: var(--space-3);
+}
+
+.management-settings .member-row strong {
+  color: var(--ink);
+}
+
+@media (max-width: 900px) {
+  .management-operations .two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .management-operations .management-section > .panel-title {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .management-screen {
+    gap: var(--space-3);
+  }
+
+  .management-screen .toolbar-row {
+    flex-direction: column;
+  }
+
+  .management-screen .toolbar-row > * {
+    width: 100%;
+  }
+
+  .management-screen .toolbar-search {
+    flex: 0 0 var(--control-lg);
+  }
+
+  .management-clients .management-table,
+  .management-clients .management-table tbody,
+  .management-clients .management-table tr,
+  .management-clients .management-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .management-clients .management-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .management-clients .management-table tbody {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .management-clients .management-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-xs);
+  }
+
+  .management-clients .management-table tbody tr:hover {
+    background: var(--surface);
+  }
+
+  .management-clients .management-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-height: 38px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    white-space: normal;
+    text-align: right;
+  }
+
+  .management-clients .management-table td::before {
+    flex: 0 0 auto;
+    color: var(--ink-faint);
+    content: attr(data-label);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .05em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .management-clients .management-table td:first-child {
+    grid-column: 1 / -1;
+    display: block;
+    padding-top: 0;
+    text-align: left;
+  }
+
+  .management-clients .management-table td:first-child::before {
+    display: none;
+  }
+
+  .management-clients .management-table td:nth-child(3)::before { content: 'Última visita'; }
+  .management-clients .management-table td:nth-child(4)::before { content: 'Próximo turno'; }
+  .management-clients .management-table td:nth-child(5)::before { content: 'Notas'; }
+  .management-clients .management-table td:nth-child(6)::before { content: 'Acciones'; }
+  .management-clients .management-table td:nth-child(5),
+  .management-clients .management-table td:nth-child(6) {
+    border-bottom: 0;
+  }
+
+  .management-clients .management-table td:nth-child(6) > div {
+    justify-content: flex-end;
+  }
+
+  .management-operations .management-section,
+  .management-settings .settings-card {
+    padding: var(--space-3);
+  }
+
+  .management-operations .management-section > .panel-title {
+    margin: calc(var(--space-3) * -1) calc(var(--space-3) * -1) var(--space-3);
+    padding-inline: var(--space-3);
+  }
+
+  .management-service-row {
+    display: block;
+    padding: var(--space-3);
+  }
+
+  .management-service-row > .btn-icon-plain,
+  .management-employee-row > .btn-icon-plain {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+  }
+
+  .management-service-row,
+  .management-employee-row {
+    position: relative;
+  }
+
+  .management-service-row .ops-edit-main {
+    padding-right: var(--space-6);
+  }
+
+  .management-employee-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--space-3);
+  }
+
+  .management-employee-row .ops-edit-main {
+    grid-column: 1 / -1;
+    margin-top: var(--space-2);
+  }
+
+  .management-employee-head,
+  .management-service-meta,
+  .management-hours-range,
+  .management-break-range,
+  .management-settings .settings-two,
+  .management-settings .settings-three {
+    grid-template-columns: 1fr;
+  }
+
+  .management-employee-head .management-color-field {
+    max-width: none;
+  }
+
+  .management-employees .stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .management-employees .barbero-card {
+    min-height: 172px;
+  }
+
+  .management-employees .barberos-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .management-settings .settings-actions {
+    position: static;
+    margin-top: var(--space-1);
+  }
+
+  .management-settings .settings-actions .btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .management-service-row,
+  .management-employee-row,
+  .management-employees .barbero-card {
+    transition: none;
+  }
+}

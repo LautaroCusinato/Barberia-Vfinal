@@ -206,7 +206,7 @@ export default function Operations({
   }
 
   return (
-    <div className="operations">
+    <div className="management-screen management-operations operations">
       <div className="panel ops-config-hero">
         <div>
           <p className="panel-title" style={{ marginBottom: 4 }}>
@@ -226,13 +226,13 @@ export default function Operations({
       </div>
 
       <div className="two-col">
-        <div className="panel">
+        <div className="panel management-section management-services">
           <p className="panel-title">
             <span className="panel-title-icon">
               <Scissors size={16} />
               Servicios y precios
             </span>
-            <button className="link-btn" onClick={onAddServicio}>
+            <button className="link-btn management-add-action" onClick={onAddServicio}>
               <Plus size={13} strokeWidth={2.5} />
               Agregar
             </button>
@@ -240,7 +240,7 @@ export default function Operations({
 
           <div className="ops-edit-list">
             {servicios.map((servicio) => (
-              <div className="ops-edit-row" key={servicio.id}>
+              <div className="ops-edit-row management-service-row" key={servicio.id}>
                 <div className="ops-edit-main">
                   <label>
                     Nombre del servicio *
@@ -283,7 +283,7 @@ export default function Operations({
                     />
                   </label>
 
-                  <div className="ops-edit-grid">
+                  <div className="ops-edit-grid management-service-meta">
                     <label>
                       Precio ($) *
                       <input
@@ -322,13 +322,13 @@ export default function Operations({
           </div>
         </div>
 
-        <div className="panel">
+        <div className="panel management-section management-team-hours">
           <p className="panel-title">
             <span className="panel-title-icon">
               <UserRound size={16} />
               Barberos disponibles
             </span>
-            <button className="link-btn" onClick={onAddBarbero}>
+            <button className="link-btn management-add-action" onClick={onAddBarbero}>
               <Plus size={13} strokeWidth={2.5} />
               Agregar
             </button>
@@ -345,13 +345,13 @@ export default function Operations({
               const habilidades = parseHabilidades(barbero.habilidades)
 
               return (
-                <div className="ops-edit-row ops-edit-row--barbero" key={barbero.id}>
+                <div className="ops-edit-row ops-edit-row--barbero management-employee-row" key={barbero.id}>
                   <span className="ops-avatar" style={{ background: barbero.color }}>
                     {barbero.nombre.slice(0, 2).toUpperCase()}
                   </span>
 
                   <div className="ops-edit-main">
-                    <div className="ops-edit-grid">
+                    <div className="ops-edit-grid management-employee-head">
                       <label>
                         Nombre *
                         <input
@@ -375,7 +375,7 @@ export default function Operations({
                       </label>
                     </div>
 
-                    <div className="ops-field-label">
+                    <div className="ops-field-label management-specialties">
                       Habilidades (qué servicios puede hacer)
                       {habilidadesDisponibles.length === 0 ? (
                         <div className="ops-help" style={{ marginTop: 4, fontSize: 12, color: 'var(--ink-faint)' }}>
@@ -406,7 +406,7 @@ export default function Operations({
                       )}
                     </div>
 
-                    <div className="ops-field-label">
+                    <div className="ops-field-label management-work-days">
                       Días que atiende
                       <div className="day-toggle-row">
                         {DIAS.map((dia) => (
@@ -427,7 +427,7 @@ export default function Operations({
                       </div>
                     </div>
 
-                    <div className="ops-edit-grid">
+                    <div className="ops-edit-grid management-hours-range">
                       <label>
                         Desde
                         <select
@@ -459,7 +459,7 @@ export default function Operations({
                         <Coffee size={11} />
                         Pausa / Break (opcional)
                       </span>
-                      <div className="ops-edit-grid">
+                      <div className="ops-edit-grid management-break-range">
                         <select
                           className="text-input"
                           value={horario.breakDesde}

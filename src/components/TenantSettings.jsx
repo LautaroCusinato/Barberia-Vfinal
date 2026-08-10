@@ -91,7 +91,7 @@ export default function TenantSettings({ barberiaId }) {
   if (loading) return <div className="panel settings-loading"><LoaderCircle className="spin" size={18} /> Cargando configuración…</div>
   if (!isSupabaseConfigured) return <div className="panel empty-state">Configurá Supabase para editar el negocio.</div>
 
-  return <div className="settings-page fade-in">
+  return <div className="management-screen management-settings settings-page fade-in">
     <div className="page-header"><div><p className="page-kicker">Tenant y marca</p><h1 className="page-title">Configuración del negocio</h1><p className="page-date">Los cambios se validan en Supabase y afectan sólo a este negocio.</p></div><span className="billing-security"><ShieldCheck size={14} /> RLS activo</span></div>
     {error && <div className="error-banner" role="alert">{error}</div>}{notice && <div className="settings-notice" role="status"><Check size={15} /> {notice}</div>}
     <form className="settings-grid" onSubmit={save}>

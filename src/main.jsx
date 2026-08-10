@@ -10,6 +10,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
 import './index.css'
 import './components/agenda.css'
+import './components/management.css'
 
 const PublicBooking = lazy(() => import('./pages/PublicBooking.jsx'))
 const PlatformCRM = PlatformCRMPage
