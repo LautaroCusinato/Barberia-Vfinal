@@ -11,6 +11,7 @@ import { installGlobalObservability, trackClientEvent } from './lib/observabilit
 import './index.css'
 import './components/agenda.css'
 import './components/management.css'
+import './components/platform.css'
 
 const PublicBooking = lazy(() => import('./pages/PublicBooking.jsx'))
 const PlatformCRM = PlatformCRMPage

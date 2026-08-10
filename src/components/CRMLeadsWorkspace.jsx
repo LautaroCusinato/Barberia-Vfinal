@@ -87,7 +87,7 @@ export default function CRMLeadsWorkspace({ role = 'owner' }) {
     exportarCSV('crm-import-errors.csv', preview.errors, [{ key: 'row', label: 'fila' }, { key: 'message', label: 'error' }])
   }
 
-  return <div className="crm-leads-workspace">
+  return <div className="crm-leads-workspace platform-crm-tool">
     {error && <div className="error-banner" role="alert">{error}</div>}
     {notice && <div className="settings-notice" role="status">{notice}</div>}
     <div className="crm-toolbar">

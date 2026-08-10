@@ -391,7 +391,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   }
 
   return (
-    <div className="app-shell platform-shell">
+    <div className="app-shell platform-shell platform-screen">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark"><BriefcaseBusiness size={18} strokeWidth={2.4} /></div>
@@ -400,7 +400,7 @@ export default function PlatformCRM({ role = 'owner' }) {
             <div className="brand-sub">Operacion de plataforma</div>
           </div>
         </div>
-        <nav className="nav">
+        <nav className="nav platform-nav" aria-label="Navegación de plataforma">
           <div className="nav-section">
             <p className="nav-section-label">Plataforma</p>
             <button type="button" className={`nav-item ${view === 'businesses' ? 'active' : ''}`} onClick={() => setView('businesses')}><BriefcaseBusiness size={17} /><span>CRM comercial</span></button>
@@ -420,7 +420,7 @@ export default function PlatformCRM({ role = 'owner' }) {
       </aside>
 
       <main className="main platform-main">
-        <div className="page-header">
+        <div className="page-header platform-page-header">
           <div>
             <p className="page-kicker">Workspace interno</p>
             <h1 className="page-title">{view === 'billing' ? 'Facturacion SaaS' : view === 'agent' ? 'Agente comercial' : view === 'pilot' ? 'Piloto comercial' : view === 'actions' ? 'Seguimientos' : 'CRM comercial'}</h1>
@@ -434,15 +434,15 @@ export default function PlatformCRM({ role = 'owner' }) {
 
         {error && <div className="error-banner" role="alert">{error}</div>}
 
-        <section className="stats-grid platform-stats" aria-label="Resumen del CRM">
-          <div className="stat-card"><span className="stat-label">Negocios</span><strong>{stats.total}</strong></div>
-          <div className="stat-card"><span className="stat-label">En demo/prueba</span><strong>{stats.active}</strong></div>
-          <div className="stat-card"><span className="stat-label">Leads interesados</span><strong>{stats.interested}</strong></div>
-          <div className="stat-card"><span className="stat-label">Acciones vencidas</span><strong>{stats.nextActions}</strong></div>
+        <section className="stats-grid platform-stats platform-kpis" aria-label="Resumen del CRM">
+          <div className="stat-card platform-kpi"><span className="stat-label">Negocios</span><strong>{stats.total}</strong><small className="platform-kpi-caption">Total registrado</small></div>
+          <div className="stat-card platform-kpi"><span className="stat-label">En demo/prueba</span><strong>{stats.active}</strong><small className="platform-kpi-caption">Cuentas activas</small></div>
+          <div className="stat-card platform-kpi"><span className="stat-label">Leads interesados</span><strong>{stats.interested}</strong><small className="platform-kpi-caption">Oportunidades calientes</small></div>
+          <div className="stat-card platform-kpi"><span className="stat-label">Acciones vencidas</span><strong>{stats.nextActions}</strong><small className="platform-kpi-caption">Requieren atención</small></div>
         </section>
 
-        {view === 'pilot' ? <CommercialPilot /> : view === 'agent' ? <CommercialAgent /> : view === 'actions' ? <section className="panel platform-crm-panel"><CRMActionInbox role={role} /></section> : view === 'billing' ? <>
-          <section className="panel platform-crm-panel">
+        {view === 'pilot' ? <CommercialPilot /> : view === 'agent' ? <CommercialAgent /> : view === 'actions' ? <section className="panel platform-crm-panel platform-actions-panel"><CRMActionInbox role={role} /></section> : view === 'billing' ? <>
+          <section className="panel platform-crm-panel platform-billing-panel">
             <div className="panel-header"><div><h2 className="panel-title">Salud de las cuentas</h2><p className="panel-subtitle">Sólo lectura. Las transiciones se ejecutan por RPC y webhook verificado.</p></div></div>
             {!billingOverview ? <div className="empty-state">No se pudo cargar el resumen de billing.</div> : <>
               <div className="stats-grid platform-stats billing-platform-stats">{Object.entries(billingOverview.subscriptions_by_state || {}).map(([state, count]) => <div className="stat-card" key={state}><span className="stat-label">{stageLabel(state)}</span><strong>{count}</strong></div>)}</div>
@@ -451,10 +451,10 @@ export default function PlatformCRM({ role = 'owner' }) {
             </>}
           </section>
           <SandboxBillingConsole role={role} snapshot={sandboxSnapshot} busy={sandboxBusy} error={sandboxError} notice={sandboxNotice} auditWarning={sandboxAuditWarning} confirmAction={sandboxConfirmAction} onAction={executeSandboxAction} />
-        </> : view === 'leads' ? <section className="panel platform-crm-panel">
+        </> : view === 'leads' ? <section className="panel platform-crm-panel platform-leads-panel">
           <div className="panel-header"><div><h2 className="panel-title">Leads comerciales</h2><p className="panel-subtitle">Pipeline, scoring, seguimiento y exclusiones con auditoría. El CRM global sólo es visible para usuarios de plataforma.</p></div></div>
           <CRMLeadsWorkspace role={role} />
-        </section> : <section className="panel platform-crm-panel">
+        </section> : <section className={`panel platform-crm-panel platform-records-panel platform-records-${view}`}>
           <div className="panel-header">
             <div><h2 className="panel-title">{view === 'businesses' ? 'Negocios' : 'Leads'}</h2><p className="panel-subtitle">Los registros estan protegidos por RLS para miembros de plataforma.</p></div>
             <label className="crm-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === 'businesses' ? 'Buscar negocio...' : 'Buscar lead...'} aria-label={view === 'businesses' ? 'Buscar negocio' : 'Buscar lead'} /></label>
