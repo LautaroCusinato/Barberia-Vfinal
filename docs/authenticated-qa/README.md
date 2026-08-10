@@ -1,5 +1,11 @@
 # Evidencia de QA autenticado
 
-No se generaron capturas autenticadas en esta etapa porque no existe un proyecto Supabase sandbox, usuario QA, tenant QA ni prefijo de fixtures autorizado fuera del repositorio.
+Capturas generadas contra el proyecto QA `cmsymmszlzikqpvfqjre` con datos sintéticos `E2E_QA_`. No contienen credenciales, cookies ni datos reales.
 
-Las capturas públicas y mock existentes no se copian aquí para evitar presentarlas como evidencia autenticada. Ver [AUTHENTICATED-QA.md](../AUTHENTICATED-QA.md) para el preflight, el bloqueo exacto y las precondiciones necesarias.
+- `owner-a-dashboard-1366-light.png`: dashboard del owner de Tenant A.
+- `owner-a-dashboard-390-dark.png`: dashboard responsive con preferencia oscura.
+- `owner-a-settings-390-dark.png`: recorrido de gestión en mobile/dark.
+- `platform-owner-1366.png`: workspace Plataforma con rol owner QA.
+- `booking-qa-390.png`: catálogo público del Tenant A sin confirmar reservas.
+
+El detalle de flujos, errores y bloqueos está en [AUTHENTICATED-QA.md](../AUTHENTICATED-QA.md).

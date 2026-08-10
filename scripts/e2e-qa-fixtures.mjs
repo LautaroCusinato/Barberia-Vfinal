@@ -30,6 +30,11 @@ const users = [
   ['platformReadonly', 'e2e_qa_platform_readonly@e2e-qa.invalid', 'platform:readonly', null],
 ]
 
+// La configuración de ejecución usa `qa`; las tablas CRM sólo aceptan
+// entornos persistidos `sandbox`, `demo`, `production` o `internal`.
+const dbEnvironment = 'sandbox'
+const QA_LOGO_DATA_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2216%22 fill=%22%239B6A2F%22%2F%3E%3C%2Fsvg%3E'
+
 if (!execute) {
   console.log(JSON.stringify({ dry_run: true, tenants: tenants.map((tenant) => tenant.slug), users: users.length, external_providers: 'disabled' }, null, 2))
   process.exit(0)
@@ -75,7 +80,7 @@ for (const tenant of tenants) {
     locale: 'es-AR',
     pais: 'QA',
     moneda: 'ARS',
-    logo_url: `https://e2e-qa.invalid/${tenant.key.toLowerCase()}-logo.svg`,
+    logo_url: QA_LOGO_DATA_URI,
     color_principal: tenant.key === 'A' ? '#9B6A2F' : '#3E6F87',
     color_secundario: tenant.key === 'A' ? '#F3E8D6' : '#DDECF2',
     reservas_publicas: true,
@@ -111,22 +116,24 @@ for (const tenant of tenants) {
   const { error: configError } = await admin.from('config').upsert([
     { barberia_id: barberiaId, clave: 'horarios_default', valor: JSON.stringify({ e2e_prefix: QA_PREFIX, environment: config.environment }) },
     { barberia_id: barberiaId, clave: 'reservas_config', valor: JSON.stringify({ e2e_prefix: QA_PREFIX, environment: config.environment, intervalo_min: 30, anticipacion_horas: 1, max_dias: 60 }) },
-    { barberia_id: barberiaId, clave: 'branding', valor: JSON.stringify({ e2e_prefix: QA_PREFIX, environment: config.environment, logo_url: `https://e2e-qa.invalid/${tenant.key.toLowerCase()}-logo.svg` }) },
+    { barberia_id: barberiaId, clave: 'branding', valor: JSON.stringify({ e2e_prefix: QA_PREFIX, environment: config.environment, logo_url: QA_LOGO_DATA_URI }) },
   ], { onConflict: 'barberia_id,clave' })
   if (configError) throw new Error(`No se pudo preparar la configuración QA ${tenant.key}.`)
-  const { data: client, error: clientError } = await admin.from('clientes').upsert({ barberia_id: barberiaId, nombre: `${QA_PREFIX}${tenant.key}_CLIENTE`, apellido: 'Fixture', telefono: tenant.key === 'A' ? '000000000001' : '000000000002', email: `e2e_qa_client_${tenant.key.toLowerCase()}@e2e-qa.invalid`, notas: 'Fixture QA eliminable' }, { onConflict: 'barberia_id,telefono' }).select('id').single()
+  const qaPhone = tenant.key === 'A' ? '5491100000001' : '5491100000002'
+  const { data: client, error: clientError } = await admin.from('clientes').upsert({ barberia_id: barberiaId, nombre: `${QA_PREFIX}${tenant.key}_CLIENTE`, apellido: 'Fixture', telefono: qaPhone, email: `e2e_qa_client_${tenant.key.toLowerCase()}@e2e-qa.invalid`, notas: 'Fixture QA eliminable' }, { onConflict: 'barberia_id,telefono' }).select('id').single()
   if (clientError || !client) throw new Error(`No se pudo preparar el cliente QA ${tenant.key}.`)
   const blockMotivo = `${QA_PREFIX}${tenant.key}_BREAK`
-  const { data: existingBlock, error: blockLookupError } = await admin.from('bloqueos_agenda').select('id').eq('barberia_id', barberiaId).eq('barbero_id', barber.id).eq('fecha', '2099-01-02').eq('start_time', '13:00:00').eq('end_time', '14:00:00').eq('motivo', blockMotivo).maybeSingle()
+  const qaDate = '2099-01-05'
+  const { data: existingBlock, error: blockLookupError } = await admin.from('bloqueos_agenda').select('id').eq('barberia_id', barberiaId).eq('barbero_id', barber.id).eq('fecha', qaDate).eq('start_time', '13:00:00').eq('end_time', '14:00:00').eq('motivo', blockMotivo).maybeSingle()
   if (blockLookupError) throw new Error(`No se pudo auditar el break QA ${tenant.key}.`)
   if (!existingBlock) {
-    const { error: blockError } = await admin.from('bloqueos_agenda').insert({ barberia_id: barberiaId, barbero_id: barber.id, fecha: '2099-01-02', start_time: '13:00:00', end_time: '14:00:00', motivo: blockMotivo, tipo: 'bloqueo' })
+    const { error: blockError } = await admin.from('bloqueos_agenda').insert({ barberia_id: barberiaId, barbero_id: barber.id, fecha: qaDate, start_time: '13:00:00', end_time: '14:00:00', motivo: blockMotivo, tipo: 'bloqueo' })
     if (blockError) throw new Error(`No se pudo preparar el break QA ${tenant.key}.`)
   }
-  const { data: existingTurn, error: turnLookupError } = await admin.from('turnos').select('id').eq('barberia_id', barberiaId).eq('fecha', '2099-01-02').eq('hora', '10:00').eq('paciente', `${QA_PREFIX}${tenant.key}_CLIENTE`).maybeSingle()
+  const { data: existingTurn, error: turnLookupError } = await admin.from('turnos').select('id').eq('barberia_id', barberiaId).eq('fecha', qaDate).eq('hora', '10:00').eq('paciente', `${QA_PREFIX}${tenant.key}_CLIENTE`).maybeSingle()
   if (turnLookupError) throw new Error(`No se pudo auditar el turno QA ${tenant.key}.`)
   if (!existingTurn) {
-    const { error: turnError } = await admin.from('turnos').insert({ barberia_id: barberiaId, cliente_id: client.id, barbero_id: barber.id, servicio_id: service.id, paciente: `${QA_PREFIX}${tenant.key}_CLIENTE`, telefono: tenant.key === 'A' ? '000000000001' : '000000000002', fecha: '2099-01-02', hora: '10:00', motivo: `${QA_PREFIX}${tenant.key}_SERVICIO`, estado: 'confirmado', precio: 15000, duracion_min: 30, origen: 'panel' })
+    const { error: turnError } = await admin.from('turnos').insert({ barberia_id: barberiaId, cliente_id: client.id, barbero_id: barber.id, servicio_id: service.id, paciente: `${QA_PREFIX}${tenant.key}_CLIENTE`, telefono: qaPhone, fecha: qaDate, hora: '10:00', motivo: `${QA_PREFIX}${tenant.key}_SERVICIO`, estado: 'confirmado', precio: 15000, duracion_min: 30, origen: 'panel' })
     if (turnError) throw new Error(`No se pudo preparar el turno QA ${tenant.key}.`)
   }
   const { error: integrationError } = await admin.from('saas_integraciones').upsert({ barberia_id: barberiaId, proveedor: 'evolution', estado: 'desactivado', base_url: 'https://e2e-qa.invalid', referencia_externa: `${QA_PREFIX}${tenant.key}_MOCK`, metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, mode: 'shadow', external_provider: false } }, { onConflict: 'barberia_id,proveedor' })
@@ -137,21 +144,23 @@ for (const tenant of tenants) {
   if (businessLookupError) throw new Error(`No se pudo auditar el negocio CRM QA ${tenant.key}.`)
   let negocioId = existingBusiness?.id
   if (!negocioId) {
-    const { data: business, error: businessError } = await admin.from('crm_negocios').insert({ barberia_id: barberiaId, nombre: `${QA_PREFIX}${tenant.key}_NEGOCIO`, rubro: 'barberia', pais: 'QA', idioma: 'es', zona_horaria: 'America/Argentina/Buenos_Aires', email: crmEmail, canal_origen: 'e2e_qa', etapa: 'prueba', moneda: 'ARS', environment: config.environment, pipeline_stage: 'trial', metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, fixture: true } }).select('id').single()
+    const { data: business, error: businessError } = await admin.from('crm_negocios').insert({ barberia_id: barberiaId, nombre: `${QA_PREFIX}${tenant.key}_NEGOCIO`, rubro: 'barberia', pais: 'QA', idioma: 'es', zona_horaria: 'America/Argentina/Buenos_Aires', email: crmEmail, canal_origen: 'e2e_qa', etapa: 'prueba', moneda: 'ARS', environment: dbEnvironment, pipeline_stage: 'trial', metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, fixture: true } }).select('id').single()
     if (businessError || !business) throw new Error(`No se pudo preparar el negocio CRM QA ${tenant.key}.`)
     negocioId = business.id
   } else {
-    const { error: businessUpdateError } = await admin.from('crm_negocios').update({ nombre: `${QA_PREFIX}${tenant.key}_NEGOCIO`, rubro: 'barberia', pais: 'QA', idioma: 'es', zona_horaria: 'America/Argentina/Buenos_Aires', email: crmEmail, canal_origen: 'e2e_qa', etapa: 'prueba', moneda: 'ARS', environment: config.environment, pipeline_stage: 'trial', metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, fixture: true } }).eq('id', negocioId)
+    const { error: businessUpdateError } = await admin.from('crm_negocios').update({ nombre: `${QA_PREFIX}${tenant.key}_NEGOCIO`, rubro: 'barberia', pais: 'QA', idioma: 'es', zona_horaria: 'America/Argentina/Buenos_Aires', email: crmEmail, canal_origen: 'e2e_qa', etapa: 'prueba', moneda: 'ARS', environment: dbEnvironment, pipeline_stage: 'trial', metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, fixture: true } }).eq('id', negocioId)
     if (businessUpdateError) throw new Error(`No se pudo actualizar el negocio CRM QA ${tenant.key}.`)
   }
   const leadDedupeKey = `${QA_PREFIX}${tenant.key}_LEAD`.toLowerCase()
   const { data: existingLead, error: leadLookupError } = await admin.from('crm_leads').select('id').eq('dedupe_key', leadDedupeKey).maybeSingle()
   if (leadLookupError) throw new Error(`No se pudo auditar el lead CRM QA ${tenant.key}.`)
   if (!existingLead) {
-    const { error: leadError } = await admin.from('crm_leads').insert({ negocio_id: negocioId, nombre_contacto: `${QA_PREFIX}${tenant.key}_CONTACTO`, email: `e2e_qa_lead_${tenant.key.toLowerCase()}@e2e-qa.invalid`, telefono: tenant.key === 'A' ? '000000000011' : '000000000012', canal_preferido: 'mock', pipeline_stage: 'trial', estado_conversacion: 'interesado', interes: 'qa', dedupe_key: leadDedupeKey, environment: config.environment, metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, fixture: true } })
+    const leadPhone = tenant.key === 'A' ? '5491100000011' : '5491100000012'
+    const { error: leadError } = await admin.from('crm_leads').insert({ negocio_id: negocioId, nombre_contacto: `${QA_PREFIX}${tenant.key}_CONTACTO`, email: `e2e_qa_lead_${tenant.key.toLowerCase()}@e2e-qa.invalid`, telefono: leadPhone, canal_preferido: 'mock', pipeline_stage: 'trial', estado_conversacion: 'interesado', interes: 'qa', dedupe_key: leadDedupeKey, environment: dbEnvironment, metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, fixture: true } })
     if (leadError) throw new Error(`No se pudo preparar el lead CRM QA ${tenant.key}.`)
   } else {
-    const { error: leadUpdateError } = await admin.from('crm_leads').update({ negocio_id: negocioId, nombre_contacto: `${QA_PREFIX}${tenant.key}_CONTACTO`, email: `e2e_qa_lead_${tenant.key.toLowerCase()}@e2e-qa.invalid`, telefono: tenant.key === 'A' ? '000000000011' : '000000000012', canal_preferido: 'mock', pipeline_stage: 'trial', estado_conversacion: 'interesado', interes: 'qa', dedupe_key: leadDedupeKey, environment: config.environment, metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, fixture: true } }).eq('id', existingLead.id)
+    const leadPhone = tenant.key === 'A' ? '5491100000011' : '5491100000012'
+    const { error: leadUpdateError } = await admin.from('crm_leads').update({ negocio_id: negocioId, nombre_contacto: `${QA_PREFIX}${tenant.key}_CONTACTO`, email: `e2e_qa_lead_${tenant.key.toLowerCase()}@e2e-qa.invalid`, telefono: leadPhone, canal_preferido: 'mock', pipeline_stage: 'trial', estado_conversacion: 'interesado', interes: 'qa', dedupe_key: leadDedupeKey, environment: dbEnvironment, metadata: { environment: config.environment, e2e_prefix: QA_PREFIX, fixture: true } }).eq('id', existingLead.id)
     if (leadUpdateError) throw new Error(`No se pudo actualizar el lead CRM QA ${tenant.key}.`)
   }
 }
