@@ -16,6 +16,9 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "e2e:cleanup": "node scripts/e2e-cleanup.mjs",
+    "e2e:preflight": "node scripts/e2e-sandbox-preflight.mjs",
+    "e2e:qa:migration-plan": "node scripts/e2e-qa-migration-plan.mjs",
+    "e2e:qa:fixtures": "node scripts/e2e-qa-fixtures.mjs",
     "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {

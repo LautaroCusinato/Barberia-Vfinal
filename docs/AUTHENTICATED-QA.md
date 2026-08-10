@@ -2,6 +2,8 @@
 
 ## Estado
 
+La preparación versionable del entorno aislado está documentada en [`docs/QA-SANDBOX.md`](QA-SANDBOX.md). Incluye `scripts/e2e-sandbox-preflight.mjs`, `scripts/e2e-qa-fixtures.mjs` y cleanup con dry-run/doble confirmación. Ninguno fue ejecutado contra Supabase porque el proyecto QA todavía no existe y el acceso administrativo estaba desconectado.
+
 **Bloqueada por precondiciones de seguridad.** No se ejecutó ningún login real, no se usaron Barbería Central ni Barbería Nueva para crear o modificar datos, no se generaron reservas/pagos y no se tocó producción.
 
 Se aplicaron los guardrails de **Austral SaaS Architecture** y la revisión visual de **Austral Design System**. Al tratarse de una validación QA, no se modificó lógica ni infraestructura.

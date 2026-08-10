@@ -24,7 +24,21 @@ El spec público cubre landing, registro, recuperación, demo aislada, errores d
 
 Los flujos sandbox no se ejecutan automáticamente hasta que exista autorización y un proyecto dedicado. Esto evita que una ejecución CI pueda modificar tenants reales o disparar emails, WhatsApp, pagos o webhooks.
 
+## Preflight y fixtures QA
+
+El guard verifica proyecto, URL, entorno, prefijo y ausencia de secretos de proveedores externos antes de cualquier conexión:
+
+```bash
+npm run e2e:preflight
+node scripts/e2e-qa-fixtures.mjs                 # dry-run
+node scripts/e2e-qa-fixtures.mjs --execute       # requiere E2E_ALLOW_FIXTURE_SEED=1
+```
+
+El script de fixtures es idempotente y crea sólo tenants/usuarios marcados `E2E_QA_`.
+
 ## Cleanup
+
+Las instrucciones históricas de este documento quedan reemplazadas por `scripts/e2e-cleanup.mjs`: usar `node scripts/e2e-cleanup.mjs` para dry-run y `node scripts/e2e-cleanup.mjs --execute` sólo con `E2E_ALLOW_CLEANUP=1`, `E2E_ALLOWED_PROJECT_REF` coincidente y el prefijo exacto `E2E_QA_`. No usar los valores de prefijo ni el flag booleano de ejemplos antiguos.
 
 El cleanup está bloqueado por defecto. Sólo permite borrar filas de tablas CRM cuyo nombre empiece por el prefijo explícito:
 
