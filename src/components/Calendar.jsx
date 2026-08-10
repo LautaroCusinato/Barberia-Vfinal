@@ -15,7 +15,7 @@ import {
   parseISO,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, ChevronDown, Check, CalendarX, LayoutGrid, List, Plus, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, Check, CalendarX, LayoutGrid, List, Plus, Users, Clock3, Coffee, Ban, UserRound } from 'lucide-react'
 import { slotsOcupados, parseHorarioBarbero } from '../lib/text'
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
@@ -65,14 +65,20 @@ function toMinutes(hora) {
   return h * 60 + m
 }
 
-export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, onNewTurno, barberos = [] }) {
+export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, onNewTurno, barberos = [], bloqueos = [] }) {
   const initial = parseISO(todayKey)
   const [month, setMonth] = useState(initial)
   const [selected, setSelected] = useState(initial)
   const [viewMode, setViewMode] = useState('mes')
   const [barberoFiltro, setBarberoFiltro] = useState('')
   const [barberoMenuOpen, setBarberoMenuOpen] = useState(false)
+  const [now, setNow] = useState(() => new Date())
   const barberoMenuRef = useRef(null)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -127,6 +133,15 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
 
   const selectedKey = format(selected, 'yyyy-MM-dd')
   const barberoNombre = (id) => barberos.find((b) => String(b.id) === String(id))?.nombre || 'Sin barbero'
+  const bloqueosDelDia = (fecha) => bloqueos.filter((b) => b.fecha === fecha && (b.barbero_id == null || !barberoFiltro || String(b.barbero_id) === barberoFiltro))
+  const bloqueoSeleccionado = bloqueosDelDia(selectedKey)
+  const mapaBarberoSeleccionado = barberosVisibles.length === 1 ? parseHorarioBarbero(barberosVisibles[0]?.horario) : null
+  const breakBlocksForDay = (day) => {
+    if (!mapaBarberoSeleccionado) return []
+    return (mapaBarberoSeleccionado[day.getDay()] || []).filter((block) => block.break)
+  }
+  const hasBreaks = barberos.some((barbero) => Object.values(parseHorarioBarbero(barbero.horario) || {}).some((blocks) => blocks.some((block) => block.break)))
+  const currentTimeLabel = format(now, 'HH:mm')
 
   const turnosDelDia = (byDate[selectedKey] || [])
     .slice()
@@ -175,7 +190,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   }
 
   return (
-    <div className={viewMode === 'mes' ? 'calendar-wrap calendar-wrap-modern' : 'calendar-board'}>
+    <div className={`${viewMode === 'mes' ? 'calendar-wrap calendar-wrap-modern' : 'calendar-board'} agenda-calendar-shell`} aria-label="Agenda del negocio">
       <div className="panel">
         <div className="calendar-toolbar">
           <div className="calendar-heading">
@@ -197,6 +212,8 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                   type="button"
                   className="barbero-filter-trigger"
                   onClick={() => setBarberoMenuOpen((v) => !v)}
+                  aria-haspopup="listbox"
+                  aria-expanded={barberoMenuOpen}
                 >
                   <Users size={13} style={{ color: 'var(--ink-faint)' }} />
                   <span>{barberoFiltro ? barberos.find((b) => String(b.id) === barberoFiltro)?.nombre : 'Todos los barberos'}</span>
@@ -229,10 +246,10 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               </div>
             )}
             <div className="view-toggle">
-              <button className={viewMode === 'mes' ? 'active' : ''} onClick={() => setViewMode('mes')}>
+              <button type="button" className={viewMode === 'mes' ? 'active' : ''} aria-pressed={viewMode === 'mes'} onClick={() => setViewMode('mes')}>
                 <LayoutGrid size={13} /> Mes
               </button>
-              <button className={viewMode === 'semana' ? 'active' : ''} onClick={() => setViewMode('semana')}>
+              <button type="button" className={viewMode === 'semana' ? 'active' : ''} aria-pressed={viewMode === 'semana'} onClick={() => setViewMode('semana')}>
                 <List size={13} /> Semana
               </button>
             </div>
@@ -245,7 +262,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                 <ChevronLeft size={16} strokeWidth={2.25} />
                 <span>Anterior</span>
               </button>
-              <button className="btn calendar-today-btn" onClick={goToday}>Hoy</button>
+              <button type="button" className="btn calendar-today-btn" onClick={goToday}>Hoy</button>
               <button
                 className="btn calendar-arrow-btn"
                 onClick={goNext}
@@ -255,6 +272,19 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                 <ChevronRight size={16} strokeWidth={2.25} />
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="agenda-utility-row" aria-label="Referencias de agenda">
+          <div className="agenda-now-indicator" role="status" aria-live="polite">
+            <span className="agenda-now-line" aria-hidden="true" />
+            <Clock3 size={14} aria-hidden="true" />
+            <span>Ahora {currentTimeLabel}</span>
+          </div>
+          <div className="agenda-legend" aria-label="Leyenda de estados">
+            <span><i className="agenda-legend-swatch agenda-legend-swatch--turno" aria-hidden="true" />Turno</span>
+            {hasBreaks && <span><i className="agenda-legend-swatch agenda-legend-swatch--break" aria-hidden="true" /><Coffee size={12} aria-hidden="true" />Pausa</span>}
+            <span><i className="agenda-legend-swatch agenda-legend-swatch--blocked" aria-hidden="true" /><Ban size={12} aria-hidden="true" />Bloqueo</span>
           </div>
         </div>
 
@@ -271,18 +301,29 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               return (
                 <div
                   key={key}
-                  className={`calendar-day ${outside ? 'outside' : ''} ${key === todayKey ? 'today' : ''} ${isSameDay(day, selected) ? 'selected' : ''}`}
+                  className={`calendar-day ${outside ? 'outside' : ''} ${key === todayKey ? 'today' : ''} ${isSameDay(day, selected) ? 'selected' : ''} ${bloqueosDelDia(key).length ? 'is-blocked' : ''}`}
+                  role="gridcell"
+                  tabIndex={outside ? -1 : 0}
+                  aria-selected={isSameDay(day, selected)}
+                  aria-label={`${format(day, "EEEE d 'de' MMMM", { locale: es })}${eventos.length ? `, ${eventos.length} turnos` : ', sin turnos'}${bloqueosDelDia(key).length ? ', bloqueado' : ''}`}
                   onClick={() => {
                     if (outside) return
                     setSelected(day)
                   }}
+                  onKeyDown={(event) => {
+                    if (!outside && (event.key === 'Enter' || event.key === ' ')) {
+                      event.preventDefault()
+                      setSelected(day)
+                    }
+                  }}
                 >
                   <span className="calendar-day-num">{format(day, 'd')}</span>
                   {!outside && (
-                    <span className="calendar-day-add" onClick={(e) => { e.stopPropagation(); setSelected(day); onNewTurno?.(key) }}>
+                    <button type="button" className="calendar-day-add" aria-label={`Agendar turno el ${format(day, "d 'de' MMMM", { locale: es })}`} onClick={(e) => { e.stopPropagation(); setSelected(day); onNewTurno?.(key) }}>
                       <Plus size={12} strokeWidth={2.7} />
-                    </span>
+                    </button>
                   )}
+                  {bloqueosDelDia(key).length > 0 && <span className="calendar-day-state"><Ban size={11} aria-hidden="true" /> Bloqueado</span>}
                   {!outside && eventos.length > 0 && (
                     <div className="calendar-day-dots">
                       {eventos.slice(0, 4).map((ev) => {
@@ -314,17 +355,19 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                 const key = format(day, 'yyyy-MM-dd')
                 const barberoUnico = barberoFiltro ? barberosVisibles[0] : null
                 const noAtiende = barberoUnico && !parseHorarioBarbero(barberoUnico.horario)?.[day.getDay()]
+                const bloqueado = bloqueosDelDia(key).length > 0
                 return (
                   <div
                     key={key}
-                    className={`week-cell week-day-header ${key === todayKey ? 'today' : ''} ${noAtiende ? 'week-day-off' : ''}`}
+                    className={`week-cell week-day-header ${key === todayKey ? 'today' : ''} ${noAtiende ? 'week-day-off' : ''} ${bloqueado ? 'week-day-blocked' : ''}`}
                     onClick={() => setSelected(day)}
-                    title={noAtiende ? `${barberoUnico.nombre} no atiende este dia` : undefined}
+                    title={bloqueado ? 'Día bloqueado' : noAtiende ? `${barberoUnico.nombre} no atiende este día` : undefined}
                   >
                     <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
                       {format(day, 'EEE', { locale: es })}
                     </span>
                     {format(day, 'd')}
+                    {bloqueado && <Ban size={13} aria-label="Día bloqueado" />}
                   </div>
                 )
               })}
@@ -335,6 +378,11 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                   {weekDays.map((day) => {
                     const key = format(day, 'yyyy-MM-dd')
                     const eventos = byDate[key] || []
+                    const bloqueado = bloqueosDelDia(key).length > 0
+                    const breaks = breakBlocksForDay(day)
+                    const slotMinutes = toMinutes(slot)
+                    const breakActive = breaks.some((block) => slotMinutes >= block.ini && slotMinutes < block.fin)
+                    const breakStarts = breaks.some((block) => slotMinutes === block.ini)
 
                     // ===== OBTENER TURNOS AGRUPADOS POR HORA =====
                     const grupos = getTurnosAgrupadosPorHora(eventos, slot)
@@ -346,21 +394,24 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                       return (
                         <div
                           key={key + slot}
-                          className={`week-cell week-slot ${noAtiende ? 'week-day-off' : ''}`}
+                          className={`week-cell week-slot ${noAtiende ? 'week-day-off' : ''} ${bloqueado ? 'week-slot--blocked' : ''} ${breakActive ? 'week-slot--break' : ''}`}
                           onClick={() => {
                             if (noAtiende) return
                             setSelected(day)
                             onNewTurno?.(key)
                           }}
                           style={{ minHeight: '52px', padding: '3px' }}
-                        />
+                        >
+                          {bloqueado && slot === slots[0] && <span className="week-slot-state week-slot-state--blocked"><Ban size={12} /> Bloqueado</span>}
+                          {!bloqueado && breakStarts && <span className="week-slot-state week-slot-state--break"><Coffee size={12} /> Pausa</span>}
+                        </div>
                       )
                     }
 
                     return (
                       <div
                         key={key + slot}
-                        className={`week-cell week-slot ${noAtiende ? 'week-day-off' : ''}`}
+                        className={`week-cell week-slot ${noAtiende ? 'week-day-off' : ''} ${bloqueado ? 'week-slot--blocked' : ''} ${breakActive ? 'week-slot--break' : ''}`}
                         onClick={() => {
                           if (noAtiende) return
                           setSelected(day)
@@ -452,6 +503,8 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                             )
                           })
                         })}
+                        {bloqueado && slot === slots[0] && <span className="week-slot-state week-slot-state--blocked"><Ban size={12} /> Bloqueado</span>}
+                        {!bloqueado && breakStarts && <span className="week-slot-state week-slot-state--break"><Coffee size={12} /> Pausa</span>}
                       </div>
                     )
                   })}
@@ -465,7 +518,10 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
       {viewMode === 'mes' && (
         <div className="panel day-side-panel">
           <div className="day-panel-header">
-            <span className="day-panel-date">{format(selected, "EEEE d 'de' MMMM", { locale: es })}</span>
+            <div>
+              <span className="day-panel-eyebrow">Detalle del día</span>
+              <span className="day-panel-date">{format(selected, "EEEE d 'de' MMMM", { locale: es })}</span>
+            </div>
             {onNewTurno && (
               <button className="btn btn-primary day-panel-new" onClick={() => onNewTurno(selectedKey)}>
                 <Plus size={15} strokeWidth={2.5} />
@@ -478,6 +534,24 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               ? 'Sin turnos agendados'
               : `${turnosDelDia.length} turno${turnosDelDia.length > 1 ? 's' : ''}`}
           </p>
+
+          <div className="day-panel-metrics" aria-label="Resumen del día">
+            <span><strong>{turnosDelDia.length}</strong><small>turnos</small></span>
+            <span><strong>{barberos.length}</strong><small>profesionales</small></span>
+            <span className={bloqueoSeleccionado.length ? 'is-blocked' : ''}><strong>{bloqueoSeleccionado.length ? 'Sí' : 'No'}</strong><small>bloqueo</small></span>
+          </div>
+
+          {barberos.length > 0 && (
+            <div className="day-panel-team" aria-label="Profesionales del día">
+              <span className="day-panel-eyebrow"><UserRound size={12} /> Equipo</span>
+              <div className="day-panel-team-list">
+                {barberos.map((barbero) => {
+                  const trabaja = Boolean(parseHorarioBarbero(barbero.horario)?.[selected.getDay()]) && !bloqueos.some((b) => b.fecha === selectedKey && (b.barbero_id == null || String(b.barbero_id) === String(barbero.id)))
+                  return <span className={`day-panel-team-chip ${trabaja ? 'is-working' : 'is-off'}`} key={barbero.id}><i style={{ background: barbero.color }} />{barbero.nombre}<small>{trabaja ? 'Trabaja' : 'No disponible'}</small></span>
+                })}
+              </div>
+            </div>
+          )}
 
           {turnosDelDia.length === 0 ? (
             <div className="empty-state day-empty-state">

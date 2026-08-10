@@ -1022,6 +1022,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
                 onAddNota={addNota}
                 onNewTurno={openNewTurnoConFecha}
                 barberos={barberos}
+                bloqueos={bloqueos}
               />
             )}
           </div>

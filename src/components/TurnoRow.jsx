@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { StickyNote, Trash2, Check, X, Pencil, MessageCircle } from 'lucide-react'
-import StatusSelect from './StatusSelect'
+import { StickyNote, Trash2, Check, X, Pencil, MessageCircle, Clock3, Scissors, UserRound, Timer } from 'lucide-react'
+import StatusSelect, { statusMeta } from './StatusSelect'
 
 export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, barberos = [] }) {
   const [notesOpen, setNotesOpen] = useState(false)
@@ -11,6 +11,10 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
 
   const notasPaciente = (notas || []).filter((n) => n.paciente === turno.paciente)
   const barbero = barberos.find((b) => String(b.id) === String(turno.barbero_id))
+  const meta = statusMeta(turno.estado)
+  const statusVariant = meta.value === 'atendido' ? 'success' : meta.value === 'no_asistio' ? 'danger' : 'warning'
+  const serviceLabel = turno.motivo || 'Servicio sin especificar'
+  const durationLabel = `${turno.duracion || 30} min`
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -32,10 +36,20 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
   }
 
   return (
-    <div className="agenda-item" ref={wrapRef}>
-      <span className="agenda-time">{turno.hora}</span>
+    <article
+      className={`agenda-item agenda-item--enhanced agenda-item--${meta.value}`}
+      ref={wrapRef}
+      style={{ '--agenda-barber-color': barbero?.color || 'var(--accent)' }}
+      aria-label={`${turno.paciente}, ${serviceLabel}, ${barbero?.nombre || 'sin profesional'}, ${durationLabel}, ${meta.label}`}
+    >
+      <div className="agenda-time-block">
+        <span className="agenda-time"><Clock3 size={13} aria-hidden="true" />{turno.hora}</span>
+        <span className="agenda-time-divider" aria-hidden="true" />
+        <span className="agenda-duration"><Timer size={12} aria-hidden="true" />{durationLabel}</span>
+      </div>
       <div className="agenda-info">
-        <p className="agenda-patient">
+        <div className="agenda-card-heading">
+          <p className="agenda-patient">
           <span className="agenda-patient-name">{turno.paciente}</span>
           {turno.origen === 'whatsapp' && (
             <span className="origen-badge origen-badge--wsp" title="Agendado por WhatsApp">
@@ -43,14 +57,14 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
               WhatsApp
             </span>
           )}
-        </p>
-        {!compact && (
-          <p className="agenda-reason">
-            {turno.motivo}
-            {barbero ? ` - ${barbero.nombre}` : ''}
-            {turno.duracion ? ` - ${turno.duracion} min` : ''}
           </p>
-        )}
+          <span className={`agenda-status agenda-status--${statusVariant}`}><span className="agenda-status-dot" aria-hidden="true" />{meta.label}</span>
+        </div>
+        <div className="agenda-card-meta">
+          <span><Scissors size={12} aria-hidden="true" />{serviceLabel}</span>
+          <span><UserRound size={12} aria-hidden="true" />{barbero?.nombre || 'Sin profesional'}</span>
+          {compact && <span className="agenda-card-meta-duration"><Timer size={12} aria-hidden="true" />{durationLabel}</span>}
+        </div>
       </div>
 
       <div className="agenda-actions" style={{ flexShrink: 0 }}>
@@ -129,6 +143,6 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
           </button>
         </div>
       )}
-    </div>
+    </article>
   )
 }

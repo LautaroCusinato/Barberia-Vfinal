@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, CalendarPlus, AlertTriangle, Search, Plus, Clock, MapPin, CheckCircle2 } from 'lucide-react'
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
 import PhoneField from './PhoneField'
+import { FocusTrap } from './ui'
 import {
   PREFIJO_AR,
   soloDigitos,
@@ -293,10 +294,10 @@ export default function NewTurnoModal({
   const labelBase = 'modal-label'
 
   return (
-    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal-box new-turno-box new-turno-box-fixed">
+    <div className="modal-overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <FocusTrap open onEscape={onClose} className="modal-box new-turno-box new-turno-box-fixed" role="dialog" aria-modal="true" aria-labelledby="new-turno-title">
         <div className="modal-header">
-          <span className="panel-title-icon">
+          <span className="panel-title-icon" id="new-turno-title">
             <CalendarPlus size={17} style={{ color: 'var(--accent)' }} />
             {esEdicion ? 'Editar turno' : 'Nuevo turno'}
           </span>
@@ -582,7 +583,7 @@ export default function NewTurnoModal({
             </button>
           </div>
         </form>
-      </div>
+      </FocusTrap>
     </div>
   )
 }

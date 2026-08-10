@@ -9,6 +9,7 @@ import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './li
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
 import './index.css'
+import './components/agenda.css'
 
 const PublicBooking = lazy(() => import('./pages/PublicBooking.jsx'))
 const PlatformCRM = PlatformCRMPage
