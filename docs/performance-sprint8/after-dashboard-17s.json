@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-08-10T23:35:35.051Z",
+  "project_ref": "cmsymmszlzikqpvfqjre",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "results": [
+    {
+      "route": "dashboard-authenticated",
+      "path": "/",
+      "authenticated": true,
+      "status": 200,
+      "requests": 11,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 116149,
+      "js_requests": 4,
+      "css_requests": 3,
+      "metrics": {
+        "domContentLoaded": 131.19999998807907,
+        "loadEvent": 132.4000000357628,
+        "ttfb": 7,
+        "firstPaint": 1644,
+        "firstContentfulPaint": 1644,
+        "lcp": 1644,
+        "cls": 0,
+        "inp": null,
+        "mutations": 5
+      }
+    }
+  ]
+}

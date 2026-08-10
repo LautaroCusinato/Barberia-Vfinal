@@ -1,14 +1,9 @@
 import { useState } from 'react'
 import { Lock, Mail, KeyRound, Scissors, UserPlus, HelpCircle, LoaderCircle } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+export { logout } from '../lib/auth.js'
 import { DEFAULT_BUSINESS_NAME } from '../lib/tenant'
 import { PasswordField } from './ui'
-
-export async function logout() {
-  if (isSupabaseConfigured) {
-    await supabase.auth.signOut()
-  }
-}
 
 export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME }) {
   const [email, setEmail] = useState('')

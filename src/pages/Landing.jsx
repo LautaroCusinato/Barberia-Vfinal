@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import '../components/landing.css'
 import {
   ArrowDownRight,
   ArrowRight,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import '../components/platform.css'
 import { Bell, BriefcaseBusiness, Bot, CheckSquare, CreditCard, LogOut, Plus, RefreshCw, Search, UsersRound, X } from 'lucide-react'
-import { logout } from '../components/Login.jsx'
+import { logout } from '../lib/auth.js'
 import { supabase, supabaseUrl } from '../lib/supabaseClient'
 import CommercialAgent from './CommercialAgent.jsx'
 import CRMLeadsWorkspace from '../components/CRMLeadsWorkspace.jsx'

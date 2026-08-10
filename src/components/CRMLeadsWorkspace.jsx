@@ -24,11 +24,20 @@ export default function CRMLeadsWorkspace({ role = 'owner' }) {
     if (stage) query = query.eq('pipeline_stage', stage)
     if (priority) query = query.eq('prioridad', priority)
     query = query.eq('environment', environment)
-    const [result, metricResult, memberResult] = await Promise.all([query, supabase.rpc('get_crm_pipeline_metrics', { p_environment: environment }), supabase.from('platform_members').select('user_id,role').order('created_at')])
-    if (result.error || metricResult.error || memberResult.error) setError(result.error?.message || metricResult.error?.message || memberResult.error?.message || 'No se pudo cargar el CRM')
-    setLeads(result.data || []); setTotal(result.count || 0); setMetrics(metricResult.data || null); setMembers(memberResult.data || []); setLoading(false)
+    const [result, metricResult] = await Promise.all([query, supabase.rpc('get_crm_pipeline_metrics', { p_environment: environment })])
+    if (result.error || metricResult.error) setError(result.error?.message || metricResult.error?.message || 'No se pudo cargar el CRM')
+    setLeads(result.data || []); setTotal(result.count || 0); setMetrics(metricResult.data || null); setLoading(false)
   }, [environment, page, priority, search, sort, stage])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    let active = true
+    supabase.from('platform_members').select('user_id,role').order('created_at').then(({ data, error }) => {
+      if (!active) return
+      if (error) setError(error.message || 'No se pudieron cargar los responsables')
+      setMembers(data || [])
+    })
+    return () => { active = false }
+  }, [])
   useEffect(() => { setPage(0) }, [environment, search, stage, priority, sort])
 
   const groupedDuplicates = useMemo(() => {

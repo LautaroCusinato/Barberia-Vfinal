@@ -160,8 +160,18 @@ export default function PublicBooking({ slug }) {
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') { cargarCatalogo(); cargarSlots() } }
     window.addEventListener('focus', refresh)
-    const timer = window.setInterval(refresh, 30000)
-    return () => { window.removeEventListener('focus', refresh); window.clearInterval(timer) }
+    let timer = null
+    const syncTimer = () => {
+      if (timer) window.clearInterval(timer)
+      timer = document.visibilityState === 'visible' ? window.setInterval(refresh, 30000) : null
+    }
+    document.addEventListener('visibilitychange', syncTimer)
+    syncTimer()
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', syncTimer)
+      if (timer) window.clearInterval(timer)
+    }
   }, [cargarCatalogo, cargarSlots])
 
   const profesionales = useMemo(() => {

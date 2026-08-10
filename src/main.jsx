@@ -1,22 +1,18 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-import DemoWorkspace from './pages/DemoWorkspace.jsx'
-import PlatformCRMPage from './pages/PlatformCRM.jsx'
-import Login, { logout } from './components/Login.jsx'
+import { logout } from './lib/auth.js'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
 import './index.css'
-import './components/agenda.css'
-import './components/management.css'
-import './components/platform.css'
-import './components/landing.css'
 import './components/polish.css'
 
+const App = lazy(() => import('./App.jsx'))
+const DemoWorkspace = lazy(() => import('./pages/DemoWorkspace.jsx'))
+const PlatformCRM = lazy(() => import('./pages/PlatformCRM.jsx'))
+const Login = lazy(() => import('./components/Login.jsx'))
 const PublicBooking = lazy(() => import('./pages/PublicBooking.jsx'))
-const PlatformCRM = PlatformCRMPage
 const Signup = lazy(() => import('./pages/Signup.jsx'))
 const OnboardingWizard = lazy(() => import('./pages/OnboardingWizard.jsx'))
 const PasswordRecovery = lazy(() => import('./pages/PasswordRecovery.jsx'))

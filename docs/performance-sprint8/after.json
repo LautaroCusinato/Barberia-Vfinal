@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-08-10T23:33:53.778Z",
+  "project_ref": "cmsymmszlzikqpvfqjre",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "results": [
+    {
+      "route": "landing-barberia",
+      "path": "/para/barberia",
+      "authenticated": false,
+      "status": 200,
+      "requests": 11,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 50519,
+      "js_requests": 4,
+      "css_requests": 3,
+      "metrics": {
+        "domContentLoaded": 160.9000000357628,
+        "loadEvent": 162.10000002384186,
+        "ttfb": 8.900000035762787,
+        "firstPaint": 636,
+        "firstContentfulPaint": 636,
+        "lcp": 636,
+        "cls": 0,
+        "inp": null,
+        "mutations": 4
+      }
+    },
+    {
+      "route": "public-booking",
+      "path": "/reservar/e2e-qa-barberia-a",
+      "authenticated": false,
+      "status": 200,
+      "requests": 12,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 48845,
+      "js_requests": 5,
+      "css_requests": 4,
+      "metrics": {
+        "domContentLoaded": 122.30000001192093,
+        "loadEvent": 240.5,
+        "ttfb": 5.300000011920929,
+        "firstPaint": 140,
+        "firstContentfulPaint": 156,
+        "lcp": 508,
+        "cls": 0.000009415770381760938,
+        "inp": null,
+        "mutations": 5
+      }
+    },
+    {
+      "route": "login",
+      "path": "/ingresar",
+      "authenticated": false,
+      "status": 200,
+      "requests": 10,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 48845,
+      "js_requests": 5,
+      "css_requests": 3,
+      "metrics": {
+        "domContentLoaded": 125.80000001192093,
+        "loadEvent": 238.89999997615814,
+        "ttfb": 4.699999988079071,
+        "firstPaint": 152,
+        "firstContentfulPaint": 268,
+        "lcp": 268,
+        "cls": 0,
+        "inp": null,
+        "mutations": 4
+      }
+    },
+    {
+      "route": "dashboard-authenticated",
+      "path": "/",
+      "authenticated": true,
+      "status": 200,
+      "requests": 11,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 116149,
+      "js_requests": 4,
+      "css_requests": 3,
+      "metrics": {
+        "domContentLoaded": 132.5,
+        "loadEvent": 296.5999999642372,
+        "ttfb": 6.899999976158142,
+        "firstPaint": 152,
+        "firstContentfulPaint": 260,
+        "lcp": 260,
+        "cls": 0.002068040114604517,
+        "inp": null,
+        "mutations": 5
+      }
+    }
+  ]
+}

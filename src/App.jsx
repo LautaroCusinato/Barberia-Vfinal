@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import './components/agenda.css'
+import './components/management.css'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Info, CalendarCheck, MessageCircle, Plus, Bot, Download, AlertTriangle, X } from 'lucide-react'
 import NewTurnoModal from './components/NewTurnoModal'
 import CobroModal from './components/CobroModal'
-import { logout } from './components/Login.jsx'
+import { logout } from './lib/auth.js'
 import { exportarCSV } from './lib/csv'
 import Sidebar from './components/Sidebar'
 import StatsCards from './components/StatsCards'
@@ -148,6 +150,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       const { data, error } = await supabase.from('clientes').select('*').eq('barberia_id', barberiaId)
       if (error) reportError('No se pudieron cargar los clientes', error)
       setPacientes(data ?? [])
+      return data ?? []
     }
 
     async function cargarNotas() {
@@ -206,11 +209,13 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       setPagos(data ?? [])
     }
 
-    async function cargarMensajes() {
-      const [{ data }, { data: clientesData }] = await Promise.all([
-        supabase.from('mensajes').select('*').eq('barberia_id', barberiaId).order('created_at'),
-        supabase.from('clientes').select('id, nombre').eq('barberia_id', barberiaId),
+    async function cargarMensajes(clientesPromise = null) {
+      const mensajesPromise = supabase.from('mensajes').select('*').eq('barberia_id', barberiaId).order('created_at')
+      const [mensajesResult, clientesData] = await Promise.all([
+        mensajesPromise,
+        clientesPromise || supabase.from('clientes').select('id, nombre').eq('barberia_id', barberiaId).then(({ data }) => data ?? []),
       ])
+      const { data } = mensajesResult
 
       // Agrupamos por cliente_id, NO por nombre. Si agrupáramos por nombre,
       // un mismo cliente puede aparecer duplicado apenas el texto no calza
@@ -263,14 +268,14 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
 
     async function cargarTodo() {
       setLoading(true)
+      const clientesPromise = cargarClientes()
       await Promise.all([
         cargarTurnos(),
-        cargarClientes(),
         cargarNotas(),
         cargarServicios(),
         cargarBarberos(),
         cargarConfig(),
-        cargarMensajes(),
+        cargarMensajes(clientesPromise),
         cargarBloqueos(),
         cargarPagos(),
       ])
@@ -304,7 +309,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'turnos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarTurnos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notas', filter: `barberia_id=eq.${barberiaId}` }, () => cargarNotas())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: `barberia_id=eq.${barberiaId}` }, () => { cargarClientes(); cargarMensajes() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: `barberia_id=eq.${barberiaId}` }, () => { const clientesPromise = cargarClientes(); cargarMensajes(clientesPromise) })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'servicios', filter: `barberia_id=eq.${barberiaId}` }, () => cargarServicios())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barberos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarBarberos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'config', filter: `barberia_id=eq.${barberiaId}` }, () => cargarConfig())
@@ -312,30 +317,55 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarPagos())
       .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
+          realtimeActivo = true
+          pollDelay = 15000
+          detenerFallback()
           console.log('[realtime] conectado OK')
         } else if (!cancelado && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
+          realtimeActivo = false
+          activarFallback()
           console.error('[realtime] problema con la suscripcion:', status, err)
         }
       })
     }
 
-    suscribirRealtime()
+    // Realtime es la fuente primaria. Sólo activamos un fallback con backoff
+    // cuando el canal no logra conectarse o se cae, evitando cuatro consultas
+    // repetidas cada seis segundos mientras la conexión está sana.
+    let realtimeActivo = false
+    let pollingTimer = null
+    let pollDelay = 15000
+    const cargarFallback = async () => {
+      if (cancelado || realtimeActivo) return
+      const clientesPromise = cargarClientes()
+      await Promise.all([cargarTurnos(), cargarMensajes(clientesPromise), cargarPagos()])
+      if (!cancelado && !realtimeActivo) {
+        pollingTimer = window.setTimeout(() => {
+          pollingTimer = null
+          cargarFallback()
+        }, pollDelay)
+        pollDelay = Math.min(pollDelay * 2, 60000)
+      }
+    }
+    const activarFallback = () => {
+      if (cancelado || realtimeActivo || pollingTimer) return
+      pollingTimer = window.setTimeout(() => {
+        pollingTimer = null
+        cargarFallback()
+      }, pollDelay)
+    }
+    const detenerFallback = () => {
+      if (pollingTimer) window.clearTimeout(pollingTimer)
+      pollingTimer = null
+    }
 
-    // Respaldo por polling: pase lo que pase con el realtime, esto refresca
-    // solo cada 6 segundos las pantallas que mas necesitan verse "en vivo"
-    // durante la demo. Es una red de seguridad, no reemplaza el fix de
-    // realtime pero garantiza que el panel se actualice solo igual.
-    const intervalo = setInterval(() => {
-      cargarMensajes()
-      cargarTurnos()
-      cargarClientes()
-      cargarPagos()
-    }, 6000)
+    activarFallback()
+    suscribirRealtime()
 
     return () => {
       cancelado = true
       if (channel) supabase.removeChannel(channel)
-      clearInterval(intervalo)
+      detenerFallback()
     }
   }, [barberiaId])
 
