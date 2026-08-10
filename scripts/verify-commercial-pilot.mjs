@@ -4,7 +4,7 @@ import { recommendPrice } from '../src/lib/pricingAssistant.js'
 
 const pilotPage = fs.readFileSync(new URL('../src/pages/CommercialPilot.jsx', import.meta.url), 'utf8')
 const demoPage = fs.readFileSync(new URL('../src/pages/DemoWorkspace.jsx', import.meta.url), 'utf8')
-const e2eSpec = fs.readFileSync(new URL('../e2e/public.spec.mjs', import.meta.url), 'utf8')
+const e2eSpec = fs.readFileSync(new URL('../e2e/qa-authenticated.spec.mjs', import.meta.url), 'utf8')
 assert.match(pilotPage, /localStorage/)
 assert.match(pilotPage, /pending|checklist/i)
 assert.match(demoPage, /sessionStorage/)

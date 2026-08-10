@@ -93,7 +93,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             <span>Conectado a WhatsApp via n8n</span>
           </div>
           {onAccountSecurity && <button className="theme-toggle" type="button" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
-          <button className="theme-toggle" type="button" onClick={onLogout}>
+          <button className="theme-toggle" type="button" aria-label="Cerrar sesion" onClick={onLogout}>
             <span className="theme-toggle-label">
               <LogOut size={14} />
               Cerrar sesion
@@ -122,6 +122,10 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
                 {label}
               </button>
             ))}
+            <button className="mobile-mas-item mobile-mas-item-danger" aria-label="Cerrar sesion" onClick={onLogout}>
+              <LogOut size={18} strokeWidth={2} />
+              Cerrar sesion
+            </button>
           </FocusTrap>
         </div>
       )}

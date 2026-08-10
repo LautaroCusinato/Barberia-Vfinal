@@ -19,6 +19,7 @@
     "e2e:preflight": "node scripts/e2e-sandbox-preflight.mjs",
     "e2e:qa:migration-plan": "node scripts/e2e-qa-migration-plan.mjs",
     "e2e:qa:fixtures": "node scripts/e2e-qa-fixtures.mjs",
+    "e2e:qa:billing": "node scripts/verify-billing-qa.mjs",
     "e2e:qa:auth-smoke": "node scripts/.qa-auth-smoke.mjs",
     "check": "npm run lint && npm test && npm run build"
   },

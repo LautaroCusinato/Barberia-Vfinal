@@ -313,7 +313,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           console.log('[realtime] conectado OK')
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        } else if (!cancelado && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
           console.error('[realtime] problema con la suscripcion:', status, err)
         }
       })

@@ -11,9 +11,10 @@ La validación aplicó **Austral SaaS Architecture** (ref QA explícito, RLS vig
 - `npm run e2e:preflight`: **OK**.
 - Ref QA y URL coincidentes; `E2E_REAL_SUPABASE=1`; entorno `qa`; prefijo `E2E_QA_`.
 - El guard rechaza explícitamente `ssagttjdgtypxjcgdnrw` y no detectó secretos de Mercado Pago, PayPal, Evolution, DeepSeek o n8n.
-- Fixtures sembrados/reutilizados de forma idempotente: 2 tenants, 11 usuarios y datos sintéticos por tenant.
+- Fixtures sembrados/reutilizados de forma idempotente: 2 tenants, 12 usuarios (incluye uno sin tenant) y datos sintéticos por tenant.
 - Proveedores externos: desactivados; no se generaron pagos, mensajes ni reservas nuevas.
-- `npm run e2e:cleanup` (dry-run): **OK**, 2 tenants y 11 usuarios candidatos; no se borró nada.
+- `npm run e2e:cleanup` (dry-run): **OK**, 2 tenants y 12 usuarios candidatos; no se borró nada.
+- `billing-api` mock QA desplegado con JWT obligatorio; no requiere secretos.
 
 ## Roles y módulos recorridos
 
@@ -28,7 +29,7 @@ Usuario QA sintético `e2e_qa_owner_a@e2e-qa.invalid`.
 - Equipo: OK.
 - Operación (servicios, empleados, horarios/breaks): OK.
 - Configuración: OK.
-- Facturación: la pantalla carga, pero su consulta a `billing-api/status` no puede completarse porque esa Edge Function todavía no está desplegada en QA (ver bloqueos).
+- Facturación: status, checkout mock, estados internos y reconciliación QA verificados sin proveedor externo.
 
 ### Owner de plataforma
 
@@ -69,7 +70,7 @@ Capturas en [`docs/authenticated-qa/`](authenticated-qa/):
 ## Consola y red (sanitizado)
 
 - Plataforma owner: sin errores de consola ni requests fallidos.
-- Tenant owner: dos errores 400/CORS al consultar `functions/v1/billing-api/status`; corresponden a la Edge Function ausente en QA.
+- Tenant owner: sin errores funcionales tras desplegar el mock QA. El cierre normal de Realtime ya no se registra como error al desmontar la pantalla.
 - Reserva pública: sin errores de consola ni requests fallidos después de reemplazar el logo externo del fixture por un `data:` local.
 - No se imprimieron tokens, cookies, headers ni valores de `.env.e2e.local`.
 - Host productivo contactado: **no**.
@@ -77,13 +78,13 @@ Capturas en [`docs/authenticated-qa/`](authenticated-qa/):
 ## Clasificación
 
 - **P0:** ninguno.
-- **P1:** infraestructura QA incompleta: falta desplegar una `billing-api` de prueba (o mock controlado) para validar la pantalla de facturación sin proveedor. No afecta producción ni habilita cobros.
-- **P1 de cobertura:** los 144 casos autenticados definidos en `e2e/public.spec.mjs` siguen siendo stubs `test.fail(...)`; Playwright los recorrió como expectativas, pero no constituyen validación end-to-end real. Deben implementarse antes de declarar completa la matriz autenticada.
+- **P1:** ninguno abierto en el alcance QA. La infraestructura de billing queda explícitamente mock/sandbox y no es apta para producción.
+- **P1 de cobertura:** resuelto; los stubs fueron reemplazados por 24 escenarios reales multiplicados por 6 proyectos.
 - **P2/P3:** no se evaluaron cambios de producto; la tarea se limitó a QA e infraestructura aislada.
 
 ## Playwright
 
-La ejecución completa lanzó 192 casos en 6 proyectos. Resultado reportado por Playwright: 48 escenarios públicos reales pasaron; los 144 escenarios sandbox definidos como expectativas aún no contienen pasos de negocio reales. Además, el smoke autenticado específico recorrió owner A desktop/mobile, plataforma owner y reserva pública sobre QA.
+La ejecución completa lanzó 192 casos en 6 proyectos. Resultado final: **192/192 passed** (48 públicos + 144 autenticados), sin skips en el entorno QA habilitado.
 
 ## Correcciones realizadas
 
@@ -91,8 +92,13 @@ La ejecución completa lanzó 192 casos en 6 proyectos. Resultado reportado por 
 - Fecha del turno/break QA ajustada a un lunes compatible con el horario ficticio.
 - CRM QA persiste `environment='sandbox'` (el guard de ejecución sigue siendo `qa`).
 - Logo de fixture convertido a `data:` local para evitar requests externas.
+- `supabase/functions/billing-api-qa/index.ts`: mock QA desplegado como `billing-api` sólo en `cmsymmszlzikqpvfqjre`, con guardas de ref, Auth, roles, CORS y estados idempotentes.
+- `e2e/qa-authenticated.spec.mjs`: 24 flujos reales (sin `test.fail` ni placeholders), con RLS, roles, aislamiento, onboarding, reserva, CRM y billing mock.
+- Logout móvil agregado al sheet “Más” reutilizando `onLogout`; limpieza del canal Realtime al desmontar sin ruido de consola.
+- Sidebar con scroll interno seguro para mantener acciones inferiores accesibles en viewports cortos; logout con `aria-label` estable.
+- Seed QA idempotente: revalida la contraseña sólo de usuarios `E2E_QA_` antes de cada matriz para evitar falsos negativos por Auth throttling.
 - No se modificó lógica de negocio, backend, RLS, RPC, billing productivo, Mercado Pago, n8n, Evolution ni datos productivos.
 
 ## Bloqueos y siguiente paso
 
-No es seguro iniciar Sprint 8 todavía. Primero hay que desplegar una Edge Function billing mock/sandbox en `cmsymmszlzikqpvfqjre` (sin secretos ni proveedores) y reemplazar los 144 stubs por escenarios autenticados reales con cleanup por prefijo. Después repetir la matriz completa y revisar billing sin errores de red.
+No se inicia Sprint 8 en esta etapa. La validación QA/E2E quedó lista; el siguiente paso requiere autorización explícita para iniciar Sprint 8 y, antes de producción, reemplazar billing mock por una integración sandbox separada con credenciales administradas fuera de los tests.

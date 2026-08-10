@@ -1,6 +1,6 @@
 # Austral SaaS — entorno Supabase QA/E2E
 
-Estado: **proyecto aislado creado, esquema aplicado, fixtures QA sembrados y cleanup validado en dry-run**.
+Estado: **proyecto aislado creado, esquema aplicado, fixtures QA sembrados, billing mock desplegado y E2E autenticado ejecutado**.
 
 Esta preparación aplica **Austral SaaS Architecture** (proyecto/ref explícitos, RLS/RPC versionados, doble guard para mutaciones, cero datos productivos) y **Austral Design System** (evidencia visual sólo con fixtures identificables y eliminables).
 
@@ -59,11 +59,12 @@ Ante cualquier discrepancia, el script aborta. No existe override silencioso.
 
 ## Usuarios y fixtures
 
-Se crearon/reutilizaron idempotentemente **11 usuarios** con emails `.invalid`:
+Se crearon/reutilizaron idempotentemente **12 usuarios** con emails `.invalid`:
 
 - owner/admin/recepción/empleado/readonly de Tenant A;
 - owner de Tenant B;
 - platform owner/admin/sales/support/readonly.
+- usuario QA sin tenant para probar onboarding y acceso denegado.
 
 Tenants:
 
@@ -74,7 +75,7 @@ Cada tenant tiene servicio, empleado, relación servicio-profesional, horario la
 
 ## Cleanup
 
-`npm run e2e:cleanup` se ejecutó en **dry-run** y encontró exactamente 2 tenants y 11 usuarios. No se borró nada.
+`npm run e2e:cleanup` se ejecutó en **dry-run** y encontró exactamente 2 tenants y 12 usuarios. No se borró nada.
 
 Para borrar, se requieren simultáneamente `E2E_ALLOW_CLEANUP=1` y `--execute`; el script vuelve a verificar ref QA, entorno, prefijo y metadata antes de cualquier eliminación. Nunca acepta el ref productivo.
 
@@ -84,12 +85,17 @@ Para borrar, se requieren simultáneamente `E2E_ALLOW_CLEANUP=1` y `--execute`; 
 - Smoke autenticado owner A (1366/390, light/dark): **OK**.
 - Smoke platform owner (1366): **OK**.
 - Catálogo de reserva pública QA (390): **OK**, sin crear reserva.
+- `billing-api` mock Edge Function: **ACTIVE sólo en QA**, JWT obligatorio, CORS limitado a orígenes conocidos, sin secretos ni proveedores externos.
+- Estados de billing ejercitados: `trialing`, `active`, `past_due`, `suspended`, `canceled`; checkout y reconciliación mock idempotentes.
+- Playwright autenticado: **144/144** escenarios reales en 6 proyectos.
+- Playwright público: **48/48** escenarios en 6 proyectos.
+- Verificación billing mock: estados, checkout y reconciliación idempotente; usuario sin tenant bloqueado.
 - Host productivo contactado: **no**.
 - Evidencia: `docs/authenticated-qa/`.
 
 ## Pendiente seguro
 
-La pantalla de facturación intenta consultar `billing-api/status`, pero esa Edge Function todavía no está desplegada en QA. Debe agregarse un mock QA sin secretos antes de considerar completa la validación de billing. Los 144 casos autenticados de Playwright siguen siendo stubs de expectativa y necesitan implementación real; no se deben contar como cobertura end-to-end.
+No quedan bloqueos de infraestructura QA para la matriz autenticada. Billing sigue siendo un mock interno: no conecta Mercado Pago, PayPal, n8n, Evolution ni WhatsApp, y no debe desplegarse en producción.
 
 ## Rollback
 

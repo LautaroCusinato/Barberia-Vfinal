@@ -111,20 +111,3 @@ test.describe('superficies públicas sin efectos externos', () => {
     await expect(page.getByText(/horario acaba de ocuparse/i)).toBeVisible()
   })
 })
-
-test.describe('flujos reales con Supabase aislado', () => {
-  test.skip(!process.env.E2E_REAL_SUPABASE, 'Requiere E2E_REAL_SUPABASE=1, un proyecto sandbox y credenciales de prueba fuera del repositorio.')
-
-  const flows = [
-    'registro y email no verificado', 'verificación de email', 'email duplicado',
-    'onboarding completo', 'reanudación del onboarding guardado', 'tenant y trial',
-    'vertical, país, idioma, zona horaria y moneda', 'slug duplicado', 'dashboard y configuración',
-    'branding y logo', 'servicios, empleados y horarios', 'reserva pública y solapamiento',
-    'invitación y aceptación', 'cambio de rol y permisos', 'aislamiento entre tenants', 'acceso denegado',
-    'acceso de plataforma', 'CRM y lead convertido', 'billing sin proveedor', 'trial vencido y gracia',
-    'tenant suspendido', 'recuperación y cambio de contraseña', 'cierre de sesión', 'responsive móvil',
-  ]
-  for (const flow of flows) test(`${flow} (sandbox)`, async () => {
-    test.fail(true, 'El flujo requiere un proyecto Supabase sandbox y fixtures aprobados; no se ejecuta contra producción.')
-  })
-})

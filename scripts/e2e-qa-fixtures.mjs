@@ -28,12 +28,21 @@ const users = [
   ['sales', 'e2e_qa_sales@e2e-qa.invalid', 'platform:sales', null],
   ['support', 'e2e_qa_support@e2e-qa.invalid', 'platform:support', null],
   ['platformReadonly', 'e2e_qa_platform_readonly@e2e-qa.invalid', 'platform:readonly', null],
+  ['unassigned', 'e2e_qa_unassigned@e2e-qa.invalid', 'unassigned', null],
 ]
 
 // La configuración de ejecución usa `qa`; las tablas CRM sólo aceptan
 // entornos persistidos `sandbox`, `demo`, `production` o `internal`.
 const dbEnvironment = 'sandbox'
 const QA_LOGO_DATA_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2216%22 fill=%22%239B6A2F%22%2F%3E%3C%2Fsvg%3E'
+const nextMondayKey = () => {
+  const date = new Date()
+  date.setHours(12, 0, 0, 0)
+  const daysUntilMonday = ((8 - date.getDay()) % 7) || 7
+  date.setDate(date.getDate() + daysUntilMonday)
+  return date.toISOString().slice(0, 10)
+}
+const qaDate = nextMondayKey()
 
 if (!execute) {
   console.log(JSON.stringify({ dry_run: true, tenants: tenants.map((tenant) => tenant.slug), users: users.length, external_providers: 'disabled' }, null, 2))
@@ -50,8 +59,11 @@ async function ensureUser(key, email, role) {
   if (existing && existing.user_metadata?.e2e_prefix !== QA_PREFIX) throw new Error(`Usuario QA existente sin marca segura: ${key}`)
   if (existing) {
     if (existing.user_metadata?.environment !== config.environment) throw new Error(`Usuario QA existente en un entorno inesperado: ${key}`)
-    const { error: metadataError } = await admin.auth.admin.updateUserById(existing.id, { user_metadata: { ...existing.user_metadata, e2e_prefix: QA_PREFIX, environment: config.environment, qa_role: role } })
-    if (metadataError) throw new Error(`No se pudo validar el metadata del usuario QA ${key}.`)
+    const { error: updateError } = await admin.auth.admin.updateUserById(existing.id, {
+      password: process.env.E2E_QA_PASSWORD,
+      user_metadata: { ...existing.user_metadata, e2e_prefix: QA_PREFIX, environment: config.environment, qa_role: role },
+    })
+    if (updateError) throw new Error(`No se pudo validar el usuario QA ${key}.`)
     userIds.set(key, existing.id)
     return existing.id
   }
@@ -96,7 +108,7 @@ for (const [key, email, role, tenantKey] of users) {
   if (role.startsWith('platform:')) {
     const { error } = await admin.from('platform_members').upsert({ user_id: userId, role: role.split(':')[1] }, { onConflict: 'user_id' })
     if (error) throw new Error(`No se pudo preparar el rol de plataforma ${email}.`)
-  } else {
+  } else if (role !== 'unassigned') {
     const { error } = await admin.from('barberia_members').upsert({ barberia_id: tenantIds.get(tenantKey), user_id: userId, role }, { onConflict: 'barberia_id,user_id' })
     if (error) throw new Error(`No se pudo preparar el rol tenant ${email}.`)
   }
@@ -123,7 +135,6 @@ for (const tenant of tenants) {
   const { data: client, error: clientError } = await admin.from('clientes').upsert({ barberia_id: barberiaId, nombre: `${QA_PREFIX}${tenant.key}_CLIENTE`, apellido: 'Fixture', telefono: qaPhone, email: `e2e_qa_client_${tenant.key.toLowerCase()}@e2e-qa.invalid`, notas: 'Fixture QA eliminable' }, { onConflict: 'barberia_id,telefono' }).select('id').single()
   if (clientError || !client) throw new Error(`No se pudo preparar el cliente QA ${tenant.key}.`)
   const blockMotivo = `${QA_PREFIX}${tenant.key}_BREAK`
-  const qaDate = '2099-01-05'
   const { data: existingBlock, error: blockLookupError } = await admin.from('bloqueos_agenda').select('id').eq('barberia_id', barberiaId).eq('barbero_id', barber.id).eq('fecha', qaDate).eq('start_time', '13:00:00').eq('end_time', '14:00:00').eq('motivo', blockMotivo).maybeSingle()
   if (blockLookupError) throw new Error(`No se pudo auditar el break QA ${tenant.key}.`)
   if (!existingBlock) {

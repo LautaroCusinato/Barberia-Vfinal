@@ -2358,6 +2358,9 @@ input.client-search-input {
   width: 252px;
   padding: 1.25rem 0.9rem;
   gap: 1.35rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 .brand {
