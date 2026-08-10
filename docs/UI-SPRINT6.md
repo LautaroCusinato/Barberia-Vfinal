@@ -81,12 +81,18 @@ Resultado: `lint` OK, `npm test` OK, `build` OK, `git diff --check` OK, escaneo 
 
 ## Commits y despliegue
 
-El cambio se separará en un commit de implementación y otro de documentación/evidencia. Se hará push normal a `main` únicamente después de que todas las verificaciones pasen. Cloudflare Pages se comprobará después del push sin modificar DNS.
+Se publicaron dos commits funcionales y uno de cierre documental en `main`, sin force push:
+
+- `f70175d feat(marketing): redesign public landing for sprint 6`
+- `6067f53 docs(ui): document sprint 6 landing evidence`
+- commit documental de cierre para registrar la verificación de deployment (este archivo)
+
+Cloudflare Pages quedó verificado después del push sin modificar DNS: HTTP 200 en `/` y `/para/barberia`; Playwright remoto confirmó el título dinámico de Barbería, el Hero, cero overflow y cero errores de consola en 390 px con dark mode.
 
 ## Pendientes reales
 
 - Ejecutar Lighthouse en un entorno que tenga el CLI o integración disponible.
-- Confirmar el deployment de Cloudflare Pages posterior al push.
+- Mantener la revisión comercial del copy con evidencia real antes de agregar claims o testimonios.
 - Product Polish y optimización global de performance quedan fuera de Sprint 6.
 
 Sprint 7 no fue iniciado.
