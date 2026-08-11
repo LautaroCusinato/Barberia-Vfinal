@@ -154,8 +154,10 @@ assert.ok(whatsappTemplate.nodes.length >= 20, 'WhatsApp template is unexpectedl
 assert.match(whatsappContractDocs, /inactiva|No activar/i)
 assert.doesNotMatch(whatsappTemplateText, /PONE-ACA-TU-EVOLUTION-API-KEY|miwsp|barberia_id.?=.?.?1/i)
 assert.match(whatsappTemplateText, /PILOT_MODE/)
-assert.doesNotMatch(whatsappTemplateText, /PILOT_MODE\s*\|\|\s*'live'/, 'WhatsApp template must fail safe to shadow')
-assert.match(whatsappTemplateText, /PILOT_MODE\s*\|\|\s*'shadow'/, 'WhatsApp template shadow default missing')
+assert.match(whatsappTemplateText, /WHATSAPP_MODE/, 'WhatsApp mode guard missing')
+assert.match(whatsappTemplateText, /shadowMode/, 'WhatsApp shadow guard missing')
+assert.doesNotMatch(whatsappTemplateText, /PILOT_MODE\s*\|\|\s*'live'/, 'WhatsApp template must fail safe')
+assert.doesNotMatch(whatsappTemplateText, /crear_reserva_whatsapp|message\/sendText/, 'Shadow template cannot mutate or send')
 assert.match(whatsappTemplateText, /simular_reserva_whatsapp/)
 assert.match(whatsappTemplateText, /record_whatsapp_shadow_run/)
 
