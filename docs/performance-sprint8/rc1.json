@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-08-11T00:07:53.493Z",
+  "project_ref": "cmsymmszlzikqpvfqjre",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "results": [
+    {
+      "route": "landing-barberia",
+      "path": "/para/barberia",
+      "authenticated": false,
+      "status": 200,
+      "requests": 11,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 116149,
+      "js_requests": 4,
+      "css_requests": 3,
+      "metrics": {
+        "domContentLoaded": 7913.899999976158,
+        "loadEvent": 8125,
+        "ttfb": 7667.199999988079,
+        "firstPaint": 7904,
+        "firstContentfulPaint": 7928,
+        "lcp": 8084,
+        "cls": 0.002068040114604517,
+        "inp": null,
+        "mutations": 4
+      }
+    },
+    {
+      "route": "public-booking",
+      "path": "/reservar/e2e-qa-barberia-a",
+      "authenticated": false,
+      "status": 200,
+      "requests": 14,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 116149,
+      "js_requests": 5,
+      "css_requests": 4,
+      "metrics": {
+        "domContentLoaded": 170.19999998807907,
+        "loadEvent": 353.30000001192093,
+        "ttfb": 5.600000023841858,
+        "firstPaint": 188,
+        "firstContentfulPaint": 204,
+        "lcp": 688,
+        "cls": 0.000009110831151775188,
+        "inp": null,
+        "mutations": 7
+      }
+    },
+    {
+      "route": "login",
+      "path": "/ingresar",
+      "authenticated": false,
+      "status": 200,
+      "requests": 10,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 48845,
+      "js_requests": 5,
+      "css_requests": 3,
+      "metrics": {
+        "domContentLoaded": 205.19999998807907,
+        "loadEvent": 433.5,
+        "ttfb": 6.199999988079071,
+        "firstPaint": 232,
+        "firstContentfulPaint": 248,
+        "lcp": 452,
+        "cls": 0,
+        "inp": null,
+        "mutations": 4
+      }
+    },
+    {
+      "route": "dashboard-authenticated",
+      "path": "/",
+      "authenticated": true,
+      "status": 200,
+      "requests": 17,
+      "duplicate_requests": 2,
+      "asset_bytes_from_headers": 48845,
+      "js_requests": 7,
+      "css_requests": 4,
+      "metrics": {
+        "domContentLoaded": 789.3999999761581,
+        "loadEvent": 1048.0999999642372,
+        "ttfb": 5.399999976158142,
+        "firstPaint": 692,
+        "firstContentfulPaint": 808,
+        "lcp": 808,
+        "cls": 0.0001531931560387233,
+        "inp": null,
+        "mutations": 5
+      }
+    }
+  ]
+}
