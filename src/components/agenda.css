@@ -9,6 +9,12 @@
   --agenda-card-radius: 12px;
 }
 
+/* Vista mensual compacta para telefonos: la grilla de 7 columnas desktop no
+ * se reduce, se reemplaza por tarjetas de dia legibles y seleccionables. */
+.calendar-mobile-days {
+  display: none;
+}
+
 .agenda-utility-row {
   display: flex;
   align-items: center;
@@ -585,4 +591,67 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agenda-item--enhanced:hover { transform: none; }
+}
+
+@media (max-width: 520px) {
+  .agenda-calendar-shell .calendar-grid {
+    display: none !important;
+  }
+
+  .agenda-calendar-shell .calendar-mobile-days {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .calendar-mobile-day {
+    min-width: 0;
+    min-height: 92px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+  }
+
+  .calendar-mobile-day:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+  .calendar-mobile-day:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent); outline-offset: 2px; }
+  .calendar-mobile-day.today { border-color: var(--accent); }
+  .calendar-mobile-day.selected { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .calendar-mobile-day.is-blocked { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--rose-soft) 42%, var(--surface)) 0 8px, var(--surface) 8px 16px); border-color: color-mix(in srgb, var(--rose) 52%, var(--border)); }
+
+  .calendar-mobile-day-head,
+  .calendar-mobile-day-meta {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .calendar-mobile-day-head { gap: 8px; }
+  .calendar-mobile-day-head strong { color: var(--ink); font-size: 22px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .calendar-mobile-day-weekday { color: var(--ink-faint); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+  .calendar-mobile-day-add { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; margin-left: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--accent-strong); }
+  .calendar-mobile-day-add:hover { background: var(--accent-soft-2); border-color: var(--accent); }
+  .calendar-mobile-day-add:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent); outline-offset: 1px; }
+  .calendar-mobile-day-meta { justify-content: space-between; gap: 6px; color: var(--ink-faint); font-size: 11px; font-weight: 700; }
+  .calendar-mobile-day-meta .calendar-day-dots { min-height: 14px; max-height: 18px; }
+  .calendar-mobile-day-state { display: inline-flex; align-items: center; gap: 4px; color: var(--rose-text); }
+
+  .agenda-calendar-shell .calendar-stepper { gap: 3px; padding: 3px; }
+  .agenda-calendar-shell .calendar-stepper .btn { min-height: 44px; padding-inline: 5px; font-size: 11px; }
+  .agenda-calendar-shell .calendar-arrow-btn { min-width: 0; }
+  .agenda-calendar-shell .calendar-today-btn { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-mobile-day { transition: none; }
+  .calendar-mobile-day:hover { transform: none; }
 }

@@ -1,7 +1,7 @@
 import { X, Phone, CalendarDays, StickyNote } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { statusMeta } from './StatusSelect'
-import { formatTelefonoDisplay } from '../lib/text'
+import { formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
 
 export default function PatientDetailModal({ paciente, turnos, notas, onClose }) {
   if (!paciente) return null
@@ -50,7 +50,7 @@ export default function PatientDetailModal({ paciente, turnos, notas, onClose })
                 const meta = statusMeta(t.estado)
                 return (
                   <div key={t.id} className="detail-row">
-                    <span className="detail-date">{t.fecha} {t.hora}</span>
+                    <span className="detail-date">{formatFechaVisible(t.fecha)} {t.hora}</span>
                     <span className="detail-desc">{t.motivo}</span>
                     <span className="badge" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
                   </div>
@@ -71,7 +71,7 @@ export default function PatientDetailModal({ paciente, turnos, notas, onClose })
             ) : (
               notasDelPaciente.map((n) => (
                 <div className="detail-note" key={n.id}>
-                  <p className="note-meta">{n.fecha}</p>
+                  <p className="note-meta">{formatFechaVisible(n.fecha)}</p>
                   <p className="note-text">{n.texto}</p>
                 </div>
               ))

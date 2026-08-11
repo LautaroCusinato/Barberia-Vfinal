@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageCircleOff, ChevronLeft, Search, Send, X, Bot, User } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { normalizar } from '../lib/text'
+import SafeMarkdown, { stripMarkdown } from './SafeMarkdown'
 
 export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage }) {
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false)
@@ -48,6 +49,13 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     setMobileThreadOpen(true)
   }
 
+  const handleConversationKeyDown = (event, id, openThread = false) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onSelectConversation(id)
+    if (openThread) setMobileThreadOpen(true)
+  }
+
   if (!full) {
     // Modo compacto (resumen)
     if (conversaciones.length === 0) {
@@ -61,7 +69,14 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     return (
       <div className="conv-list">
         {conversaciones.slice(0, 4).map((c) => (
-          <div key={c.id} className="conv-item" onClick={() => onSelectConversation(c.id)}>
+          <div
+            key={c.id}
+            className="conv-item"
+            role="button"
+            tabIndex={0}
+            onClick={() => onSelectConversation(c.id)}
+            onKeyDown={(event) => handleConversationKeyDown(event, c.id)}
+          >
             <div className="avatar" style={{ background: colorFor(c.paciente), width: 28, height: 28, fontSize: 10 }}>
               {initials(c.paciente)}
             </div>
@@ -70,7 +85,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                 <p className="conv-name">{c.paciente}</p>
                 <span className="conv-time">{c.ultimaHora}</span>
               </div>
-              <p className="conv-preview">{c.mensajes[c.mensajes.length - 1]?.texto || 'Sin mensajes todavía'}</p>
+              <p className="conv-preview">{stripMarkdown(c.mensajes[c.mensajes.length - 1]?.texto || 'Sin mensajes todavía')}</p>
             </div>
             {c.noLeido && <div className="unread-dot" />}
           </div>
@@ -102,7 +117,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
             onChange={(e) => setQuery(e.target.value)}
           />
           {query && (
-            <button className="btn-icon-plain" onClick={() => setQuery('')}>
+            <button className="btn-icon-plain" type="button" aria-label="Limpiar búsqueda" onClick={() => setQuery('')}>
               <X size={15} />
             </button>
           )}
@@ -119,7 +134,10 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
               <div
                 key={c.id}
                 className={`conv-item ${c.id === selected?.id ? 'selected' : ''}`}
+                role="button"
+                tabIndex={0}
                 onClick={() => selectConversation(c.id)}
+                onKeyDown={(event) => handleConversationKeyDown(event, c.id, true)}
               >
                 <div className="avatar" style={{ background: colorFor(c.paciente) }}>{initials(c.paciente)}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -127,7 +145,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                     <p className="conv-name">{c.paciente}</p>
                     <span className="conv-time">{c.ultimaHora}</span>
                   </div>
-                  <p className="conv-preview">{c.mensajes[c.mensajes.length - 1]?.texto || 'Sin mensajes todavía'}</p>
+                  <p className="conv-preview">{stripMarkdown(c.mensajes[c.mensajes.length - 1]?.texto || 'Sin mensajes todavía')}</p>
                 </div>
                 {c.noLeido && <div className="unread-dot" />}
               </div>
@@ -170,7 +188,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                     {m.de === 'bot' && <Bot size={10} />}
                     {m.de === 'clinica' && <User size={10} />}
                   </div>
-                  <p className="bubble-text">{m.texto}</p>
+                  <SafeMarkdown value={m.texto} className="bubble-text" />
                   <div className="bubble-meta">
                     {m.de === 'bot' ? 'Bot · ' : m.de === 'clinica' ? 'Vos · ' : ''}
                     {m.hora}

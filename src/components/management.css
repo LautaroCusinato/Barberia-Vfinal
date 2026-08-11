@@ -128,6 +128,43 @@
   align-items: center;
 }
 
+.clients-mobile-list {
+  display: none;
+}
+
+.safe-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.safe-markdown p {
+  margin: 0;
+}
+
+.safe-markdown p + p {
+  margin-top: 7px;
+}
+
+.safe-markdown ul {
+  margin: 5px 0 0;
+  padding-left: 18px;
+}
+
+.safe-markdown li + li {
+  margin-top: 3px;
+}
+
+.bubble-text {
+  display: block;
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.bubble-text strong {
+  font-weight: 800;
+}
+
 /* Operación: service cards, team identity and schedule/break hierarchy. */
 .management-operations {
   gap: var(--space-5);
@@ -635,6 +672,87 @@
   .management-settings .settings-actions .btn {
     width: 100%;
   }
+
+  .management-clients .table-scroll.clients-desktop-table {
+    display: none;
+  }
+
+  .management-clients .clients-mobile-list {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .client-mobile-card {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-xs);
+  }
+
+  .client-mobile-card-head,
+  .client-mobile-identity,
+  .client-mobile-actions,
+  .client-mobile-notes {
+    display: flex;
+    align-items: center;
+  }
+
+  .client-mobile-card-head { justify-content: space-between; gap: 10px; }
+  .client-mobile-identity { min-width: 0; gap: 10px; padding: 0; border: 0; background: transparent; color: var(--ink); text-align: left; }
+  .client-mobile-identity > span { min-width: 0; display: grid; gap: 2px; }
+  .client-mobile-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+  .client-mobile-identity small { color: var(--ink-faint); font-size: 11px; }
+  .client-mobile-actions { flex-shrink: 0; gap: 2px; }
+  .client-mobile-actions .btn-icon-plain,
+  .client-mobile-actions .confirm-delete button { width: 44px; height: 44px; }
+  .client-mobile-phone { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-strong); font-size: 13px; font-weight: 750; font-variant-numeric: tabular-nums; text-decoration: none; }
+  .client-mobile-phone[href]:hover { text-decoration: underline; }
+  .client-mobile-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+  .client-mobile-details > div { min-width: 0; padding: 9px 10px; border-radius: var(--radius-sm); background: var(--surface-muted); }
+  .client-mobile-details dt { color: var(--ink-faint); font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .client-mobile-details dd { margin: 4px 0 0; color: var(--ink); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .client-mobile-notes { justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); color: var(--ink-soft); font-size: 12px; font-weight: 700; }
+  .client-mobile-notes > span { display: inline-flex; align-items: center; gap: 6px; }
+  .client-mobile-notes .btn { min-height: 44px; padding-inline: 12px; }
+
+  .messages-grid-full {
+    height: auto;
+    min-height: 0;
+  }
+
+  .messages-grid-full .conv-panel {
+    height: auto;
+    min-height: 0;
+  }
+
+  .messages-grid-full .conv-list-scroll {
+    max-height: none;
+  }
+
+  .messages-grid-full .thread-panel {
+    height: calc(100dvh - 224px);
+    min-height: 360px;
+  }
+
+  .messages-grid-full .thread {
+    min-height: 0;
+    max-height: none;
+    padding: 8px 2px;
+  }
+
+  .messages-grid-full .bubble {
+    max-width: min(88%, 320px);
+    padding: 10px 12px;
+    line-height: 1.55;
+  }
+
+  .messages-grid-full .bubble-meta { margin-top: 6px; font-size: 10px; }
+  .messages-grid-full .thread-composer { margin-top: 0; padding-top: 10px; }
+  .messages-grid-full .thread-composer .btn { min-width: 44px; min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

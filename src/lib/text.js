@@ -52,6 +52,16 @@ export function formatTelefonoDisplay(value = '') {
   return `${PREFIJO_AR}${local.slice(0, 4)}-${local.slice(4)}`
 }
 
+// La base conserva fechas ISO (YYYY-MM-DD). Esta funcion solo cambia la
+// presentacion, evitando que el formato tecnico se filtre a las cards/UI.
+export function formatFechaVisible(value = '') {
+  if (!value) return '—'
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return value
+  const [, year, month, day] = match
+  return `${day}/${month}/${year}`
+}
+
 // ===== HABILIDADES DE CADA BARBERO (que servicios puede hacer) =====
 // Se guardan como un JSON de ids (slug del nombre del servicio) en
 // barberos.habilidades. Un barbero SIN habilidades cargadas se interpreta

@@ -732,6 +732,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 .conv-item:last-child { border-bottom: none; }
 .conv-item:hover { background: var(--surface-muted); }
+.conv-item:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent); outline-offset: -2px; }
 .conv-item.selected { background: var(--accent-soft); }
 
 .avatar {

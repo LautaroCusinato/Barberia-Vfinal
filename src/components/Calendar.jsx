@@ -298,7 +298,8 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
         </div>
 
         {viewMode === 'mes' ? (
-          <div className="calendar-grid">
+          <>
+            <div className="calendar-grid">
             {DOW.map((d) => (
               <div className="calendar-dow" key={d}>{d}</div>
             ))}
@@ -356,6 +357,53 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               )
             })}
           </div>
+            <div className="calendar-mobile-days" role="grid" aria-label="Días del mes">
+            {days.filter((day) => isSameMonth(day, month)).map((day) => {
+              const key = format(day, 'yyyy-MM-dd')
+              const eventos = byDate[key] || []
+              const bloqueado = bloqueosDelDia(key).length > 0
+              const selectedDay = isSameDay(day, selected)
+              return (
+                <div
+                  key={`mobile-${key}`}
+                  className={`calendar-mobile-day ${key === todayKey ? 'today' : ''} ${selectedDay ? 'selected' : ''} ${bloqueado ? 'is-blocked' : ''}`}
+                  role="gridcell"
+                  tabIndex={0}
+                  aria-selected={selectedDay}
+                  aria-label={`${format(day, "EEEE d 'de' MMMM", { locale: es })}${eventos.length ? `, ${eventos.length} turnos` : ', sin turnos'}${bloqueado ? ', bloqueado' : ''}`}
+                  onClick={() => setSelected(day)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelected(day)
+                    }
+                  }}
+                >
+                  <div className="calendar-mobile-day-head">
+                    <span className="calendar-mobile-day-weekday">{format(day, 'EEE', { locale: es })}</span>
+                    <strong>{format(day, 'd')}</strong>
+                    <button type="button" className="calendar-mobile-day-add" aria-label={`Agendar turno el ${format(day, "d 'de' MMMM", { locale: es })}`} onClick={(event) => { event.stopPropagation(); setSelected(day); onNewTurno?.(key) }}>
+                      <Plus size={15} strokeWidth={2.7} />
+                    </button>
+                  </div>
+                  <div className="calendar-mobile-day-meta">
+                    {bloqueado ? <span className="calendar-mobile-day-state"><Ban size={13} /> Bloqueado</span> : <span>{eventos.length ? `${eventos.length} turno${eventos.length === 1 ? '' : 's'}` : 'Libre'}</span>}
+                    {eventos.length > 0 && (
+                      <span className="calendar-day-dots" aria-hidden="true">
+                        {eventos.slice(0, 4).map((ev) => {
+                          const barbero = barberos.find((b) => String(b.id) === String(ev.barbero_id))
+                          const noAsistio = statusMeta(ev.estado).value === 'no_asistio'
+                          return <i key={ev.id} className={`calendar-dot ${noAsistio ? 'rose' : ''}`} style={!noAsistio && barbero ? { backgroundColor: barbero.color } : undefined} />
+                        })}
+                        {eventos.length > 4 && <span className="calendar-day-count">+{eventos.length - 4}</span>}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+            </div>
+          </>
         ) : (
           <div className="week-scroll">
             <div className="week-grid" style={{ gridTemplateRows: `54px repeat(${slots.length}, minmax(56px, auto))` }}>
