@@ -154,4 +154,44 @@ No borrar turnos, clientes ni eventos históricos.
 4. Ejecutar un único fixture anonimizado y repetir su `event_id` para comprobar
    idempotencia.
 
+## Preparacion offline de autenticacion
+
+Antes de cualquier acceso al servidor se definio el contrato de entrada en
+[docs/WHATSAPP-WEBHOOK-AUTH.md](./WHATSAPP-WEBHOOK-AUTH.md). El Shadow Pilot
+debe recibir `X-Austral-Webhook-Secret` y validarlo con
+`EVOLUTION_WEBHOOK_SECRET` antes de resolver tenant, consultar Supabase o
+llamar a DeepSeek. Ausencia, valor vacio, secreto no configurado o valor
+incorrecto producen 401 y no dejan efectos secundarios. Ningun secreto o
+header se escribe en logs.
+
+La preparacion usa el mecanismo de headers configurables documentado por
+Evolution API 2.3.7; no asume una firma HMAC nativa. El workflow legacy
+`gRTZDLTXvGgNq4BZ` queda fuera del cambio. El script
+`scripts/whatsapp-webhook-config.mjs` ofrece `--dry-run`, `--apply` y
+`--rollback`, preserva URL/eventos/base64/by-events y no se ejecuto durante esta
+etapa offline.
+
+## Checklist E2E para la proxima ventana autorizada
+
+1. Confirmar acceso privado al host y que la instancia sea `miwsp`.
+2. Ejecutar `npm run whatsapp:webhook:dry-run`; revisar metadata sanitizada.
+3. Confirmar backup privado, `WHATSAPP_MODE=shadow`, `PILOT_MODE=shadow`,
+   `reply_only=false` y `booking_enabled=false`.
+4. Cargar `EVOLUTION_WEBHOOK_SECRET` solo en el gestor privado y ejecutar
+   `npm run whatsapp:webhook:apply` con aprobacion.
+5. Mantener `5UQMp5vAMfBfJtSy` inactivo para webhooks externos y conservar
+   `gRTZDLTXvGgNq4BZ` activo e intacto.
+6. Ejecutar un unico fixture `E2E_QA_WA_SHADOW_001` con instancia/receptor
+   ficticios; validar tenant, intencion, disponibilidad y propuesta.
+7. Repetir exactamente `integration_id + event_id`; esperar un unico shadow log.
+8. Verificar `mutation_blocked=true`, cero `sendText`, cero reservas y cero
+   cambios de clientes.
+9. Probar identidad cruzada, header ausente/incorrecto, timeout y JSON IA
+   invalido; todos deben fallar cerrado.
+10. Si algo difiere, detenerse y ejecutar rollback; no activar
+    `reply_only`/`booking_enabled`.
+
 No cambiar a `reply_only` ni `booking_enabled` sin autorización explícita.
+
+La suite offline equivalente es `npm run whatsapp:shadow:offline` y no hace
+requests de red.

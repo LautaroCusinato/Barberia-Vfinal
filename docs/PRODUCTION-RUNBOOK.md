@@ -84,6 +84,25 @@ El diseño y los checks están en [docs/MONITORING-ALERTING.md](./MONITORING-ALE
 
 En producción solo se permiten probes de lectura con aprobación explícita y `MONITOR_ALLOW_PRODUCTION_READONLY=1`. QA debe usar exclusivamente `cmsymmszlzikqpvfqjre`; si el ref o la URL no coinciden, el guard aborta antes de iniciar.
 
+## Webhook Shadow: autenticacion y rollback
+
+La preparacion del piloto esta documentada en
+[WHATSAPP-WEBHOOK-AUTH.md](./WHATSAPP-WEBHOOK-AUTH.md). Evolution API 2.3.7
+permite headers personalizados en la configuracion de webhook; el contrato V1
+usa `X-Austral-Webhook-Secret` y una comparacion de tiempo constante en n8n.
+No se debe inferir HMAC nativo ni registrar el valor del header.
+
+Antes de cambiar `miwsp`, ejecutar `npm run whatsapp:webhook:dry-run` y revisar
+que el destino, eventos, base64 y by-events no cambien. Con backup privado y
+aprobacion explicita, `npm run whatsapp:webhook:apply` agrega unicamente el
+header. El workflow legacy `gRTZDLTXvGgNq4BZ` no se edita ni se detiene y el
+Shadow Pilot `5UQMp5vAMfBfJtSy` permanece inactivo para trafico externo.
+
+Si falla una verificacion, congelar la prueba y ejecutar
+`npm run whatsapp:webhook:rollback`. Confirmar despues que `miwsp` conserva la
+URL/eventos anteriores, que no hubo `sendText`, reservas ni cambios de clientes,
+y que `WHATSAPP_MODE`/`PILOT_MODE` siguen en `shadow`.
+
 ## 11. Acciones manuales pendientes
 
 Para el rollout productivo de billing, seguir [docs/BILLING-PRODUCTION-ROLLOUT.md](./BILLING-PRODUCTION-ROLLOUT.md). La configuración productiva está explícitamente bloqueada: no cambiar `MERCADOPAGO_ENVIRONMENT`, no cargar tokens productivos ni habilitar el proveedor global sin una autorización posterior, backup, rollback, webhook y dry-run verdes.

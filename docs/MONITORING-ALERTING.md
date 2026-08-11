@@ -126,3 +126,22 @@ No se agrego una vista operativa: requeriria persistir señales y alertas, defin
 6. Registrar causa, duracion, impacto y rollback; cerrar solo despues de un check verde.
 
 Estado de salida: codigo y guards preparados; alertas externas, retencion de logs y validacion manual de backups/PITR siguen pendientes y mantienen RC1 en revision operativa.
+
+## Senales de autenticacion del Shadow Pilot
+
+El contrato de webhook exige `X-Austral-Webhook-Secret` antes de cualquier
+resolucion de tenant, IA o consulta de disponibilidad. Registrar unicamente
+`webhook_auth_failed`, `reason` sanitizado, `project_ref`, instancia anonimizada,
+`correlation_id` y timestamp; nunca el header, secreto, API key, Authorization,
+payload completo o telefono.
+
+| Senal | Severidad | Accion |
+| --- | --- | --- |
+| Secret ausente/incorrecto aislado | P2 | Agrupar y revisar configuracion; no reintentar mensajes. |
+| Secret ausente/incorrecto sostenido en shadow | P1 | Detener la prueba, ejecutar dry-run/rollback y revisar el gestor privado. |
+| Variable del secreto ausente en runtime | P1 | Fail-closed; corregir configuracion sin activar el workflow. |
+| Mutacion o `sendText` observada en shadow | P0 | Kill switch inmediato, conservar evidencia sanitizada y escalar. |
+
+Las alertas deben deduplicarse por `alert + environment + instance` con una
+ventana minima y cooldown. Los eventos de fixture QA se separan de metricas
+reales y nunca generan trafico externo.
