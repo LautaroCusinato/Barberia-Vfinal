@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{js,jsx}\" \"scripts/**/*.mjs\" \"e2e/**/*.mjs\" vite.config.js eslint.config.js playwright.config.mjs",
-    "test": "node scripts/verify-agenda.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-commercial-prep.mjs && node scripts/verify-crm-commercial.mjs && node scripts/verify-commercial-pilot.mjs && node scripts/verify-monitoring.mjs && node scripts/verify-billing-production-dry-run.mjs && node scripts/verify-whatsapp-shadow.mjs",
+    "test": "node scripts/verify-agenda.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-commercial-prep.mjs && node scripts/verify-crm-commercial.mjs && node scripts/verify-commercial-pilot.mjs && node scripts/verify-monitoring.mjs && node scripts/verify-billing-production-dry-run.mjs && node scripts/verify-whatsapp-shadow.mjs && node scripts/verify-whatsapp-webhook-config.mjs && node scripts/verify-whatsapp-shadow-offline.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "e2e:cleanup": "node scripts/e2e-cleanup.mjs",
@@ -30,6 +30,11 @@
     "billing:production:dry-run": "node scripts/billing-production-dry-run.mjs",
     "billing:production:self-test": "node scripts/verify-billing-production-dry-run.mjs",
     "whatsapp:shadow:self-test": "node scripts/verify-whatsapp-shadow.mjs",
+    "whatsapp:shadow:offline": "node scripts/verify-whatsapp-shadow-offline.mjs",
+    "whatsapp:webhook:self-test": "node scripts/verify-whatsapp-webhook-config.mjs",
+    "whatsapp:webhook:dry-run": "node scripts/whatsapp-webhook-config.mjs --dry-run",
+    "whatsapp:webhook:apply": "node scripts/whatsapp-webhook-config.mjs --apply",
+    "whatsapp:webhook:rollback": "node scripts/whatsapp-webhook-config.mjs --rollback",
     "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
