@@ -49,7 +49,7 @@ No hay defectos P0 ni P1 de software abiertos. El bloqueo es operativo y deliber
 - **P0:** 0.
 - **P1 de software:** 0.
 - **P1 operativos:** billing real, WhatsApp real, backups, monitoring y legal/comercial; quedan explícitamente bloqueados para revisión manual.
-- **P2:** instalar Firefox/WebKit y automatizar Lighthouse/axe en CI.
+- **P2:** instalar Firefox/WebKit, automatizar Lighthouse/axe en CI y agregar una matriz explícita de red lenta/caída y RPC 500/401/403. La suite actual sí cubre errores controlados, acceso denegado, suspensión, trial vencido y billing mock.
 - **P3:** mejoras futuras de contenido, onboarding guiado y observabilidad de performance.
 
 ## Product review RC1
