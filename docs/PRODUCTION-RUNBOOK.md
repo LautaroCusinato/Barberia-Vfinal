@@ -84,6 +84,8 @@ En producción solo se permiten probes de lectura con aprobación explícita y `
 
 ## 11. Acciones manuales pendientes
 
+Para el rollout productivo de billing, seguir [docs/BILLING-PRODUCTION-ROLLOUT.md](./BILLING-PRODUCTION-ROLLOUT.md). La configuración productiva está explícitamente bloqueada: no cambiar `MERCADOPAGO_ENVIRONMENT`, no cargar tokens productivos ni habilitar el proveedor global sin una autorización posterior, backup, rollback, webhook y dry-run verdes.
+
 - Responsable de Supabase: plan/retención de backups, PITR, secretos y logs.
 - Responsable de Cloudflare: deployment, dominio y rollback.
 - Responsable de billing: credenciales sandbox/producción, webhook y conciliación.
