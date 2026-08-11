@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { logout } from './lib/auth.js'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
+import { clearWorkspacePreference, readWorkspacePreference, saveWorkspacePreference } from './lib/workspacePreference.js'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
 import './index.css'
@@ -48,7 +49,7 @@ function SelectorBarberia({ opciones, onElegir }) {
   )
 }
 
-function SelectorWorkspace({ opciones, platformRole, onElegirNegocio }) {
+function SelectorWorkspace({ opciones, platformRole, onElegirPlataforma, onElegirNegocio }) {
   return (
     <EstadoCentrado>
       <p className="centered-state__eyebrow">Workspace</p>
@@ -59,7 +60,7 @@ function SelectorWorkspace({ opciones, platformRole, onElegirNegocio }) {
       <div className="centered-state__actions">
         <button
           className="btn btn-primary"
-          onClick={() => window.location.assign('/plataforma')}
+          onClick={onElegirPlataforma}
         >
           Plataforma · {platformRole || 'owner'}
         </button>
@@ -146,25 +147,67 @@ function Root() {
     ])
 
     const { data, error } = tenantResult
-    setPlatformMember(Boolean(platformResult.data))
-    setPlatformRole(platformResult.data?.role || null)
-    setWorkspace(null)
+    const hasPlatformMembership = Boolean(platformResult.data)
+    const nextPlatformRole = platformResult.data?.role || null
+    const preference = readWorkspacePreference()
+    const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
 
+    setPlatformMember(hasPlatformMembership)
+    setPlatformRole(nextPlatformRole)
     yaResolvioAlgunaVezRef.current = true
 
     if (error || !data) {
       setOpciones([])
       setOnboardingNeeded(true)
+      if (hasPlatformMembership) {
+        saveWorkspacePreference('platform')
+        setWorkspace('platform')
+      } else {
+        clearWorkspacePreference()
+        setWorkspace(null)
+      }
       return
     }
+
     setOpciones(data)
-    if (data.length === 1) {
-      setBarberiaId(data[0].barberia_id)
-      setBarberiaNombre(data[0].barberias?.nombre || null)
-      setOnboardingNeeded(data[0].barberias?.onboarding_completed === false)
-    } else {
+    const preferredBusiness = preference?.type === 'business'
+      ? data.find((option) => String(option.barberia_id) === preference.tenantId)
+      : null
+
+    // La ruta explícita tiene prioridad, pero la preferencia persistida sólo
+    // se restaura después de confirmar la membresía actual.
+    if (hasPlatformMembership && (platformPath || preference?.type === 'platform')) {
+      saveWorkspacePreference('platform')
+      setWorkspace('platform')
+      setBarberiaId(null)
+      setBarberiaNombre(null)
       setOnboardingNeeded(false)
+      return
     }
+
+    if (preferredBusiness) {
+      saveWorkspacePreference('business', preferredBusiness.barberia_id)
+      setWorkspace('business')
+      setBarberiaId(preferredBusiness.barberia_id)
+      setBarberiaNombre(preferredBusiness.barberias?.nombre || null)
+      setOnboardingNeeded(preferredBusiness.barberias?.onboarding_completed === false)
+      return
+    }
+
+    if (preference) clearWorkspacePreference()
+
+    if (data.length === 1) {
+      const onlyBusiness = data[0]
+      saveWorkspacePreference('business', onlyBusiness.barberia_id)
+      setWorkspace('business')
+      setBarberiaId(onlyBusiness.barberia_id)
+      setBarberiaNombre(onlyBusiness.barberias?.nombre || null)
+      setOnboardingNeeded(onlyBusiness.barberias?.onboarding_completed === false)
+      return
+    }
+
+    setWorkspace(null)
+    setOnboardingNeeded(false)
   }
 
   useEffect(() => {
@@ -177,16 +220,30 @@ function Root() {
       return
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      const session = data.session
+    let mounted = true
+
+    const resolveSession = async (session) => {
       setAuthed(Boolean(session))
-      setChecking(false)
-      if (session) resolverBarberia(session.user.id)
-    })
+      if (!session) {
+        clearWorkspacePreference()
+        setChecking(false)
+        return
+      }
+
+      setChecking(true)
+      try {
+        await resolverBarberia(session.user.id)
+      } finally {
+        if (mounted) setChecking(false)
+      }
+    }
+
+    supabase.auth.getSession().then(({ data }) => resolveSession(data.session))
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthed(Boolean(session))
       if (!session) {
+        clearWorkspacePreference()
         setOpciones(null)
         setBarberiaId(null)
         setBarberiaNombre(null)
@@ -203,11 +260,14 @@ function Root() {
       // "Cargando tu barbería..." sin necesidad. Solo resolvemos de nuevo
       // en un login real, o si por algun motivo todavia no la resolvimos.
       if (event === 'SIGNED_IN' || !yaResolvioAlgunaVezRef.current) {
-        resolverBarberia(session.user.id)
+        resolveSession(session)
       }
     })
 
-    return () => listener?.subscription?.unsubscribe()
+    return () => {
+      mounted = false
+      listener?.subscription?.unsubscribe()
+    }
   }, [])
 
   if (checking) return null
@@ -218,7 +278,7 @@ function Root() {
   if (!authed) return <Landing vertical={DEFAULT_VERTICAL} />
 
   const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
-  if (platformMember && (platformPath || (opciones !== null && opciones.length === 0))) {
+  if (platformMember && (platformPath || workspace === 'platform' || (opciones !== null && opciones.length === 0))) {
     return <PlatformCRM role={platformRole || 'owner'} />
   }
 
@@ -227,7 +287,13 @@ function Root() {
       <SelectorWorkspace
         opciones={opciones}
         platformRole={platformRole}
+        onElegirPlataforma={() => {
+          saveWorkspacePreference('platform')
+          setWorkspace('platform')
+          window.location.assign('/plataforma')
+        }}
         onElegirNegocio={(id) => {
+          saveWorkspacePreference('business', id)
           setWorkspace('business')
           setBarberiaId(id)
           setBarberiaNombre(opciones.find((o) => o.barberia_id === id)?.barberias?.nombre || null)
@@ -249,6 +315,7 @@ function Root() {
       <SelectorBarberia
         opciones={opciones}
         onElegir={(id) => {
+          saveWorkspacePreference('business', id)
           setBarberiaId(id)
           setBarberiaNombre(opciones.find((o) => o.barberia_id === id)?.barberias?.nombre || null)
         }}
