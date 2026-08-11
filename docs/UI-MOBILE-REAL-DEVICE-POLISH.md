@@ -47,9 +47,11 @@ La captura posterior de las pantallas autenticadas requiere una sesión QA autor
 
 ## Verificación
 
-Se prepararon comprobaciones estáticas para las superficies nuevas (`scripts/verify-mobile-polish.mjs`) y se ejecutan con `npm test`. Playwright público pasó en 360×800, 390×844, 412×915, 430×932, tablet 768, desktop 1366 y desktop 1920 (56 escenarios públicos, incluyendo light/dark de reserva mock y chequeos de overflow). Las pantallas autenticadas se omitieron porque esta ejecución no tenía una sesión/fixture QA autorizada; no se contactó producción.
+Se prepararon comprobaciones estáticas para las superficies nuevas (`scripts/verify-mobile-polish.mjs`) y se ejecutan con `npm test`. Playwright público pasó en 360×800, 390×844, 412×915, 430×932, tablet 768, desktop 1366 y desktop 1920 (56 escenarios públicos, incluyendo light/dark de reserva mock y chequeos de overflow). Luego de sembrar/reutilizar de forma idempotente los fixtures QA permitidos, los 144 escenarios autenticados pasaron en chromium, mobile 390, mobile 360, tablet 768, desktop 1366 y desktop 1920. No se contactó producción.
 
 La primera ejecución paralela mostró tres timeouts de arranque únicamente en iPhone 390. Al repetir con un worker, los 8 escenarios de ese proyecto pasaron; la matriz serializada quedó estable. Es una flakiness del arranque concurrente local, no un fallo de UI reproducible.
+
+La primera ejecución autenticada se detuvo al detectar que faltaba el usuario QA `unassigned`; el seed versionado (`npm run e2e:qa:fixtures -- --execute`) lo creó con los guards del proyecto QA y la segunda ejecución quedó 144/144.
 
 ## Pendientes
 
