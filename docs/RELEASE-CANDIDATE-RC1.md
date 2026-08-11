@@ -38,7 +38,7 @@ No hay defectos P0 ni P1 de software abiertos. El bloqueo es operativo y deliber
 | Billing | **BLOCKED · PENDING MANUAL** | QA usa mock/sandbox. No habilitar proveedor real sin credenciales, webhook, reconciliación y rollback aprobados. |
 | WhatsApp/Evolution | **BLOCKED · PENDING MANUAL** | No conectar ni activar workflows productivos hasta revisar servidor, instancia y modo shadow. |
 | Backups | **PENDING MANUAL** | Confirmar backup/PITR y una restauración verificable antes del primer cliente. |
-| Monitoring | **PENDING MANUAL** | Definir alertas de errores, Auth, RPC, Edge Functions, billing y disponibilidad. |
+| Monitoring | **PREPARED · PENDING EXTERNAL DESTINATION** | Checks no destructivos, severidades y guard QA/producción versionados. Falta crear manualmente el monitor HTTP/email, confirmar retención de logs y validar backups/PITR. |
 | Seguridad | READY en QA | Secret scan OK; `service_role` no aparece en `dist`; producción no fue operada. |
 | Legal/comercial | **PENDING MANUAL** | Revisar términos, privacidad, cancelación, trial, precios y soporte antes de cobrar. |
 | Deployment/Cloudflare | READY observado | Dominio respondió HTTP 200 y sirvió el bundle publicado; verificar cada release con el runbook. |

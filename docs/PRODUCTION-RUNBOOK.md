@@ -72,7 +72,17 @@ Consultar el procedimiento completo en [docs/BACKUP-DISASTER-RECOVERY.md](./BACK
 
 Los backups de DB no contienen objetos Storage; la clonación administrada también requiere reconfigurar manualmente Auth settings, API keys, Edge Functions, Realtime, extensiones y secretos. No probar una restauración sobre producción.
 
-## 10. Acciones manuales pendientes
+## 10. Monitoring y alertas
+
+El diseño y los checks están en [docs/MONITORING-ALERTING.md](./MONITORING-ALERTING.md). `scripts/monitoring-health.mjs` solo ejecuta GET/OPTIONS y exige `MONITOR_ENVIRONMENT`, `MONITOR_SUPABASE_PROJECT_REF`, `MONITOR_SUPABASE_URL` y `MONITOR_BASE_URL` explícitos. Nunca toma el proyecto desde `.env` ni acepta un fallback silencioso.
+
+- P0: caída de landing/login/reserva, Supabase inaccesible o Edge crítica en 5xx/timeout sostenido. Confirmar con una segunda fuente, congelar deploys y seguir rollback.
+- P1: Auth anormal, error técnico de reserva, webhook inválido/pendiente, reconciliación stuck, Realtime general desconectado o backup fallido. Abrir incidente y buscar correlation id sin copiar secretos.
+- P2: error aislado de frontend, 4xx esperado, sin disponibilidad, validación o conflicto de reserva. Registrar tendencia sin reintentos financieros.
+
+En producción solo se permiten probes de lectura con aprobación explícita y `MONITOR_ALLOW_PRODUCTION_READONLY=1`. QA debe usar exclusivamente `cmsymmszlzikqpvfqjre`; si el ref o la URL no coinciden, el guard aborta antes de iniciar.
+
+## 11. Acciones manuales pendientes
 
 - Responsable de Supabase: plan/retención de backups, PITR, secretos y logs.
 - Responsable de Cloudflare: deployment, dominio y rollback.
