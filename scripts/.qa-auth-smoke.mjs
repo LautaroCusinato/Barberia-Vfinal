@@ -1,5 +1,14 @@
 import fs from 'node:fs/promises'
 import { chromium } from 'playwright'
+import { getQaConfig, printGuardError } from './e2e-sandbox-guards.mjs'
+
+try {
+  getQaConfig({ checkViteRuntime: true })
+} catch (error) {
+  printGuardError(error)
+  process.exitCode = 2
+  process.exit()
+}
 
 const baseUrl = process.env.E2E_BASE_URL || 'http://127.0.0.1:4174'
 const qaHost = new URL(process.env.E2E_SUPABASE_URL).hostname

@@ -1,7 +1,17 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { getQaConfig, printGuardError } from '../scripts/e2e-sandbox-guards.mjs'
 
-const qaEnabled = process.env.E2E_REAL_SUPABASE === '1' && process.env.E2E_SUPABASE_PROJECT_REF === 'cmsymmszlzikqpvfqjre' && process.env.E2E_ALLOWED_PROJECT_REF === 'cmsymmszlzikqpvfqjre'
+const qaRequested = process.env.E2E_REAL_SUPABASE !== undefined || process.env.E2E_SUPABASE_PROJECT_REF !== undefined
+if (qaRequested) {
+  try {
+    getQaConfig({ checkViteRuntime: true })
+  } catch (error) {
+    printGuardError(error)
+    throw error
+  }
+}
+const qaEnabled = qaRequested
 const qaUrl = process.env.E2E_SUPABASE_URL?.replace(/\/$/, '')
 const anonKey = process.env.E2E_SUPABASE_ANON_KEY
 const password = process.env.E2E_QA_PASSWORD

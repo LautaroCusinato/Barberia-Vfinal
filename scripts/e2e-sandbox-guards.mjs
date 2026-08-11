@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import process from 'node:process'
 
 export const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -18,8 +20,31 @@ function hasValue(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
-export function getQaConfig({ requireCleanup = false, requireFixtureSeed = false } = {}) {
-  const env = process.env
+function readEnvFileValue(filePath, name) {
+  if (!fs.existsSync(filePath)) return ''
+  for (const line of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z0-9_]+)=(.*)\s*$/)
+    if (match?.[1] === name) return match[2].replace(/^['"]|['"]$/g, '').trim()
+  }
+  return ''
+}
+
+function runtimeViteUrl(env, cwd) {
+  if (hasValue(env.VITE_SUPABASE_URL)) return env.VITE_SUPABASE_URL.trim().replace(/\/$/, '')
+  return readEnvFileValue(path.join(cwd, '.env.local'), 'VITE_SUPABASE_URL').replace(/\/$/, '')
+    || readEnvFileValue(path.join(cwd, '.env'), 'VITE_SUPABASE_URL').replace(/\/$/, '')
+}
+
+function projectRefFromUrl(value) {
+  try {
+    const host = new URL(value).hostname
+    return host.endsWith('.supabase.co') ? host.split('.')[0] : ''
+  } catch {
+    return ''
+  }
+}
+
+export function getQaConfig({ requireCleanup = false, requireFixtureSeed = false, env = process.env, checkViteRuntime = false, cwd = process.cwd() } = {}) {
   const reasons = []
   const projectRef = env.E2E_SUPABASE_PROJECT_REF?.trim() || ''
   const allowedProjectRef = env.E2E_ALLOWED_PROJECT_REF?.trim() || ''
@@ -56,10 +81,19 @@ export function getQaConfig({ requireCleanup = false, requireFixtureSeed = false
   const leakedProviderSecrets = forbiddenProviderSecrets.filter((name) => hasValue(env[name]))
   if (leakedProviderSecrets.length > 0) reasons.push('external_provider_secret_present')
 
+  const viteUrl = runtimeViteUrl(env, cwd)
+  const runtimeProjectRef = projectRefFromUrl(viteUrl || urlValue)
+  if (checkViteRuntime) {
+    if (!viteUrl) reasons.push('vite_supabase_url_missing')
+    else if (viteUrl !== urlValue) reasons.push('vite_runtime_project_mismatch')
+    if (runtimeProjectRef === PRODUCTION_PROJECT_REF) reasons.push('production_runtime_url')
+  }
+
   if (reasons.length > 0) {
     const error = new Error('E2E sandbox guard blocked the operation.')
     error.code = 'e2e_sandbox_guard_failed'
     error.reasons = reasons
+    error.runtimeProjectRef = runtimeProjectRef || 'unknown'
     throw error
   }
 
@@ -70,10 +104,12 @@ export function getQaConfig({ requireCleanup = false, requireFixtureSeed = false
     testPrefix: QA_PREFIX,
     cleanupAllowed: env.E2E_ALLOW_CLEANUP === '1',
     fixtureSeedAllowed: env.E2E_ALLOW_FIXTURE_SEED === '1',
+    runtimeProjectRef: checkViteRuntime ? runtimeProjectRef : projectRef,
   }
 }
 
 export function printGuardError(error) {
   const reasons = Array.isArray(error?.reasons) ? error.reasons : ['unknown_guard_failure']
-  console.error(`E2E sandbox guard blocked: ${reasons.join(', ')}`)
+  const runtimeRef = /^[a-z0-9-]{6,64}$/.test(error?.runtimeProjectRef || '') ? error.runtimeProjectRef : 'unknown'
+  console.error(`E2E sandbox guard blocked: ${reasons.join(', ')} (runtime_ref=${runtimeRef})`)
 }

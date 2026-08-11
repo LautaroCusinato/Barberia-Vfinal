@@ -1,4 +1,15 @@
 import { defineConfig, devices } from '@playwright/test'
+import { getQaConfig, printGuardError } from './scripts/e2e-sandbox-guards.mjs'
+
+const qaRequested = process.env.E2E_REAL_SUPABASE !== undefined || process.env.E2E_SUPABASE_PROJECT_REF !== undefined
+if (qaRequested) {
+  try {
+    getQaConfig({ checkViteRuntime: true })
+  } catch (error) {
+    printGuardError(error)
+    throw error
+  }
+}
 
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:4173'
 

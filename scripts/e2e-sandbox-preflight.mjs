@@ -6,6 +6,7 @@ try {
     ready: true,
     environment: config.environment,
     project_ref_configured: true,
+    runtime_project_ref: config.runtimeProjectRef,
     project_ref_is_not_production: config.projectRef !== 'ssagttjdgtypxjcgdnrw',
     url_matches_project_ref: true,
     auth_isolated: true,

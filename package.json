@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{js,jsx}\" \"scripts/**/*.mjs\" \"e2e/**/*.mjs\" vite.config.js eslint.config.js playwright.config.mjs",
-    "test": "node scripts/verify-agenda.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-commercial-prep.mjs && node scripts/verify-crm-commercial.mjs && node scripts/verify-commercial-pilot.mjs",
+    "test": "node scripts/verify-agenda.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-commercial-prep.mjs && node scripts/verify-crm-commercial.mjs && node scripts/verify-commercial-pilot.mjs && node scripts/verify-monitoring.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "e2e:cleanup": "node scripts/e2e-cleanup.mjs",
@@ -24,6 +24,9 @@
     "qa:restore-test": "node scripts/qa-backup-restore.mjs --restore-test",
     "perf:measure": "node scripts/performance-measure.mjs",
     "e2e:qa:auth-smoke": "node scripts/.qa-auth-smoke.mjs",
+    "monitor:health": "node scripts/monitoring-health.mjs",
+    "monitor:self-test": "node scripts/verify-monitoring.mjs",
+    "verify:monitoring": "node scripts/verify-monitoring.mjs",
     "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
