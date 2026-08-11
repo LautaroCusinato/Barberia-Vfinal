@@ -43,7 +43,14 @@ La evidencia previa disponible se conserva en:
 - [Clientes móvil (baseline)](ui-sprint4/after-pacientes-mobile-light.png)
 - [Shell móvil dark (baseline)](authenticated-qa/owner-a-dashboard-390-dark.png)
 
-La captura posterior de las pantallas autenticadas requiere una sesión QA autorizada y no se ejecutó contra producción. El recorrido autenticado queda explícitamente pendiente para el dispositivo Samsung real; no se inventaron capturas after.
+Las capturas posteriores autenticadas se generaron con el fixture QA autorizado (Chromium emulando 390×844) y no contra producción:
+
+- [Agenda light](ui-mobile-real-device-polish/after-agenda-390-light.png)
+- [Agenda dark](ui-mobile-real-device-polish/after-agenda-390-dark.png)
+- [Clientes dark](ui-mobile-real-device-polish/after-clientes-390-dark.png)
+- [Chat dark](ui-mobile-real-device-polish/after-chat-390-dark.png)
+
+Son evidencia de viewport automatizado, no una captura de hardware Samsung. La comparación final en Samsung/Chrome físico queda como verificación manual recomendada.
 
 ## Verificación
 
