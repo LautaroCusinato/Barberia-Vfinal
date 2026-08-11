@@ -6,3 +6,9 @@ dist
 test-results
 playwright-report
 .playwright
+.qa-backups/
+backups/
+*.dump
+*.backup
+*.sql.gz
+*.tar.gz

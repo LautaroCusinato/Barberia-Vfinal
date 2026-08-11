@@ -1,6 +1,6 @@
 # Production Runbook
 
-Runbook operativo para Austral Automatizaciones. No contiene credenciales ni permite sustituir las validaciones de seguridad del servidor.
+Runbook operativo para Austral Automatizaciones. No contiene credenciales ni sustituye las validaciones de seguridad del servidor. El procedimiento detallado de backups está en [docs/BACKUP-DISASTER-RECOVERY.md](./BACKUP-DISASTER-RECOVERY.md).
 
 ## 1. Verificación previa a un deploy
 
@@ -61,11 +61,20 @@ Usar sólo el flujo administrativo existente y con un usuario `platform owner/ad
 
 ## 9. Backups y restauración
 
-Antes del primer cliente, confirmar en Supabase el backup/PITR disponible, retención y responsable. Ejecutar una restauración en un proyecto separado o entorno de prueba y verificar Auth, RLS, RPC, Storage y datos tenant-scoped. No probar restauraciones sobre producción.
+Consultar el procedimiento completo en [docs/BACKUP-DISASTER-RECOVERY.md](./BACKUP-DISASTER-RECOVERY.md). Antes del primer cliente, el responsable debe confirmar en Supabase el plan, backup administrado/PITR, retención y último backup de cada proyecto. La organización actualmente figura en plan Free; no asumir daily backups ni PITR sin verificación en Dashboard.
+
+1. Para producción, no ejecutar comandos destructivos ni restaurar sobre el mismo proyecto. Crear un proyecto destino aislado y registrar ref, región, ventana y aprobación.
+2. Programar dumps lógicos cifrados desde un entorno privado con Supabase CLI/`pg_dump`, fuera del repositorio. No almacenar service keys, contraseñas ni dumps en Git.
+3. Respaldar por separado Auth settings/usuarios (sin contraseñas), Storage objects/policies, Edge Functions/configuración, secretos por nombre y ajustes de Realtime.
+4. Restaurar primero esquema/migraciones y luego datos; verificar RLS, RPC, Auth, Storage y funciones antes de cualquier tráfico.
+5. Ejecutar smoke público/autenticado y comprobar aislamiento multi-tenant. Documentar checksum, duración, RPO/RTO y rollback.
+6. En QA, usar sólo `node --env-file=.env.e2e.local scripts/qa-backup-restore.mjs --dry-run` y `--restore-test` con `E2E_ALLOW_QA_RESTORE=1`; el script rechaza el ref productivo y elige únicamente datos `E2E_QA_`.
+
+Los backups de DB no contienen objetos Storage; la clonación administrada también requiere reconfigurar manualmente Auth settings, API keys, Edge Functions, Realtime, extensiones y secretos. No probar una restauración sobre producción.
 
 ## 10. Acciones manuales pendientes
 
-- Responsable de Supabase: backups/PITR, secretos y logs.
+- Responsable de Supabase: plan/retención de backups, PITR, secretos y logs.
 - Responsable de Cloudflare: deployment, dominio y rollback.
 - Responsable de billing: credenciales sandbox/producción, webhook y conciliación.
 - Responsable de WhatsApp: Evolution, n8n, shadow y activación productiva.
