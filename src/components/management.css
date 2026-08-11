@@ -741,7 +741,7 @@
   .messages-grid-full .thread {
     min-height: 0;
     max-height: none;
-    padding: 8px 2px;
+    padding: 8px 2px calc(8px + var(--safe-bottom));
   }
 
   .messages-grid-full .bubble {

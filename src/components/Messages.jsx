@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { MessageCircleOff, ChevronLeft, Search, Send, X, Bot, User } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, MessageCircleOff, ChevronLeft, Search, Send, X, Bot, User } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
+import { isNearBottom, shouldFollowNewMessages } from '../lib/chatScroll'
 import { normalizar } from '../lib/text'
 import SafeMarkdown, { stripMarkdown } from './SafeMarkdown'
 
@@ -10,6 +11,11 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   const [sending, setSending] = useState(false)
   const [query, setQuery] = useState('')
   const threadRef = useRef(null)
+  const messagesEndRef = useRef(null)
+  const nearBottomRef = useRef(true)
+  const previousMessageCountRef = useRef({ id: null, count: 0 })
+  const pendingOwnMessageRef = useRef(false)
+  const [showNewMessages, setShowNewMessages] = useState(false)
 
   const filtered = useMemo(() => {
     const q = normalizar(query.trim())
@@ -22,13 +28,45 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   }, [conversaciones, query])
 
   const selected = conversaciones.find((c) => c.id === selectedId) || conversaciones[0]
+  const selectedConversationId = selected?.id || null
+  const selectedMessageCount = selected?.mensajes?.length || 0
+
+  const scrollToBottom = useCallback((behavior = 'auto') => {
+    const thread = threadRef.current
+    if (!thread) return
+    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
+    thread.scrollTop = thread.scrollHeight
+  }, [])
+
+  const updateBottomState = useCallback(() => {
+    const thread = threadRef.current
+    if (!thread) return
+    const nearBottom = isNearBottom(thread)
+    nearBottomRef.current = nearBottom
+    if (nearBottom) setShowNewMessages(false)
+  }, [])
 
   const enviar = async () => {
     if (!draft.trim() || sending || !selected) return
     setSending(true)
-    await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
-    setDraft('')
-    setSending(false)
+    pendingOwnMessageRef.current = true
+    try {
+      await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
+      setDraft('')
+      // El callback puede actualizar el hilo de forma asincrónica. El frame
+      // siguiente es el primer momento en que el nuevo mensaje está medido.
+      window.requestAnimationFrame(() => {
+        scrollToBottom()
+        nearBottomRef.current = true
+        pendingOwnMessageRef.current = false
+        setShowNewMessages(false)
+      })
+    } catch (error) {
+      pendingOwnMessageRef.current = false
+      throw error
+    } finally {
+      setSending(false)
+    }
   }
 
   const onKeyDown = (e) => {
@@ -38,11 +76,80 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     }
   }
 
-  useEffect(() => {
-    if (threadRef.current) {
-      threadRef.current.scrollTop = threadRef.current.scrollHeight
+  useLayoutEffect(() => {
+    if (!full || !selectedConversationId) return undefined
+
+    previousMessageCountRef.current = {
+      id: selectedConversationId,
+      count: selectedMessageCount,
     }
-  }, [selected?.id, selected?.mensajes?.length])
+    nearBottomRef.current = true
+    setShowNewMessages(false)
+
+    const frame = window.requestAnimationFrame(() => scrollToBottom())
+    return () => window.cancelAnimationFrame(frame)
+  // Este efecto debe ejecutarse sólo al cambiar de conversación. El contador
+  // se captura en ese render; los cambios posteriores los procesa el efecto
+  // de mensajes nuevos para no perder la posición del lector.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [full, selectedConversationId, scrollToBottom])
+
+  useLayoutEffect(() => {
+    if (!full || !selectedConversationId) return undefined
+
+    const count = selectedMessageCount
+    const previous = previousMessageCountRef.current
+    if (previous.id !== selectedConversationId) {
+      previousMessageCountRef.current = { id: selectedConversationId, count }
+      return undefined
+    }
+
+    if (count <= previous.count) {
+      previousMessageCountRef.current = { id: selectedConversationId, count }
+      return undefined
+    }
+
+    previousMessageCountRef.current = { id: selectedConversationId, count }
+    const follow = shouldFollowNewMessages({
+      wasAtBottom: nearBottomRef.current,
+      ownMessage: pendingOwnMessageRef.current,
+    })
+
+    if (!follow) {
+      pendingOwnMessageRef.current = false
+      setShowNewMessages(true)
+      return undefined
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollToBottom()
+      nearBottomRef.current = true
+      pendingOwnMessageRef.current = false
+      setShowNewMessages(false)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [full, selectedConversationId, selectedMessageCount, scrollToBottom])
+
+  useEffect(() => {
+    if (!full) return undefined
+    const thread = threadRef.current
+    if (!thread) return undefined
+
+    thread.addEventListener('scroll', updateBottomState, { passive: true })
+    updateBottomState()
+
+    const viewport = window.visualViewport
+    const handleViewportResize = () => {
+      if (!nearBottomRef.current) return
+      window.requestAnimationFrame(() => scrollToBottom())
+    }
+    viewport?.addEventListener('resize', handleViewportResize)
+
+    return () => {
+      thread.removeEventListener('scroll', updateBottomState)
+      viewport?.removeEventListener('resize', handleViewportResize)
+    }
+  }, [full, selectedConversationId, scrollToBottom, updateBottomState])
 
   const selectConversation = (id) => {
     onSelectConversation(id)
@@ -196,7 +303,22 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                 </div>
               ))
             )}
+            <div ref={messagesEndRef} className="thread-end-sentinel" aria-hidden="true" />
           </div>
+
+          {showNewMessages && (
+            <button
+              type="button"
+              className="new-messages-button"
+              onClick={() => {
+                scrollToBottom('smooth')
+                nearBottomRef.current = true
+                setShowNewMessages(false)
+              }}
+            >
+              Nuevos mensajes <ArrowDown size={14} aria-hidden="true" />
+            </button>
+          )}
 
           {onSendMessage && (
             <div className="thread-composer">
