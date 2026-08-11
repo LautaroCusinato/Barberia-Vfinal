@@ -74,6 +74,17 @@ Usar ventanas de 5/15 minutos, minimo tres muestras consecutivas para latencia/c
 
 ## Reservas, billing y webhooks
 
+### WhatsApp shadow
+
+El piloto debe emitir únicamente señales sanitizadas: `webhook_received`,
+`tenant_resolved`, `tenant_resolution_failed`, `ai_success`, `ai_failure`,
+`availability_success`, `availability_failure`, `duplicate_event`,
+`shadow_completed`, `mutation_blocked` y `latency_ms`. `mutation_blocked` es P0;
+resolución/IA/Supabase fallida sostenida es P1; duplicados, ausencia de
+disponibilidad y validaciones esperables son P2. No se registran mensajes,
+teléfonos completos, tokens, cookies ni payloads privados. La plantilla exige
+`WHATSAPP_MODE=shadow` y no contiene envío a Evolution ni RPCs mutantes.
+
 Las metricas deben separar `no_availability`, `validation`, `overlap_conflict` y errores tecnicos de RPC/red. Para billing separar checkout, webhook firmado, idempotencia, reconciliacion y estados stuck. El proveedor externo no se consulta desde el navegador; webhook valido y verificacion backend son la fuente de activacion. No se modifico logica de billing.
 
 ## Frontend

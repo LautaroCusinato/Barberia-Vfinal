@@ -163,7 +163,7 @@ las pruebas de reservas fuera de horario, tenant suspendido, servicio
 inexistente, errores de Supabase/DeepSeek y cruce entre tenants.
 
 La ejecución controlada queda documentada en `docs/WHATSAPP_PILOT_ROLLOUT.md`.
-El template usa `PILOT_MODE=shadow` para invocar `simular_reserva_whatsapp` y
+El template exige `WHATSAPP_MODE=shadow` (con `PILOT_MODE=shadow` como compatibilidad) para invocar `simular_reserva_whatsapp` y
 registrar un reporte minimizado con `record_whatsapp_shadow_run`; no envía por
 Evolution ni crea turnos. Las mutaciones de consulta, cancelación y
 reprogramación están aisladas en RPCs `service_role` y son idempotentes.

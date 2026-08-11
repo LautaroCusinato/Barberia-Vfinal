@@ -4,7 +4,7 @@
 
 Esta etapa deja preparado un workflow piloto en modo **shadow**. El workflow productivo de Barberia Central no fue editado, desactivado ni ejecutado. No se envían mensajes reales, no se crean turnos y no se realizan cobros.
 
-El modo se controla exclusivamente con la variable privada de n8n `PILOT_MODE`; nunca se acepta desde el payload recibido. La plantilla versionada además falla de forma segura a `shadow` cuando la variable no está disponible. En shadow, la reserva usa `simular_reserva_whatsapp` (validación sin escrituras) y la respuesta se guarda sólo como un reporte minimizado en `saas_automation_shadow_runs` mediante `record_whatsapp_shadow_run`.
+El modo se controla exclusivamente con las variables privadas de n8n `WHATSAPP_MODE=shadow` y, por compatibilidad, `PILOT_MODE=shadow`; nunca se acepta desde el payload recibido. Si ambas variables faltan o toman otro valor, el evento se descarta. La plantilla shadow no contiene caminos de envío a Evolution ni de mutación de reservas: usa `simular_reserva_whatsapp` (validación sin escrituras) y guarda sólo un reporte minimizado mediante `record_whatsapp_shadow_run`.
 
 ## Respaldo y estado de n8n
 
@@ -17,7 +17,7 @@ El modo se controla exclusivamente con la variable privada de n8n `PILOT_MODE`; 
 
 El template versionado es `integrations/templates/WhatsApp Multi Tenant - Contract Template.json`: permanece `active:false`, tiene 25 nodos y no contiene instancias, tenants ni claves hardcodeadas.
 
-El workflow piloto separado está importado en n8n como `WhatsApp Multi Tenant - Pilot Barberia Central`, ID `5UQMp5vAMfBfJtSy`. Se verificó en la lista de workflows sin etiqueta `Published`; permanece inactivo y no se ejecutó. Tiene 25 nodos, sin instancia hardcodeada y con cuatro expresiones que usan el fallback seguro `PILOT_MODE=shadow`.
+El workflow piloto separado está importado en n8n como `WhatsApp Multi Tenant - Pilot Barberia Central`, ID `5UQMp5vAMfBfJtSy`. Se verificó en la lista de workflows sin etiqueta `Published`; permanece inactivo y no se ejecutó. Tiene 25 nodos, sin instancia hardcodeada y con un guard explícito que exige `WHATSAPP_MODE=shadow`.
 
 ## Entorno privado de n8n verificado
 
@@ -56,19 +56,19 @@ Las RPCs nuevas no son ejecutables por `anon` ni `authenticated`; sólo por el r
 
 Usar `integrations/templates/n8n-multitenant.env.example` como referencia y configurar los valores reales únicamente en n8n:
 
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `DEEPSEEK_API_KEY`, `PILOT_MODE=shadow`.
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `DEEPSEEK_API_KEY`, `WHATSAPP_MODE=shadow`, `PILOT_MODE=shadow`.
 
 El secreto de webhook debe ser el mismo que Evolution envía en el header configurado. No se debe reutilizar `SUPABASE_SERVICE_ROLE_KEY` como secreto de webhook.
 
-En esta instancia de n8n, la pantalla **Variables** muestra que la función está bloqueada por el plan y **Environments** requiere Enterprise. Por eso no fue posible guardar variables privadas desde la interfaz disponible. Quedan pendientes en el nivel del servidor/contenedor (SSH, Docker o Portainer): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `DEEPSEEK_API_KEY` y `PILOT_MODE=shadow`. No se solicitaron ni se expusieron secretos en el repositorio o en este chat.
+En esta instancia de n8n, la pantalla **Variables** muestra que la función está bloqueada por el plan y **Environments** requiere Enterprise. Por eso no fue posible guardar variables privadas desde la interfaz disponible. Quedan pendientes en el nivel del servidor/contenedor (SSH, Docker o Portainer): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `DEEPSEEK_API_KEY`, `WHATSAPP_MODE=shadow` y `PILOT_MODE=shadow`. No se solicitaron ni se expusieron secretos en el repositorio o en este chat.
 
 ### Procedimiento seguro para el host Docker/Portainer
 
 Cuando se autorice acceso al host, antes de modificar nada se debe registrar el contenedor/stack sin imprimir valores de entorno: imagen y versión, nombre, mounts, `RestartPolicy`, red y estado de los workflows. El backup debe guardarse fuera de Git y con las variables secretas redactadas. El volumen persistente no se elimina ni se recrea.
 
-Las variables se agregan en el Compose/Portainer del servicio n8n, nunca en el repositorio. Deben incluir `PILOT_MODE=shadow`. Después se reinicia sólo n8n (`docker compose up -d --no-deps n8n` o el equivalente del contenedor), se comprueba que el productivo continúe activo y que el piloto siga inactivo, y se conserva el backup para rollback. Evolution, Supabase, Postgres y Redis no deben reiniciarse.
+Las variables se agregan en el Compose/Portainer del servicio n8n, nunca en el repositorio. Deben incluir `WHATSAPP_MODE=shadow` y `PILOT_MODE=shadow`. Después se reinicia sólo n8n (`docker compose up -d --no-deps n8n` o el equivalente del contenedor), se comprueba que el productivo continúe activo y que el piloto siga inactivo, y se conserva el backup para rollback. Evolution, Supabase, Postgres y Redis no deben reiniciarse.
 
-## Matriz de simulación (22 casos)
+## Matriz de simulación (24 casos)
 
 | # | Caso | Estado |
 |---:|---|---|
@@ -94,6 +94,8 @@ Las variables se agregan en el Compose/Portainer del servicio n8n, nunca en el r
 | 20 | evento duplicado | idempotencia verificada en dry-run |
 | 21 | propuesta shadow registrada | probado con payload anonimizado; fila de prueba eliminada |
 | 22 | cancelación/reprogramación | RPC creada; pendiente de ejecución controlada |
+| 23 | identidad instancia/receptor cruzada | bloqueada por el resolver estricto; cero tenant |
+| 24 | modo ausente o distinto de shadow | bloqueado por guard; cero efectos externos |
 
 Los casos que requieren una integración real no se ejecutaron para no enviar mensajes ni crear datos. La resolución real de `miwsp`/`5491168280107` y la normalización del receptor sí fueron probadas en Supabase. También se comparó el esquema con el workflow productivo: ambos usan `body.data.key.remoteJid` y los campos de texto de Evolution; la plantilla agrega `instance`, `destination`, `event_id` y secreto de webhook. El path del webhook es deliberadamente distinto (`whatsapp-multitenant-template` frente a `whatsapp-miwsp`) para impedir que el piloto intercepte tráfico productivo.
 
@@ -101,13 +103,13 @@ Los casos que requieren una integración real no se ejecutaron para no enviar me
 
 El reporte shadow guarda intent, resultado propuesto, longitud, latencia, hashes/resultados actuales cuando se incorporen, diferencias y metadatos mínimos; no guarda conversaciones completas. `expires_at` es de 30 días y `cleanup_whatsapp_shadow_runs` debe programarse una vez al día. También se debe configurar en n8n una retención de ejecuciones compatible con ese plazo.
 
-Para habilitar live se requiere: confirmar el número/tenant, importar el template como workflow separado e inactivo, configurar variables privadas, revisar al menos 22 casos, obtener tasa de error y latencia aceptables, y aprobar explícitamente el cambio de `PILOT_MODE` a `live`. El workflow productivo no se reemplaza.
+Para una futura transición `reply_only` o `booking_enabled` se requiere un workflow separado, allowlist explícita por tenant, nuevas pruebas y autorización formal. Esta plantilla no puede cambiar a live: no contiene envío a Evolution ni la RPC mutante; el workflow productivo no se reemplaza.
 
-Rollback: volver `PILOT_MODE=shadow`, desactivar sólo el workflow piloto, conservar el productivo original y ejecutar la limpieza de reportes cuando corresponda. No se borran turnos ni clientes como parte del rollback.
+Rollback: volver `WHATSAPP_MODE=shadow` y `PILOT_MODE=shadow`, desactivar sólo el workflow piloto, conservar el productivo original y ejecutar la limpieza de reportes cuando corresponda. No se borran turnos ni clientes como parte del rollback.
 
 ## Acciones manuales pendientes
 
-1. Configurar en el servidor/contenedor de n8n las variables privadas indicadas, manteniendo `PILOT_MODE=shadow`.
+1. Configurar en el servidor/contenedor de n8n las variables privadas indicadas, manteniendo `WHATSAPP_MODE=shadow` y `PILOT_MODE=shadow`.
 2. Obtener acceso al host Docker/Portainer para realizar backup, inspección de volumen y reinicio controlado; no enviar secretos por chat.
 3. Mantener el workflow piloto `5UQMp5vAMfBfJtSy` inactivo y sin publicar; no tocar el productivo `gRTZDLTXvGgNq4BZ`.
 4. Cuando exista autorización explícita, configurar un webhook de prueba de Evolution apuntando únicamente al piloto.

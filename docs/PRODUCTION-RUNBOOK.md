@@ -55,6 +55,8 @@ Usar sólo el flujo administrativo existente y con un usuario `platform owner/ad
 
 ## 8. WhatsApp/Evolution
 
+- El template multi-tenant exige `WHATSAPP_MODE=shadow` y `PILOT_MODE=shadow`; si faltan o difieren, descarta el evento.
+- En shadow sólo se permiten resolución de tenant, lecturas, simulación de disponibilidad y logging minimizado. No existen caminos de envío a Evolution ni de creación de turnos.
 - No activar workflows productivos durante una prueba.
 - Verificar instancia, tenant, número canónico, modo shadow, logs sanitizados y rollback.
 - Confirmar explícitamente que un ensayo no envía mensajes reales.
