@@ -22,10 +22,17 @@ function isAllowedOrigin(origin) {
 
 export function getAppOrigin() {
   const configured = normalizeOrigin(import.meta.env?.VITE_APP_BASE_URL || '')
-  if (configured && isAllowedOrigin(configured)) return configured
+  const configuredHost = configured ? new URL(configured).hostname : ''
+  const configuredIsLocal = LOCAL_HOSTS.has(configuredHost)
+  if (configured && isAllowedOrigin(configured) && (!configuredIsLocal || import.meta.env?.DEV)) return configured
 
-  const runtime = normalizeOrigin(window.location.origin)
-  if (runtime && isAllowedOrigin(runtime)) return runtime
+  const runtime = typeof window === 'undefined' ? '' : normalizeOrigin(window.location.origin)
+  const runtimeHost = runtime ? new URL(runtime).hostname : ''
+  if (runtime === PRODUCTION_ORIGIN) return runtime
+  // El origen del navegador sólo se acepta automáticamente durante el
+  // desarrollo local. Un preview de Pages debe declarar VITE_APP_BASE_URL;
+  // así una pestaña en otro pages.dev nunca termina dentro de un email real.
+  if (import.meta.env?.DEV && runtime && LOCAL_HOSTS.has(runtimeHost)) return runtime
 
   return PRODUCTION_ORIGIN
 }

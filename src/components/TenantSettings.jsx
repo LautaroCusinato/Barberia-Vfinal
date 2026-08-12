@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, Copy, ImagePlus, LoaderCircle, Save, ShieldCheck, Trash2, UserPlus, UsersRound } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { getAppOrigin } from '../lib/authRedirect'
 
 const DEFAULTS = {
   nombre: '', descripcion: '', slug: '', vertical: 'barberia', pais: 'AR', locale: 'es-AR', zona_horaria: 'America/Argentina/Buenos_Aires', moneda: 'ARS', direccion: '', email: '', telefono: '', whatsapp: '', logo_url: '', logo_storage_path: '', color_principal: '#9B6A2F', color_secundario: '#EDE6D8', reservas_publicas: true, politica_cancelacion: '', anticipacion_minutos: 60, max_dias_reserva: 60, intervalo_reserva_min: 15,
@@ -77,7 +78,7 @@ export default function TenantSettings({ barberiaId }) {
     event.preventDefault(); setError(''); setInviteLink('')
     const { data, error: inviteError } = await supabase.rpc('create_barberia_invitation', { p_barberia_id: barberiaId, p_email: invite.email, p_role: invite.role, p_expires_days: Number(invite.expires) })
     if (inviteError) { setError(cleanError(inviteError)); return }
-    const link = `${window.location.origin}/invitacion/${data.token}`
+    const link = `${getAppOrigin()}/invitacion/${data.token}`
     setInviteLink(link); setInvite({ email: '', role: 'empleado', expires: 7 }); await load()
   }
 

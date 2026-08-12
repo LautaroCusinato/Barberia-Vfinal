@@ -9,8 +9,8 @@
             <h1 style="margin:0 0 16px;font-size:26px;line-height:1.2;">¡Bienvenido!</h1>
             <p style="font-size:16px;line-height:1.6;">Estás a un paso de terminar de crear tu cuenta.</p>
             <p style="font-size:16px;line-height:1.6;">Confirmá tu dirección de email para activar tu cuenta y continuar con la configuración de tu negocio.</p>
-            <p style="margin:26px 0;"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#9b6a2f;color:#fff;text-decoration:none;border-radius:10px;padding:13px 18px;font-weight:700;">Confirmar mi email</a></p>
-            <p style="font-size:13px;line-height:1.5;color:#756d64;">Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br><a href="{{ .ConfirmationURL }}" style="color:#765020;word-break:break-all;">{{ .ConfirmationURL }}</a></p>
+            <p style="margin:26px 0;"><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/onboarding" style="display:inline-block;background:#9b6a2f;color:#fff;text-decoration:none;border-radius:10px;padding:13px 18px;font-weight:700;">Confirmar mi email</a></p>
+            <p style="font-size:13px;line-height:1.5;color:#756d64;">Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/onboarding" style="color:#765020;word-break:break-all;">{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/onboarding</a></p>
             <p style="font-size:13px;line-height:1.5;color:#756d64;">Si vos no creaste esta cuenta, podés ignorar este mensaje.</p>
           </td></tr>
         </table>

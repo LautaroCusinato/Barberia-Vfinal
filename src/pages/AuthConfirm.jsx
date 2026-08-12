@@ -18,6 +18,7 @@ function getCallbackData() {
   const hash = new URLSearchParams(url.hash.replace(/^#/, ''))
   return {
     code: query.get('code'),
+    tokenHash: query.get('token_hash'),
     queryError: query.get('error') || query.get('error_code') || query.get('error_description'),
     accessToken: hash.get('access_token'),
     refreshToken: hash.get('refresh_token'),
@@ -41,8 +42,15 @@ export default function AuthConfirm() {
   const [email, setEmail] = useState('')
   const [resendState, setResendState] = useState('idle')
   const [resendError, setResendError] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   const copy = useMemo(() => statusCopy(status, recovery), [status, recovery])
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined
+    const timer = window.setInterval(() => setResendCooldown((value) => Math.max(0, value - 1)), 1000)
+    return () => window.clearInterval(timer)
+  }, [resendCooldown])
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -61,10 +69,12 @@ export default function AuthConfirm() {
         return
       }
 
-      const hasCallbackToken = Boolean(callback.code || (callback.accessToken && callback.refreshToken))
+      const hasCallbackToken = Boolean(callback.code || callback.tokenHash || (callback.accessToken && callback.refreshToken))
       let result
       if (callback.code) {
         result = await supabase.auth.exchangeCodeForSession(callback.code)
+      } else if (callback.tokenHash) {
+        result = await supabase.auth.verifyOtp({ token_hash: callback.tokenHash, type: callback.type || 'email' })
       } else if (callback.accessToken && callback.refreshToken) {
         result = await supabase.auth.setSession({ access_token: callback.accessToken, refresh_token: callback.refreshToken })
       } else {
@@ -107,7 +117,7 @@ export default function AuthConfirm() {
 
   const resend = async (event) => {
     event.preventDefault()
-    if (!email.trim() || resendState === 'loading') return
+    if (!email.trim() || resendState === 'loading' || resendCooldown > 0) return
     setResendState('loading')
     setResendError('')
     const { error } = await supabase.auth.resend({
@@ -118,9 +128,11 @@ export default function AuthConfirm() {
     if (error) {
       setResendState('error')
       setResendError(sanitizeAuthError(error, 'No pudimos enviar un nuevo enlace.'))
+      setResendCooldown(10)
       return
     }
     setResendState('sent')
+    setResendCooldown(30)
   }
 
   return (
@@ -135,7 +147,7 @@ export default function AuthConfirm() {
             <div className="modal-field"><label className="modal-label" htmlFor="confirm-email"><Mail size={13} /> Email</label><input id="confirm-email" className="text-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></div>
             {resendError && <p className="login-error" role="alert">{resendError}</p>}
             {resendState === 'sent' && <p className="auth-message"><CheckCircle2 size={15} /> Te enviamos un nuevo enlace. Revisá tu email.</p>}
-            <button className="btn btn-primary auth-full-button" type="submit" disabled={resendState === 'loading'}>{resendState === 'loading' ? 'Enviando…' : 'Enviar un nuevo enlace'} <ArrowRight size={15} /></button>
+            <button className="btn btn-primary auth-full-button" type="submit" disabled={resendState === 'loading' || resendCooldown > 0}>{resendState === 'loading' ? 'Enviando…' : resendCooldown > 0 ? `Podés reenviar en ${resendCooldown}s` : 'Enviar un nuevo enlace'} <ArrowRight size={15} /></button>
           </form>
         )}
         {status === 'success' || status === 'already' ? <button className="btn btn-primary auth-full-button" type="button" onClick={continueTo}>{copy.action} <ArrowRight size={15} /></button> : null}
