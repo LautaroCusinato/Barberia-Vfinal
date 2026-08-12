@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   buildPatchedConfig,
+  buildEvolutionWebhookPayload,
   buildRollbackConfig,
   hasWebhookHeader,
   assertShadowConfiguration,
@@ -31,6 +32,16 @@ assert.equal(patched.base64, original.base64)
 assert.equal(patched.webhookByEvents, original.webhookByEvents)
 assert.equal(patched.headers['X-Austral-Webhook-Secret'], sentinel)
 assert.equal(patched.headers['X-Legacy-Header'], original.headers['X-Legacy-Header'])
+assert.deepEqual(buildEvolutionWebhookPayload(patched), {
+  webhook: {
+    enabled: true,
+    url: original.url,
+    events: original.events,
+    headers: patched.headers,
+    byEvents: false,
+    base64: true,
+  },
+})
 assert.throws(() => buildPatchedConfig(original, ''), /required/)
 assert.throws(() => buildPatchedConfig(original), /required/)
 

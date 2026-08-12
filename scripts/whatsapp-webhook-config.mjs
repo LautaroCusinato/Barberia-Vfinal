@@ -52,6 +52,21 @@ export const buildPatchedConfig = (config, secret, headerName = DEFAULT_HEADER_N
   return patched
 }
 
+// Evolution 2.x returns persistence metadata (id/instanceId/timestamps) and
+// uses webhookBase64/webhookByEvents in its write DTO. Keep those details out
+// of the POST body so a read-back can be safely patched without resubmitting
+// read-only fields or the alternate response names.
+export const buildEvolutionWebhookPayload = (config) => ({
+  webhook: {
+    enabled: config?.enabled === true,
+    url: config?.url,
+    events: Array.isArray(config?.events) ? [...config.events] : [],
+    headers: config?.headers && typeof config.headers === 'object' ? { ...config.headers } : {},
+    byEvents: config?.webhookByEvents ?? config?.webhook_by_events ?? false,
+    base64: config?.webhookBase64 ?? config?.base64 ?? false,
+  },
+})
+
 export const buildRollbackConfig = (config, backup, headerName = DEFAULT_HEADER_NAME) => {
   const restored = clone(config)
   if (backup?.header_was_present === true) return restored
@@ -145,7 +160,7 @@ export const runCli = async (args = process.argv.slice(2)) => {
     const file = backupPath()
     await writeBackup(file, current, name)
     const patched = buildPatchedConfig(current, secret, nameHeader)
-    await requestJson({ method: 'POST', endpoint: `/webhook/set/${encodeURIComponent(name)}`, body: patched })
+    await requestJson({ method: 'POST', endpoint: `/webhook/set/${encodeURIComponent(name)}`, body: buildEvolutionWebhookPayload(patched) })
     const verified = extractWebhookConfig(await requestJson({ method: 'GET', endpoint: `/webhook/find/${encodeURIComponent(name)}` }))
     const verifiedSafe = sanitizeWebhookConfig(verified)
     if (!hasWebhookHeader(verified, nameHeader)) throw new Error('Webhook header was not confirmed after apply')
@@ -160,7 +175,7 @@ export const runCli = async (args = process.argv.slice(2)) => {
   const backup = await readBackup(file)
   if (backup.instance !== name || backup.header_name !== nameHeader) throw new Error('Backup does not match instance/header')
   const restored = buildRollbackConfig(current, backup, nameHeader)
-  await requestJson({ method: 'POST', endpoint: `/webhook/set/${encodeURIComponent(name)}`, body: restored })
+  await requestJson({ method: 'POST', endpoint: `/webhook/set/${encodeURIComponent(name)}`, body: buildEvolutionWebhookPayload(restored) })
   const verified = extractWebhookConfig(await requestJson({ method: 'GET', endpoint: `/webhook/find/${encodeURIComponent(name)}` }))
   output.backup_path = file
   output.after = sanitizeWebhookConfig(verified)
