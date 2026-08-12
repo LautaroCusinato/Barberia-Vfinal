@@ -27,7 +27,7 @@ for (const source of [signup, recovery, wizard, security]) {
   assert.doesNotMatch(source, /window\.location\.origin.*(?:redirectTo|emailRedirectTo)/)
 }
 assert.match(redirects, /barberia\.cuchitron\.lat/)
-assert.match(redirects, /configuredIsLocal/)
+assert.match(redirects, /configured === PRODUCTION_ORIGIN/)
 assert.match(redirects, /import\.meta\.env\?\.DEV/)
 assert.match(redirects, /candidate\.startsWith\('\/'\)/)
 assert.match(redirects, /candidate\.startsWith\('\/\/'\)/)

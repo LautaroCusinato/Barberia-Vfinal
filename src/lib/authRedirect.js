@@ -22,9 +22,8 @@ function isAllowedOrigin(origin) {
 
 export function getAppOrigin() {
   const configured = normalizeOrigin(import.meta.env?.VITE_APP_BASE_URL || '')
-  const configuredHost = configured ? new URL(configured).hostname : ''
-  const configuredIsLocal = LOCAL_HOSTS.has(configuredHost)
-  if (configured && isAllowedOrigin(configured) && (!configuredIsLocal || import.meta.env?.DEV)) return configured
+  if (configured === PRODUCTION_ORIGIN) return configured
+  if (import.meta.env?.DEV && configured && isAllowedOrigin(configured)) return configured
 
   const runtime = typeof window === 'undefined' ? '' : normalizeOrigin(window.location.origin)
   const runtimeHost = runtime ? new URL(runtime).hostname : ''
