@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   quality:
@@ -25,3 +30,48 @@ jobs:
       - run: npm run test:e2e
         env:
           CI: true
+
+  authenticated-qa:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Verify QA configuration
+        env:
+          E2E_REAL_SUPABASE: ${{ secrets.E2E_REAL_SUPABASE }}
+          E2E_ENVIRONMENT: ${{ secrets.E2E_ENVIRONMENT }}
+          E2E_SUPABASE_PROJECT_REF: ${{ secrets.E2E_SUPABASE_PROJECT_REF }}
+          E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          E2E_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          E2E_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+          E2E_QA_PASSWORD: ${{ secrets.E2E_QA_PASSWORD }}
+        run: |
+          test "$E2E_REAL_SUPABASE" = "1"
+          test "$E2E_ENVIRONMENT" = "qa"
+          test "$E2E_SUPABASE_PROJECT_REF" = "cmsymmszlzikqpvfqjre"
+          test "$E2E_SUPABASE_URL" = "https://cmsymmszlzikqpvfqjre.supabase.co"
+          test -n "$E2E_SUPABASE_ANON_KEY"
+          test -n "$E2E_SUPABASE_SERVICE_ROLE_KEY"
+          test -n "$E2E_QA_PASSWORD"
+          echo "QA guard passed for the explicitly allowed project."
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          CI: true
+          E2E_REAL_SUPABASE: ${{ secrets.E2E_REAL_SUPABASE }}
+          E2E_ENVIRONMENT: ${{ secrets.E2E_ENVIRONMENT }}
+          E2E_SUPABASE_PROJECT_REF: ${{ secrets.E2E_SUPABASE_PROJECT_REF }}
+          E2E_ALLOWED_PROJECT_REF: cmsymmszlzikqpvfqjre
+          E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          E2E_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          E2E_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+          E2E_TEST_PREFIX: E2E_QA_
+          E2E_QA_PASSWORD: ${{ secrets.E2E_QA_PASSWORD }}
+          VITE_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}

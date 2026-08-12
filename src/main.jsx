@@ -20,6 +20,7 @@ const PasswordRecovery = lazy(() => import('./pages/PasswordRecovery.jsx'))
 const AccountSecurity = lazy(() => import('./pages/AccountSecurity.jsx'))
 const InvitationPage = lazy(() => import('./pages/InvitationPage.jsx'))
 const Landing = lazy(() => import('./pages/Landing.jsx'))
+const AuthConfirm = lazy(() => import('./pages/AuthConfirm.jsx'))
 
 installGlobalObservability()
 
@@ -97,6 +98,34 @@ function RouteLoading() {
 }
 
 const CACHE_KEY = 'barberia-activa'
+const bookingMatch = window.location.pathname.match(/^\/reservar\/([^/]+)\/?$/)
+const invitationMatch = window.location.pathname.match(/^\/invitacion\/([^/]+)\/?$/)
+const verticalMatch = window.location.pathname.match(/^\/para\/([^/]+)\/?$/)
+const path = window.location.pathname
+const isPublicLandingPath = path === '/' || Boolean(verticalMatch)
+
+function LandingFallback() {
+  return (
+    <main className="marketing-page marketing-loading" aria-busy="true">
+      <header className="marketing-header"><nav className="marketing-nav" aria-label="Navegación principal"><span className="marketing-brand"><span className="marketing-brand-mark">A</span><span><strong>Austral</strong><small>Automatizaciones</small></span></span><span className="marketing-loading-pill" /></nav></header>
+      <section className="marketing-hero"><div className="marketing-container marketing-loading-hero"><div className="marketing-hero-copy"><span className="marketing-eyebrow">Austral para negocios de servicios</span><h1>Turnos, equipo y clientes en un solo lugar.</h1><p>Reservas online, agenda, clientes, empleados, servicios y horarios conectados en una plataforma clara.</p><div className="marketing-actions"><a className="marketing-button primary" href="/registro">Probar gratis 14 días <span aria-hidden="true">→</span></a><a className="marketing-button secondary" href="/demo">Ver cómo funciona</a></div></div><div className="marketing-loading-preview" aria-hidden="true"><span /><span /><span /></div></div></section>
+    </main>
+  )
+}
+
+class LandingBoundary extends React.Component {
+  state = { hasError: false }
+
+  static getDerivedStateFromError() { return { hasError: true } }
+
+  render() {
+    return this.state.hasError ? <LandingFallback /> : this.props.children
+  }
+}
+
+function PublicLanding({ vertical = DEFAULT_VERTICAL }) {
+  return <LandingBoundary><Landing vertical={vertical} /></LandingBoundary>
+}
 
 function leerCache() {
   try {
@@ -270,12 +299,12 @@ function Root() {
     }
   }, [])
 
-  if (checking) return null
+  if (checking) return isPublicLandingPath ? <LandingFallback /> : <RouteLoading />
   // En modo demo local no hay sesión real: conservamos el panel de ejemplo.
   if (!isSupabaseConfigured) {
     return <App barberiaId={DEFAULT_TENANT_ID} barberiaNombre={DEFAULT_BUSINESS_NAME} vertical={DEFAULT_VERTICAL} />
   }
-  if (!authed) return <Landing vertical={DEFAULT_VERTICAL} />
+  if (!authed) return <PublicLanding vertical={DEFAULT_VERTICAL} />
 
   const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
   if (platformMember && (platformPath || workspace === 'platform' || (opciones !== null && opciones.length === 0))) {
@@ -326,20 +355,16 @@ function Root() {
   return <App barberiaId={barberiaId} barberiaNombre={barberiaNombre} vertical={DEFAULT_VERTICAL} />
 }
 
-const bookingMatch = window.location.pathname.match(/^\/reservar\/([^/]+)\/?$/)
-const invitationMatch = window.location.pathname.match(/^\/invitacion\/([^/]+)\/?$/)
-const verticalMatch = window.location.pathname.match(/^\/para\/([^/]+)\/?$/)
-const path = window.location.pathname
-
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-    <Suspense fallback={<RouteLoading />}>
+    <Suspense fallback={isPublicLandingPath ? <LandingFallback /> : <RouteLoading />}>
     {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} />
       : invitationMatch ? <InvitationPage token={decodeURIComponent(invitationMatch[1])} />
         : path === '/ingresar' ? <Login businessName="Austral Automatizaciones" onSuccess={() => window.location.assign('/')} />
-          : verticalMatch ? <Landing vertical={decodeURIComponent(verticalMatch[1])} />
-        : path === '/registro' ? <Signup />
+          : path === '/auth/confirm' ? <AuthConfirm />
+          : verticalMatch ? <PublicLanding vertical={decodeURIComponent(verticalMatch[1])} />
+        : (path === '/registro' || path === '/registrarse') ? <Signup />
         : path === '/demo' ? <DemoWorkspace />
         : path === '/onboarding' ? <OnboardingWizard />
             : path === '/recuperar' ? <PasswordRecovery />

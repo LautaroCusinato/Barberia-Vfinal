@@ -21,6 +21,10 @@ test.describe('superficies públicas sin efectos externos', () => {
     await page.goto('/recuperar')
     await expect(page.getByRole('heading', { name: /recuperar contraseña/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /enviar enlace/i })).toBeEnabled()
+    await page.goto('/auth/confirm?error=access_denied&error_code=otp_expired&error_description=technical-detail')
+    await expect(page.getByRole('heading', { name: /enlace.*v[aá]lido/i })).toBeVisible()
+    await expect(page.getByText('technical-detail')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /enviar un nuevo enlace/i })).toBeVisible()
   })
 
   test('demo aislada permite cambiar vertical, branding, servicio y reiniciar', async ({ page }) => {

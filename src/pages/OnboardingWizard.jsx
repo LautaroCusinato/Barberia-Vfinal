@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, Globe2, ImagePlus, LoaderCircle, MapPin, Palette, Scissors, ShieldCheck, Sparkles } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { sanitizeAuthError } from '../lib/authErrors'
+import { buildAuthRedirect } from '../lib/authRedirect'
 
 const STEPS = [
   { title: '¿Cómo se llama tu negocio?', description: 'Podés cambiarlo más adelante.', icon: Scissors },
@@ -150,8 +152,8 @@ export default function OnboardingWizard() {
   const resendVerification = async () => {
     if (!user?.email) return
     setError('')
-    const { error: resendError } = await supabase.auth.resend({ type: 'signup', email: user.email, options: { emailRedirectTo: `${window.location.origin}/onboarding` } })
-    if (resendError) setError(resendError.message || 'No pudimos reenviar el email.')
+    const { error: resendError } = await supabase.auth.resend({ type: 'signup', email: user.email, options: { emailRedirectTo: buildAuthRedirect('/auth/confirm?next=/onboarding') } })
+    if (resendError) setError(sanitizeAuthError(resendError, 'No pudimos reenviar el email.'))
     else setSaved(true)
   }
 

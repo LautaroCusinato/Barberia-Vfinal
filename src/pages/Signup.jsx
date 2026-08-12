@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { ArrowRight, CheckCircle2, KeyRound, Mail, Scissors, UserRound } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { sanitizeAuthError } from '../lib/authErrors'
+import { buildAuthRedirect } from '../lib/authRedirect'
 import { DEFAULT_BUSINESS_NAME, PRODUCT_NAME } from '../lib/tenant'
 import { PasswordField } from '../components/ui'
 
@@ -33,14 +35,14 @@ export default function Signup() {
       password,
       options: {
         data: { full_name: cleanName },
-        emailRedirectTo: `${window.location.origin}/onboarding`,
+        emailRedirectTo: buildAuthRedirect('/auth/confirm?next=/onboarding'),
       },
     })
     setLoading(false)
 
     if (signUpError) {
       if (signUpError.message?.toLowerCase().includes('already')) setError('Ese email ya está registrado. Probá iniciar sesión o recuperar la contraseña.')
-      else setError(signUpError.message || 'No pudimos crear tu cuenta.')
+      else setError(sanitizeAuthError(signUpError, 'No pudimos crear tu cuenta.'))
       return
     }
     if (data.session) {

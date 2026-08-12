@@ -93,10 +93,12 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
         first.focus()
       }
     }
-    container.addEventListener('keydown', handleKeyDown)
+    // Listen on the document so Escape still closes the sheet if the browser
+    // dispatches the key before the first focus frame completes.
+    document.addEventListener('keydown', handleKeyDown)
     return () => {
       window.cancelAnimationFrame(frame)
-      container.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = previousOverflow
       returnFocusRef.current?.focus?.()
     }

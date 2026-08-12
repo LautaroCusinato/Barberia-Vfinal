@@ -12,12 +12,22 @@ if (qaRequested) {
 }
 
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:4173'
+const publicTestEnv = {
+  ...process.env,
+  // Deterministic public tests use route mocks; these placeholders never
+  // contact a real Supabase project and are replaced by QA env when enabled.
+  VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || 'https://e2e-public.invalid.supabase.co',
+  VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || 'e2e-public-anon-placeholder',
+}
 
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   expect: { timeout: 5_000 },
-  fullyParallel: true,
+  // QA fixtures intentionally mutate and restore the same isolated users and
+  // tenants. Keep that suite deterministic; public tests remain parallel.
+  fullyParallel: !qaRequested,
+  workers: qaRequested ? 1 : undefined,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['dot'], ['html', { open: 'never' }]] : 'list',
@@ -33,6 +43,7 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: publicTestEnv,
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

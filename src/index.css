@@ -1,3 +1,33 @@
+/* Critical public fallback: stays available while the marketing chunk loads
+   or recovers from a stale CDN chunk. */
+.marketing-loading { min-height: 100vh; overflow-x: clip; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
+.marketing-loading .marketing-header { position: relative; border-bottom: 1px solid var(--border); background: var(--surface); }
+.marketing-loading .marketing-nav { display: flex; align-items: center; justify-content: space-between; width: min(1240px, calc(100% - 32px)); min-height: 72px; margin-inline: auto; }
+.marketing-loading .marketing-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); }
+.marketing-loading .marketing-brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--accent); color: #fff; font: 600 21px/1 Georgia, serif; }
+.marketing-loading .marketing-brand > span:last-child { display: grid; gap: 1px; }
+.marketing-loading .marketing-brand strong { font-size: 14px; }
+.marketing-loading .marketing-brand small { color: var(--ink-faint); font-size: 10px; }
+.marketing-loading .marketing-loading-pill { width: 84px; height: 18px; border-radius: 999px; background: var(--surface-muted); }
+.marketing-loading .marketing-hero { padding: 86px 0 104px; background: radial-gradient(760px 420px at 88% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%), var(--bg); }
+.marketing-loading .marketing-container { width: min(1180px, calc(100% - 48px)); margin-inline: auto; }
+.marketing-loading .marketing-loading-hero { display: grid; grid-template-columns: minmax(0, .9fr) minmax(300px, 1.1fr); gap: clamp(36px, 7vw, 92px); align-items: center; min-height: 430px; }
+.marketing-loading .marketing-eyebrow { color: var(--accent-strong); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.marketing-loading .marketing-hero h1 { max-width: 640px; margin: 18px 0 22px; font: 500 clamp(2.8rem, 5vw, 5.1rem)/.99 var(--font-display); letter-spacing: -.055em; }
+.marketing-loading .marketing-hero p { max-width: 575px; margin: 0; color: var(--ink-soft); font-size: clamp(16px, 1.4vw, 18px); line-height: 1.65; }
+.marketing-loading .marketing-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 30px 0 20px; }
+.marketing-loading .marketing-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 17px; border: 1px solid var(--border); border-radius: var(--radius-control); font-size: 13px; font-weight: 750; text-decoration: none; }
+.marketing-loading .marketing-button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.marketing-loading .marketing-button.secondary { background: var(--surface); color: var(--ink); }
+.marketing-loading .marketing-loading-preview { display: grid; gap: 13px; min-height: 330px; padding: 24px; border: 1px solid var(--border); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-lg); }
+.marketing-loading .marketing-loading-preview span { display: block; min-height: 42px; border-radius: 12px; background: var(--surface-muted); }
+.marketing-loading .marketing-loading-preview span:nth-child(2) { min-height: 112px; }
+.marketing-loading .marketing-loading-preview span:nth-child(3) { min-height: 76px; }
+@media (max-width: 1040px) { .marketing-loading .marketing-loading-hero { grid-template-columns: 1fr; max-width: 760px; } }
+@media (max-width: 760px) { .marketing-loading .marketing-container { width: min(100% - 36px, 640px); } .marketing-loading .marketing-hero { padding: 58px 0 70px; } .marketing-loading .marketing-loading-hero { min-height: 0; } .marketing-loading .marketing-loading-preview { min-height: 250px; } }
+@media (max-width: 420px) { .marketing-loading .marketing-container { width: calc(100% - 28px); } .marketing-loading .marketing-hero { padding-top: 46px; } .marketing-loading .marketing-actions { align-items: stretch; flex-direction: column; } .marketing-loading .marketing-button { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .marketing-loading * { animation: none !important; transition-duration: .01ms !important; } }
+
 :root {
   color-scheme: light;
   --bg: #EDE6D8;

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft, CheckCircle2, KeyRound, Mail, ShieldCheck } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { sanitizeAuthError } from '../lib/authErrors'
+import { buildAuthRedirect } from '../lib/authRedirect'
 
 export default function AccountSecurity() {
   const [user, setUser] = useState(null)
@@ -22,9 +24,9 @@ export default function AccountSecurity() {
     const email = newEmail.trim().toLowerCase()
     if (!email || !email.includes('@')) return setError('Ingresá un email válido.')
     setLoading(true)
-    const { error: updateError } = await supabase.auth.updateUser({ email })
+    const { error: updateError } = await supabase.auth.updateUser({ email }, { emailRedirectTo: buildAuthRedirect('/auth/confirm?next=/cuenta') })
     setLoading(false)
-    if (updateError) return setError(updateError.message || 'No pudimos solicitar el cambio de email.')
+    if (updateError) return setError(sanitizeAuthError(updateError, 'No pudimos solicitar el cambio de email.'))
     setNewEmail('')
     setMessage('Te enviamos enlaces de confirmación al email actual y al nuevo.')
   }
@@ -37,7 +39,7 @@ export default function AccountSecurity() {
     setLoading(true)
     const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
     setLoading(false)
-    if (updateError) return setError(updateError.message || 'No pudimos cambiar la contraseña.')
+    if (updateError) return setError(sanitizeAuthError(updateError, 'No pudimos cambiar la contraseña.'))
     setNewPassword('')
     setMessage('Contraseña actualizada correctamente.')
   }

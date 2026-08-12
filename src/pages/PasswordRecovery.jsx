@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft, CheckCircle2, KeyRound, Mail } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { sanitizeAuthError } from '../lib/authErrors'
+import { buildAuthRedirect } from '../lib/authRedirect'
 
 export default function PasswordRecovery() {
   const [email, setEmail] = useState('')
@@ -23,9 +25,9 @@ export default function PasswordRecovery() {
     event.preventDefault(); setError(''); setMessage('')
     if (!email.trim()) return setError('Ingresá el email de tu cuenta.')
     setLoading(true)
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: `${window.location.origin}/recuperar` })
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: buildAuthRedirect('/auth/confirm?next=/recuperar') })
     setLoading(false)
-    if (resetError) return setError(resetError.message || 'No pudimos enviar el enlace.')
+    if (resetError) return setError(sanitizeAuthError(resetError, 'No pudimos enviar el enlace.'))
     setMessage('Revisá tu email. El enlace te va a traer de vuelta para elegir una contraseña nueva.')
   }
 
@@ -35,7 +37,7 @@ export default function PasswordRecovery() {
     setLoading(true)
     const { error: updateError } = await supabase.auth.updateUser({ password })
     setLoading(false)
-    if (updateError) return setError(updateError.message || 'No pudimos actualizar la contraseña.')
+    if (updateError) return setError(sanitizeAuthError(updateError, 'No pudimos actualizar la contraseña.'))
     setMessage('Contraseña actualizada. Ya podés entrar al panel.')
     setPassword('')
   }
