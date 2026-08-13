@@ -1,6 +1,8 @@
 export type ProviderCode = 'mercadopago' | 'paypal'
 export type ProviderCapability = 'checkout' | 'plan_sync' | 'status' | 'webhook' | 'all'
 
+const PRODUCTION_API_BASE_URL = 'https://api.mercadopago.com'
+
 export class ProviderNotConfigured extends Error {
   status = 503
   code = 'provider_not_configured'
@@ -32,6 +34,56 @@ function mercadoPagoEnvironment() {
 export const EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID = 3595396521
 export const EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID = 3172086171935346
 
+/**
+ * Production is deliberately opt-in at several independent boundaries. The
+ * default state (and every deployed environment in this repository) is
+ * blocked. The returned object contains only booleans and configuration
+ * names; it never exposes a secret or a token.
+ */
+export function mercadoPagoProductionReadiness(input: { tenantId?: number | null; externalPlanId?: string | null } = {}) {
+  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
+  const projectEnvironment = String(Deno.env.get('BILLING_ENVIRONMENT') || '').trim().toLowerCase()
+  const apiBase = String(Deno.env.get('MERCADOPAGO_API_BASE_URL') || '').trim().replace(/\/$/, '')
+  const pilotTenantId = Number(Deno.env.get('BILLING_PRODUCTION_PILOT_TENANT_ID'))
+  const allowlisted = String(Deno.env.get('BILLING_PRODUCTION_ALLOWED_TENANT_IDS') || '').split(',').map((value) => Number(value.trim())).filter((value) => Number.isSafeInteger(value) && value > 0)
+  const expectedPlan = String(Deno.env.get('MERCADOPAGO_PRODUCTION_PLAN_ID') || Deno.env.get('BILLING_EXTERNAL_PLAN_ID') || '').trim()
+  const requestedPlan = String(input.externalPlanId || '').trim()
+  const missing: string[] = []
+  for (const name of ['MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET', 'MERCADOPAGO_PRODUCTION_SELLER_ID', 'MERCADOPAGO_PRODUCTION_APPLICATION_ID', 'MERCADOPAGO_PRODUCTION_PLAN_ID']) {
+    if (!String(Deno.env.get(name) || '').trim()) missing.push(name)
+  }
+  if (environment !== 'production') missing.push('MERCADOPAGO_ENVIRONMENT=production')
+  if (projectEnvironment !== 'production') missing.push('BILLING_ENVIRONMENT=production')
+  if (apiBase !== PRODUCTION_API_BASE_URL) missing.push('MERCADOPAGO_API_BASE_URL')
+  if (Deno.env.get('BILLING_PRODUCTION_ENABLED') !== '1') missing.push('BILLING_PRODUCTION_ENABLED=1')
+  if (Deno.env.get('BILLING_PRODUCTION_READINESS') !== 'ready') missing.push('BILLING_PRODUCTION_READINESS=ready')
+  if (Deno.env.get('BILLING_PRODUCTION_CHECKOUT_CONFIRMATION') !== 'I_UNDERSTAND_REAL_CHARGES') missing.push('BILLING_PRODUCTION_CHECKOUT_CONFIRMATION')
+  if (Deno.env.get('MERCADOPAGO_PUBLIC_KEY_CONFIGURED') !== '1') missing.push('MERCADOPAGO_PUBLIC_KEY_CONFIGURED=1')
+  if (Deno.env.get('BILLING_PRODUCTION_BACKUP_VERIFIED') !== '1') missing.push('BILLING_PRODUCTION_BACKUP_VERIFIED=1')
+  if (Deno.env.get('BILLING_PRODUCTION_ALERTING_VERIFIED') !== '1') missing.push('BILLING_PRODUCTION_ALERTING_VERIFIED=1')
+  if (!Number.isSafeInteger(pilotTenantId) || pilotTenantId <= 0) missing.push('BILLING_PRODUCTION_PILOT_TENANT_ID')
+  if (allowlisted.length !== 1 || allowlisted[0] !== pilotTenantId) missing.push('BILLING_PRODUCTION_ALLOWED_TENANT_IDS')
+  if (input.tenantId != null && input.tenantId !== pilotTenantId) missing.push('tenant_not_in_production_allowlist')
+  if (input.externalPlanId != null && (!requestedPlan || !expectedPlan || requestedPlan !== expectedPlan)) missing.push('production_plan_mapping')
+  return {
+    ready: missing.length === 0,
+    environment,
+    projectEnvironment,
+    apiBaseConfigured: apiBase === PRODUCTION_API_BASE_URL,
+    pilotTenantId: Number.isSafeInteger(pilotTenantId) && pilotTenantId > 0 ? pilotTenantId : null,
+    allowlistedTenantCount: allowlisted.length,
+    planConfigured: Boolean(expectedPlan),
+    requestedPlanMatches: input.externalPlanId == null ? Boolean(expectedPlan) : Boolean(requestedPlan && expectedPlan && requestedPlan === expectedPlan),
+    missing,
+  }
+}
+
+function requireMercadoPagoProduction(input: { tenantId: number; externalPlanId: string }) {
+  const readiness = mercadoPagoProductionReadiness(input)
+  if (!readiness.ready) throw new ProviderError('El checkout productivo de Mercado Pago está bloqueado hasta completar el readiness.', 409, 'production_checkout_blocked', null, null, { missing: readiness.missing })
+  return readiness
+}
+
 export function mercadoPagoCredentialStatus() {
   const token = String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') || '').trim()
   const kind = token.startsWith('TEST-') ? 'test' : token ? 'unverified' : 'missing'
@@ -41,11 +93,26 @@ export function mercadoPagoCredentialStatus() {
   return { configured: Boolean(token), kind, sandbox: false }
 }
 
-function mercadoPagoAccessToken() {
-  mercadoPagoEnvironment()
+function configuredMercadoPagoAccessToken({ allowProduction = false } = {}) {
+  if (!allowProduction) mercadoPagoEnvironment()
   const status = mercadoPagoCredentialStatus()
   if (!status.configured) throw new ProviderNotConfigured('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN'])
   return String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN'))
+}
+
+function mercadoPagoAccessToken() {
+  return configuredMercadoPagoAccessToken()
+}
+
+async function mercadoPagoWebhookIdentity() {
+  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || 'sandbox').trim().toLowerCase()
+  if (environment === 'sandbox') return mercadoPagoSandboxIdentity()
+  if (environment !== 'production') throw new ProviderError('Entorno de Mercado Pago inválido.', 409, 'invalid_provider_environment')
+  const readiness = mercadoPagoProductionReadiness()
+  if (!readiness.ready) throw new ProviderError('El webhook productivo de Mercado Pago permanece bloqueado.', 409, 'production_webhook_blocked')
+  const currentUser = await mercadoPagoCurrentUser({ allowProduction: true })
+  if (currentUser.id !== Number(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID'))) throw new ProviderError('La credencial no pertenece al vendedor productivo autorizado.', 409, 'production_seller_mismatch')
+  return currentUser
 }
 
 function sanitizeProviderPayload(value: unknown): unknown {
@@ -112,6 +179,41 @@ export async function mercadoPago(input: { externalPlanId?: string | null; email
   return { externalId: bodyJson.id || null, checkoutUrl: bodyJson.init_point || bodyJson.sandbox_init_point || null, kind: input.externalPlanId ? 'subscription' : 'preference' }
 }
 
+/**
+ * Official associated-plan production flow. The browser supplies only a
+ * one-time card_token_id generated by Mercado Pago.js/Card Payment Brick; the
+ * Access Token and all commercial values remain server-side. This function is
+ * unreachable until mercadoPagoProductionReadiness() is fully satisfied.
+ */
+export async function mercadoPagoProductionSubscription(input: { tenantId: number; externalPlanId: string; cardTokenId: string; payerEmail: string; externalReference: string; backUrl: string; idempotencyKey: string }) {
+  requireMercadoPagoProduction({ tenantId: input.tenantId, externalPlanId: input.externalPlanId })
+  if (!/^[A-Za-z0-9_-]{8,256}$/.test(input.cardTokenId)) throw new ProviderError('El token de tarjeta no es válido.', 422, 'invalid_card_token')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.payerEmail)) throw new ProviderError('No se pudo resolver el email de facturación.', 422, 'billing_email_invalid')
+  if (!/^[A-Za-z0-9._:-]{8,120}$/.test(input.idempotencyKey)) throw new ProviderError('Clave de idempotencia inválida.', 422, 'invalid_idempotency_key')
+  const token = String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN'))
+  const base = PRODUCTION_API_BASE_URL
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': input.idempotencyKey }
+  const currentUser = await responseJson(await fetch(`${base}/users/me`, { headers }), 'Mercado Pago')
+  const expectedSellerId = Number(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID'))
+  if (Number(currentUser?.id) !== expectedSellerId) throw new ProviderError('La credencial no pertenece al vendedor productivo autorizado.', 409, 'production_seller_mismatch')
+  const plan = await responseJson(await fetch(`${base}/preapproval_plan/${encodeURIComponent(input.externalPlanId)}`, { headers }), 'Mercado Pago')
+  const expectedApplicationId = Number(Deno.env.get('MERCADOPAGO_PRODUCTION_APPLICATION_ID'))
+  if (Number(plan?.collector_id) !== expectedSellerId || Number(plan?.application_id) !== expectedApplicationId || Number(plan?.auto_recurring?.transaction_amount) !== 30000 || String(plan?.auto_recurring?.currency_id || '').toUpperCase() !== 'ARS' || Number(plan?.auto_recurring?.frequency) !== 1 || String(plan?.auto_recurring?.frequency_type || '').toLowerCase() !== 'months') {
+    throw new ProviderError('El plan productivo no coincide con el contrato Starter autorizado.', 409, 'production_plan_mismatch')
+  }
+  const body = {
+    preapproval_plan_id: input.externalPlanId,
+    card_token_id: input.cardTokenId,
+    payer_email: input.payerEmail,
+    external_reference: input.externalReference,
+    back_url: input.backUrl,
+    status: 'authorized',
+  }
+  const response = await fetch(`${base}/preapproval`, { method: 'POST', headers, body: JSON.stringify(body) })
+  const result = await responseJson(response, 'Mercado Pago')
+  return { externalId: String(result.id || '') || null, checkoutUrl: result.init_point || null, kind: 'subscription' as const, status: String(result.status || 'authorized').toLowerCase() }
+}
+
 export async function syncMercadoPagoPlan(input: { name: string; description?: string | null; amount: number; currency: string; periodicity: string; externalReference: string; backUrl: string; idempotencyKey: string }) {
   await mercadoPagoSandboxIdentity()
   const token = mercadoPagoAccessToken()
@@ -141,8 +243,8 @@ export async function mercadoPagoPlanDetails(externalPlanId: string) {
 }
 
 /** Read-only identity check for the currently configured sandbox credential. */
-export async function mercadoPagoCurrentUser() {
-  const token = mercadoPagoAccessToken()
+export async function mercadoPagoCurrentUser(options: { allowProduction?: boolean } = {}) {
+  const token = configuredMercadoPagoAccessToken(options)
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const body = await responseJson(await fetch(`${base}/users/me`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
   return {
@@ -259,7 +361,7 @@ function hexToBytes(value: string) {
 }
 
 export async function verifyMercadoPago(payload: Record<string, unknown>, headers: Headers, dataIdFromUrl = '') {
-  await mercadoPagoSandboxIdentity()
+  await mercadoPagoWebhookIdentity()
   requireEnv('Mercado Pago', ['MERCADOPAGO_WEBHOOK_SECRET'])
   const signature = headers.get('x-signature') || ''
   const requestId = headers.get('x-request-id') || ''
@@ -275,8 +377,8 @@ export async function verifyMercadoPago(payload: Record<string, unknown>, header
 }
 
 export async function mercadoPagoResource(payload: Record<string, unknown>, dataIdFromUrl = '') {
-  await mercadoPagoSandboxIdentity()
-  const token = mercadoPagoAccessToken()
+  await mercadoPagoWebhookIdentity()
+  const token = configuredMercadoPagoAccessToken({ allowProduction: true })
   const id = String(dataIdFromUrl || (payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
   if (!id) throw new ProviderError('Evento Mercado Pago sin recurso.', 422, 'resource_id_missing')
   const event = String(payload.type || payload.topic || payload.action || '').toLowerCase()

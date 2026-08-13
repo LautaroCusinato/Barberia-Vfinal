@@ -107,9 +107,15 @@ Deno.serve(async (request) => {
       const verifiedPlanId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
       const expectedReference = String(checkoutAttempt?.metadata?.tenant_reference || checkoutAttempt?.metadata?.reference || '')
       const verifiedReference = String(verifiedResource?.external_reference || '')
-      const expectedApplicationId = Number(Deno.env.get('MERCADOPAGO_EXPECTED_APPLICATION_ID') || EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID) || null
+      const productionEnvironment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || 'sandbox').trim().toLowerCase() === 'production'
+      const expectedCollectorId = productionEnvironment
+        ? Number(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID')) || null
+        : EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
+      const expectedApplicationId = productionEnvironment
+        ? Number(Deno.env.get('MERCADOPAGO_PRODUCTION_APPLICATION_ID')) || null
+        : Number(Deno.env.get('MERCADOPAGO_EXPECTED_APPLICATION_ID') || EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID) || null
       const verifiedApplicationId = Number(verifiedResource?.application_id) || null
-      const identityMismatch = verifiedCollectorId !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
+      const identityMismatch = verifiedCollectorId !== expectedCollectorId
         || !expectedPlanId
         || verifiedPlanId !== expectedPlanId
         || Boolean(expectedReference && verifiedReference && verifiedReference !== expectedReference)

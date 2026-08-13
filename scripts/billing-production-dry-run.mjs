@@ -52,6 +52,9 @@ export function evaluateProductionDryRun(env = process.env) {
   const mpEnvironment = String(env.MERCADOPAGO_ENVIRONMENT || '').trim().toLowerCase()
   const pilotTenantId = safeInteger(env.BILLING_PRODUCTION_PILOT_TENANT_ID)
   const allowedTenantIds = String(env.BILLING_PRODUCTION_ALLOWED_TENANT_IDS || '').split(',').map((value) => value.trim()).filter(Boolean)
+  const productionSellerId = env.MERCADOPAGO_PRODUCTION_SELLER_ID
+  const productionApplicationId = env.MERCADOPAGO_PRODUCTION_APPLICATION_ID
+  const productionPlanId = env.MERCADOPAGO_PRODUCTION_PLAN_ID
 
   addCheck(checks, blockers, 'dry_run_requested', exactFlag(env, 'BILLING_DRY_RUN'), 'BILLING_DRY_RUN must equal 1')
   addCheck(checks, blockers, 'production_environment_explicit', environment === 'production', 'BILLING_ENVIRONMENT must equal production')
@@ -61,11 +64,17 @@ export function evaluateProductionDryRun(env = process.env) {
   addCheck(checks, blockers, 'mercadopago_environment_explicit', mpEnvironment === 'production', 'MERCADOPAGO_ENVIRONMENT must equal production')
   addCheck(checks, blockers, 'sandbox_not_reused', mpEnvironment !== 'sandbox', 'sandbox environment cannot be used for production')
   addCheck(checks, blockers, 'api_base_is_canonical', present(env.MERCADOPAGO_API_BASE_URL) && String(env.MERCADOPAGO_API_BASE_URL).replace(/\/$/, '') === 'https://api.mercadopago.com', 'Mercado Pago API host must be explicit and canonical')
+  addCheck(checks, blockers, 'official_card_token_flow', env.BILLING_PRODUCTION_CHECKOUT_MODE === 'card_token_id', 'production checkout must use the official card_token_id associated-plan flow')
+  addCheck(checks, blockers, 'public_key_configured', exactFlag(env, 'MERCADOPAGO_PUBLIC_KEY_CONFIGURED'), 'the frontend Public Key must be configured separately; never use an Access Token in the browser')
+  addCheck(checks, blockers, 'production_readiness_flag', env.BILLING_PRODUCTION_READINESS === 'ready', 'production readiness must be explicitly marked ready before activation')
+  addCheck(checks, blockers, 'explicit_checkout_confirmation', env.BILLING_PRODUCTION_CHECKOUT_CONFIRMATION === 'I_UNDERSTAND_REAL_CHARGES', 'production checkout requires an explicit human confirmation')
+  addCheck(checks, blockers, 'backup_for_checkout', exactFlag(env, 'BILLING_PRODUCTION_BACKUP_VERIFIED'), 'a recent backup/restore check is required before a productive checkout')
+  addCheck(checks, blockers, 'alerting_for_checkout', exactFlag(env, 'BILLING_PRODUCTION_ALERTING_VERIFIED'), 'billing alerting must be verified before a productive checkout')
 
   for (const name of REQUIRED_SECRET_NAMES) addCheck(checks, blockers, `secret:${name}`, present(env[name]), `${name} must exist only in server-side secrets`)
   addCheck(checks, blockers, 'token_identity_verified', exactFlag(env, 'MERCADOPAGO_TOKEN_IDENTITY_VERIFIED'), REQUIRED_READINESS_FLAGS.MERCADOPAGO_TOKEN_IDENTITY_VERIFIED)
-  addCheck(checks, blockers, 'seller_id_configured', safeInteger(env.MERCADOPAGO_EXPECTED_SELLER_ID) !== null, 'expected production seller ID is required')
-  addCheck(checks, blockers, 'application_id_configured', safeInteger(env.MERCADOPAGO_EXPECTED_APPLICATION_ID) !== null, 'expected production application ID is required')
+  addCheck(checks, blockers, 'seller_id_configured', safeInteger(productionSellerId) !== null, 'expected production seller ID is required')
+  addCheck(checks, blockers, 'application_id_configured', safeInteger(productionApplicationId) !== null, 'expected production application ID is required')
 
   addCheck(checks, blockers, 'single_pilot_tenant', allowedTenantIds.length === 1 && pilotTenantId !== null && allowedTenantIds[0] === String(pilotTenantId), 'exactly one production pilot tenant must be allow-listed')
   addCheck(checks, blockers, 'pilot_tenant_not_protected', pilotTenantId !== null && !PROTECTED_TENANTS.has(pilotTenantId), 'Central, Nueva and technical sandbox tenants are protected')
@@ -80,7 +89,7 @@ export function evaluateProductionDryRun(env = process.env) {
   addCheck(checks, blockers, 'plan_amount', Number.isFinite(Number(env.BILLING_PLAN_AMOUNT)) && Number(env.BILLING_PLAN_AMOUNT) > 0, 'plan amount must be positive and explicitly configured')
   addCheck(checks, blockers, 'plan_periodicity', ['monthly', 'yearly'].includes(String(env.BILLING_PLAN_PERIODICITY || '').trim()), 'plan periodicity must be monthly or yearly')
   addCheck(checks, blockers, 'trial_days', Number.isInteger(Number(env.BILLING_TRIAL_DAYS)) && Number(env.BILLING_TRIAL_DAYS) >= 0 && Number(env.BILLING_TRIAL_DAYS) <= 365, 'trial days must be an explicit integer from 0 to 365')
-  addCheck(checks, blockers, 'external_plan_id', /^[A-Za-z0-9_-]{8,120}$/.test(String(env.BILLING_EXTERNAL_PLAN_ID || '').trim()), 'external plan ID must be present and verified')
+  addCheck(checks, blockers, 'external_plan_id', /^[A-Za-z0-9_-]{8,120}$/.test(String(productionPlanId || '').trim()), 'external plan ID must be present and verified')
 
   addCheck(checks, blockers, 'webhook_url', String(env.BILLING_WEBHOOK_URL || '').replace(/\/$/, '') === PRODUCTION_WEBHOOK_URL, 'production webhook URL must match the production project')
   addCheck(checks, blockers, 'webhook_verified', exactFlag(env, 'BILLING_WEBHOOK_VERIFIED'), REQUIRED_READINESS_FLAGS.BILLING_WEBHOOK_VERIFIED)

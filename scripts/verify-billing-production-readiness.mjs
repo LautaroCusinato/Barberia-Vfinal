@@ -21,9 +21,16 @@ assert.match(billingPage, /role="status"/)
 assert.doesNotMatch(billingPage, /subscription.*active.*billing/i)
 
 const billingApi = read('supabase/functions/billing-api/index.ts')
+const cardForm = read('src/components/billing/MercadoPagoCardTokenForm.jsx')
 assert.match(billingApi, /facturacion\?billing=success/)
 assert.match(billingApi, /facturacion\?billing=cancel/)
 assert.doesNotMatch(billingApi, /billing=success[^\n]*(?:update|activate|transition)/i)
+assert.match(billingApi, /productionSubscription/)
+assert.match(billingApi, /card_token_id/)
+assert.match(billingApi, /activation: 'webhook_pending'/)
+assert.match(cardForm, /sdk\.mercadopago\.com\/js\/v2/)
+assert.match(cardForm, /getCardFormData/)
+assert.doesNotMatch(cardForm, /console\.(log|info|debug)/)
 
 const webhook = read('supabase/functions/billing-webhooks/index.ts')
 const providers = read('supabase/functions/_shared/providers.ts')
@@ -44,6 +51,7 @@ const rollout = read('docs/BILLING-PRODUCTION-ROLLOUT.md')
 for (const phrase of ['NO ACTIVAR', 'MERCADOPAGO_ENVIRONMENT=production', 'BILLING_PRODUCTION_ENABLED', 'No activar por URL de retorno']) {
   assert.match(rollout, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'))
 }
+assert.match(rollout, /PRODUCTION CHECKOUT IMPLEMENTED|Checkout productivo implementado/i)
 
 const readyCandidate = evaluateProductionDryRun({
   BILLING_DRY_RUN: '1',
@@ -52,11 +60,19 @@ const readyCandidate = evaluateProductionDryRun({
   BILLING_PRODUCTION_ENABLED: '0',
   MERCADOPAGO_ENVIRONMENT: 'production',
   MERCADOPAGO_API_BASE_URL: 'https://api.mercadopago.com',
+  BILLING_PRODUCTION_CHECKOUT_MODE: 'card_token_id',
+  MERCADOPAGO_PUBLIC_KEY_CONFIGURED: '1',
+  BILLING_PRODUCTION_READINESS: 'ready',
+  BILLING_PRODUCTION_CHECKOUT_CONFIRMATION: 'I_UNDERSTAND_REAL_CHARGES',
+  BILLING_PRODUCTION_BACKUP_VERIFIED: '1',
+  BILLING_PRODUCTION_ALERTING_VERIFIED: '1',
   MERCADOPAGO_ACCESS_TOKEN: 'opaque-server-secret',
   MERCADOPAGO_WEBHOOK_SECRET: 'opaque-webhook-secret',
   MERCADOPAGO_TOKEN_IDENTITY_VERIFIED: '1',
   MERCADOPAGO_EXPECTED_SELLER_ID: '123456789',
   MERCADOPAGO_EXPECTED_APPLICATION_ID: '987654321',
+  MERCADOPAGO_PRODUCTION_SELLER_ID: '123456789',
+  MERCADOPAGO_PRODUCTION_APPLICATION_ID: '987654321',
   BILLING_PRODUCTION_PILOT_TENANT_ID: '42',
   BILLING_PRODUCTION_ALLOWED_TENANT_IDS: '42',
   BILLING_PILOT_TENANT_VERIFIED: '1',
@@ -69,7 +85,7 @@ const readyCandidate = evaluateProductionDryRun({
   BILLING_PLAN_AMOUNT: '30000',
   BILLING_PLAN_PERIODICITY: 'monthly',
   BILLING_TRIAL_DAYS: '14',
-  BILLING_EXTERNAL_PLAN_ID: 'production-plan-1234',
+  MERCADOPAGO_PRODUCTION_PLAN_ID: 'production-plan-1234',
   BILLING_WEBHOOK_URL: `https://${PRODUCTION_PROJECT_REF}.supabase.co/functions/v1/billing-webhooks/mercadopago`,
   BILLING_WEBHOOK_VERIFIED: '1',
   BILLING_JOBS_CONFIGURED: '1',

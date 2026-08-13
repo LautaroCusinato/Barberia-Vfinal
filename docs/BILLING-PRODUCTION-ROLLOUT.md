@@ -10,7 +10,7 @@ Aplican Austral SaaS Architecture (tenant scoping, RLS/RPC, idempotencia, firma 
 
 ### Componentes
 
-- `billing-api`: autenticado con JWT, resuelve el tenant desde la sesión o desde un tenant técnico sandbox validado, consulta precios externos por proveedor/país/moneda/entorno, usa RPC transaccional para la intención y claves idempotentes del proveedor. `config-status`, checkout, status externo, sync y reconciliación están protegidos por roles.
+- `billing-api`: autenticado con JWT, resuelve el tenant desde la sesión o desde un tenant técnico sandbox validado, consulta precios externos por proveedor/país/moneda/entorno, usa RPC transaccional para la intención y claves idempotentes del proveedor. `config-status`, checkout, suscripción asociada, status externo, sync y reconciliación están protegidos por roles. La ruta productiva permanece cerrada por readiness y confirmación explícitas.
 - `billing-webhooks`: sólo POST, valida HMAC antes de persistir, vuelve a consultar el recurso al proveedor, guarda un payload mínimo, vincula por `external_reference`/plan verificado y registra duplicados sin repetir efectos.
 - `billing-jobs`: exige `BILLING_CRON_SECRET`, vence trials, procesa outbox y ejecuta reconciliación con transición de estado idempotente. Sin sink no marca eventos como publicados.
 - Pricing: `saas_plan_precios` ya separa `plan_codigo`, proveedor, país, moneda, periodicidad y `entorno`. No existe conversión automática.
@@ -27,9 +27,9 @@ El candidato comercial productivo preparado offline es `starter`, ARS 30.000 men
 
 ### Bloqueos encontrados
 
-1. Las Edge Functions actuales son deliberadamente sandbox-only: `MERCADOPAGO_ENVIRONMENT` distinto de `sandbox` se rechaza y la identidad permitida es el vendedor TEST. Esto es una protección correcta para esta etapa, pero significa que no se debe cambiar un secreto y esperar que producción funcione.
+1. El checkout hospedado y la sincronización existentes siguen siendo deliberadamente sandbox-only: `MERCADOPAGO_ENVIRONMENT` distinto de `sandbox` se rechaza en esas rutas y la identidad permitida es el vendedor TEST. La nueva ruta asociada productiva existe separada, pero sus guards exigen readiness completo; no se debe cambiar un secreto y esperar que producción funcione.
 2. `saas_proveedores_pago` tiene una fila por proveedor con un único `entorno`; cambiarla en producción reemplazaría el contexto sandbox. No se debe actualizar esa fila ni el precio id 1 durante este cierre.
-3. No existe aún una identidad productiva verificada (seller/application), un precio productivo separado, un tenant piloto autorizado ni un monitor de webhook productivo.
+3. No existe aún una identidad productiva verificada (seller/application), un precio productivo separado, un tenant piloto autorizado ni un monitor de webhook productivo. El endpoint de suscripción y el formulario oficial de tokenización ya están implementados offline, pero no son alcanzables mientras falte cualquiera de esos requisitos.
 4. La documentación vigente de Mercado Pago exige comprobar el canal de notificaciones para la aplicación productiva. El endpoint de suscripción asociado documenta `preapproval` con `card_token_id`, mientras que el flujo actual entrega el `init_point` hospedado del plan. No se debe declarar compatibilidad productiva hasta verificar que ese checkout emite `subscription_preapproval_plan`/`subscription_authorized_payment` al endpoint autorizado; si no, se debe adoptar el flujo `/preapproval` con tokenización de tarjeta en cliente.
 
 Conclusión: no se requiere una migración ni una escritura de datos para este dry-run. Una futura activación debe introducir una configuración por entorno (o una fila/configuración equivalente) antes de permitir simultáneamente sandbox y producción; no se debe reutilizar la fila sandbox.
@@ -45,7 +45,7 @@ Conclusión: no se requiere una migración ni una escritura de datos para este d
 | Precio | fila `saas_plan_precios` con `entorno=sandbox` | fila nueva con `entorno=production`, mismo plan interno y precio explícito |
 | Tenant | técnico sandbox id 6 | un único tenant dedicado, nunca 1, 5 ni 6 |
 | Proveedor | `activo=false` global; autorización aislada del tenant técnico | flag específico de entorno/piloto; nunca activación global |
-| Checkout | `sandbox_init_point` | `init_point` productivo después de confirmación explícita |
+| Checkout | `sandbox_init_point` | `/preapproval` con `card_token_id` y `status=authorized`, después de confirmación explícita |
 | Webhook | contrato existente en el endpoint productivo | secreto productivo separado y validación de la misma aplicación |
 
 El prefijo del token no decide el entorno. La identidad se valida contra `/users/me`, seller ID, application ID, plan, precio, proyecto y configuración explícita.
@@ -80,6 +80,12 @@ npm run billing:production:dry-run
 ```
 
 El resultado sólo informa booleanos de secretos, IDs no sensibles, checks y bloqueos. Valida seller/application, tenant único, plan/país/moneda/importes, webhook, jobs, alerting, backup y rollback. La activación debe seguir dando `production_enabled=false` durante esta etapa.
+
+## 4.1 Checkout productivo implementado, activación bloqueada
+
+La ruta `POST /billing-api/subscription` implementa el contrato oficial de plan asociado: acepta `plan_codigo=starter`, `card_token_id` y `Idempotency-Key`; resuelve tenant, email, precio ARS 30.000 mensual, `external_plan_id`, seller y application sólo desde backend; y llama a `/preapproval` con `status=authorized`. Persiste el intento y la suscripción externa como `pending` y espera un webhook `subscription_preapproval` validado para activar.
+
+El formulario se carga bajo demanda con Mercado Pago.js/Card Payment Brick. Sólo requiere la variable pública `VITE_MERCADOPAGO_PUBLIC_KEY`; PAN/CVV nunca se guardan ni llegan a la Edge Function. La ruta no puede ejecutarse mientras no estén completos `MERCADOPAGO_ENVIRONMENT=production`, `BILLING_PRODUCTION_ENABLED=1`, `BILLING_PRODUCTION_READINESS=ready`, la confirmación explícita, el seller/application, el plan, el tenant único, backup, alertas y webhook. Esta etapa deja `BILLING_PRODUCTION_ENABLED=0`.
 
 ## 5. Webhook productivo
 
@@ -120,6 +126,11 @@ La función desplegada todavía rechaza producción a propósito. No modificar s
 - [ ] `MERCADOPAGO_ACCESS_TOKEN` productivo guardado sólo en Edge Function Secrets.
 - [ ] `MERCADOPAGO_WEBHOOK_SECRET` productivo guardado sólo en Edge Function Secrets.
 - [ ] `MERCADOPAGO_EXPECTED_SELLER_ID` y `MERCADOPAGO_EXPECTED_APPLICATION_ID` configurados.
+- [ ] `MERCADOPAGO_PRODUCTION_SELLER_ID`, `MERCADOPAGO_PRODUCTION_APPLICATION_ID` y `MERCADOPAGO_PRODUCTION_PLAN_ID` configurados para la misma aplicación.
+- [ ] `MERCADOPAGO_PUBLIC_KEY_CONFIGURED=1` y `VITE_MERCADOPAGO_PUBLIC_KEY` configurada sólo en el frontend.
+- [ ] `BILLING_PRODUCTION_CHECKOUT_MODE=card_token_id`.
+- [ ] `BILLING_PRODUCTION_READINESS=ready`, `BILLING_PRODUCTION_BACKUP_VERIFIED=1` y `BILLING_PRODUCTION_ALERTING_VERIFIED=1`.
+- [ ] `BILLING_PRODUCTION_CHECKOUT_CONFIRMATION=I_UNDERSTAND_REAL_CHARGES` sólo inmediatamente antes de una autorización explícita.
 - [ ] `BILLING_PRODUCTION_ENABLED` sigue en `0` hasta la autorización final.
 - [ ] PayPal permanece deshabilitado.
 

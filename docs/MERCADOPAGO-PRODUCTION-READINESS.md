@@ -1,6 +1,8 @@
 # Mercado Pago production readiness
 
-Estado al 2026-08-13: **OFFLINE READY / NO ACTIVAR**.
+Estado al 2026-08-13: **PRODUCTION CHECKOUT IMPLEMENTED / ACTIVATION BLOCKED**.
+
+El endpoint de suscripción asociada y el formulario oficial de tokenización están implementados y cubiertos por mocks offline. La activación productiva, las credenciales, el plan externo y cualquier cobro siguen bloqueados por guards independientes.
 
 Esta revisión usa **Austral SaaS Architecture** para preservar tenant scoping, RLS/RPC, idempotencia, firma y rollback, y **Austral Design System** para que el retorno de checkout sea claro en desktop, mobile y app-switch sin cambiar el dominio de billing.
 
@@ -14,6 +16,8 @@ No se cargaron credenciales productivas, no se consultó Mercado Pago productivo
 | SECRETS PENDING | Sí | faltan token/secret seller y application productivos; no se almacenan en Git, frontend ni chat |
 | PRODUCTIVE PILOT PENDING | Sí | todavía no existe allowlist productiva de un único tenant autorizado |
 | REAL PAYMENT PENDING | Sí | no se generó checkout ni pago productivo |
+
+El estado operativo es **PRODUCTION CHECKOUT OFFLINE VALIDATED / SECRETS & PILOT PENDING**: el código está preparado, pero no se considera habilitable.
 
 ## Arquitectura confirmada
 
@@ -46,6 +50,14 @@ La decision es **Escenario B para produccion, Escenario A solo para sandbox**:
 - Produccion: no habilitar el `init_point` hasta confirmar el comportamiento en la aplicacion productiva. Si no esta soportado, el cambio minimo es tokenizar la tarjeta con el SDK oficial en el cliente y enviar unicamente el `card_token_id` efimero a una Edge Function que cree `/preapproval` con `status=authorized`. Nunca se aceptara numero de tarjeta, CVV o token desde URLs, logs o tablas.
 
 No se modifican ahora los contratos internos: checkout attempts, suscripciones externas, webhooks firmados, reconciliacion, idempotencia, estados ni la UX de retorno siguen siendo los mismos.
+
+### Flujo productivo implementado (aún bloqueado)
+
+- `POST /billing-api/subscription` acepta únicamente `plan_codigo=starter`, un `card_token_id` efímero y el header `Idempotency-Key`; no acepta tenant, importe ni moneda desde el navegador.
+- El tenant se resuelve desde el owner autenticado y una allowlist server-side de un solo piloto. La fila de `saas_plan_precios` productiva es la fuente de importe ARS 30.000 mensual; no hay conversión automática.
+- `mercadoPagoProductionSubscription` valida `/users/me`, seller, application, plan, importe, moneda y periodicidad antes de `POST /preapproval` con `preapproval_plan_id`, `card_token_id` y `status=authorized`.
+- La suscripción queda `pending` y la activación continúa dependiendo exclusivamente de un webhook `subscription_preapproval` reconsultado y firmado. URL de retorno, pagos y respuestas del navegador no cambian estados.
+- El formulario lazy usa Mercado Pago.js/Card Payment Brick; PAN y CVV permanecen en los campos administrados por el SDK y nunca entran en React state, logs, Supabase o el request de Austral. La variable pública futura es `VITE_MERCADOPAGO_PUBLIC_KEY`; nunca se usa un Access Token en frontend. Referencias: [token de tarjeta](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/additional-content/cardtoken), [Card Payment Brick](https://www.mercadopago.com.ar/developers/es/docs/checkout-bricks/card-payment-brick/introduction), [credenciales](https://www.mercadopago.com.ar/developers/es/docs/credentials).
 
 ### Enrutamiento de eventos y activacion
 
@@ -132,11 +144,13 @@ Sólo cuando exista autorización separada deberán configurarse en Supabase Edg
 - `BILLING_CRON_SECRET` para `billing-jobs`;
 - `BILLING_OUTBOX_SINK_SECRET` sólo si se habilita un sink privado de outbox.
 
+La Public Key no es un secreto de servidor y sólo debe configurarse en el proyecto frontend como `VITE_MERCADOPAGO_PUBLIC_KEY`. El backend valida únicamente el booleano de readiness `MERCADOPAGO_PUBLIC_KEY_CONFIGURED=1`; nunca recibe ni imprime la clave dentro de un log sensible.
+
 Los valores no deben enviarse por chat, commit, documentación, `VITE_*` ni bundle del navegador.
 
 ## Dry-run y guards
 
-`npm run billing:production:dry-run` es offline: no llama a Mercado Pago, no crea checkout y no muta Supabase. Exige entorno y project ref productivos explícitos, `BILLING_PRODUCTION_ENABLED=0`, seller/application verificados, un único piloto, plan/precio/webhook/jobs/alerting/backup/rollback listos, PayPal deshabilitado y proveedor global apagado. Con configuración vacía queda bloqueado, como corresponde.
+`npm run billing:production:dry-run` es offline: no llama a Mercado Pago, no crea checkout y no muta Supabase. Exige entorno y project ref productivos explícitos, `BILLING_PRODUCTION_ENABLED=0`, `BILLING_PRODUCTION_CHECKOUT_MODE=card_token_id`, Public Key declarada, readiness/confirmación explícitas, seller/application verificados, un único piloto, plan/precio/webhook/jobs/alerting/backup/rollback listos, PayPal deshabilitado y proveedor global apagado. Con configuración vacía queda bloqueado, como corresponde.
 
 `npm run billing:production:self-test` cubre ref QA rechazado, sandbox rechazado, activación, tenants protegidos, múltiples pilotos, PayPal y webhook incorrecto.
 

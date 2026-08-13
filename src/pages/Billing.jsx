@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, CreditCard, ExternalLink, LoaderCircle, ShieldCheck } from 'lucide-react'
 import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabaseClient'
 import { classifyBillingFailure } from '../lib/runtimeStability.js'
 import { getBillingReturnState } from '../lib/billingReturnState.js'
+
+const MercadoPagoCardTokenForm = lazy(() => import('../components/billing/MercadoPagoCardTokenForm.jsx'))
 
 const STATUS_LABELS = {
   trialing: 'Prueba gratuita',
@@ -50,7 +52,7 @@ async function billingApi(path, options = {}) {
   if (!session?.access_token) throw new Error('Tu sesión expiró. Volvé a iniciar sesión.')
   const response = await fetch(`${supabaseUrl}/functions/v1/billing-api/${path}`, {
     method: options.method || 'GET',
-    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
     body: options.body ? JSON.stringify(options.body) : undefined,
   })
   const payload = await response.json().catch(() => ({}))
@@ -72,6 +74,8 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [subscriptionMissing, setSubscriptionMissing] = useState(false)
+  const [cardPlanCode, setCardPlanCode] = useState(null)
+  const productionAttemptKey = useRef(null)
   const [returnState] = useState(() => getBillingReturnState())
 
   const load = useCallback(async () => {
@@ -110,6 +114,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const providers = useMemo(() => portal?.providers || [], [portal])
   const displayProviders = providers.length ? providers : (subscriptionMissing ? [{ codigo: provider, nombre: PROVIDER_LABELS[provider] || provider, activo: false, unavailable: true }] : [])
   const selectedProvider = displayProviders.find((item) => item.codigo === provider)
+  const productionCheckoutReady = selectedProvider?.codigo === 'mercadopago' && selectedProvider?.entorno === 'production' && portal?.production_checkout_ready === true
   const tenantCountry = normalizeCountryCode(portal?.tenant?.pais)
   const findExternalPrice = (item) => {
     const prices = (item?.precios_externos || []).filter((price) => price.proveedor_codigo === provider && price.activo !== false && price.habilitado !== false && (!selectedProvider?.entorno || price.entorno === selectedProvider.entorno))
@@ -142,6 +147,24 @@ export default function Billing({ barberiaId: _barberiaId }) {
         : 'No se pudo iniciar el checkout. No se generó ningún cobro.')
     }
     setSaving(false)
+  }
+
+  const submitProductionSubscription = async (planCode, cardTokenId) => {
+    if (!cardTokenId || !portal?.production_checkout_ready) return
+    productionAttemptKey.current ||= `ui-${crypto.randomUUID()}`
+    setSaving(true)
+    setError('')
+    setNotice('Verificando la suscripción con Mercado Pago…')
+    try {
+      const data = await billingApi('subscription', { method: 'POST', headers: { 'Idempotency-Key': productionAttemptKey.current }, body: { plan_codigo: planCode, card_token_id: cardTokenId } })
+      setNotice(data?.status === 'verifying' ? 'Tarjeta recibida. La activación queda pendiente de verificación del webhook.' : 'Solicitud recibida. La activación se confirmará por webhook.')
+    } catch (apiError) {
+      const failure = classifyBillingFailure(apiError)
+      setError(failure.kind === 'subscription_missing' ? 'La cuenta todavía no tiene una suscripción habilitada.' : 'No se pudo procesar la tarjeta. No se activó ningún plan.')
+      setNotice('')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (!isSupabaseConfigured) return <div className="panel billing-empty"><CreditCard size={18} /><p>Conectá Supabase para consultar el estado de facturación.</p></div>
@@ -199,7 +222,8 @@ export default function Billing({ barberiaId: _barberiaId }) {
             <p className="billing-plan-description">{item.descripcion}</p>
             <p className="billing-plan-price">{displayPrice} <small>{priceMeta}</small></p>
             <ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul>
-            <button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice || providerUnavailable} onClick={() => startCheckout(item.codigo)}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'Proveedor no habilitado' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
+            <button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice || providerUnavailable} onClick={() => { if (productionCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'Proveedor no habilitado' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
+            {productionCheckoutReady && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitProductionSubscription(item.codigo, token)} /></Suspense>}
           </article>
         })}</div>
       </section>
