@@ -79,6 +79,7 @@ export function generarIdHabilidad(nombre = '') {
 
 export function parseHabilidades(habilidadesStr) {
   if (!habilidadesStr) return []
+  if (Array.isArray(habilidadesStr)) return habilidadesStr
   try {
     return JSON.parse(habilidadesStr)
   } catch {
@@ -97,6 +98,31 @@ export function barberoHaceServicio(barbero, servicio) {
   const habilidades = parseHabilidades(barbero?.habilidades)
   if (habilidades.length === 0) return true
   return habilidades.includes(generarIdHabilidad(servicio.nombre))
+}
+
+// La relación relacional es la fuente de verdad cuando el panel la cargó.
+// El fallback JSON sólo se conserva para el modo demo/local y para datos
+// antiguos que todavía no tienen la metadata relacional disponible.
+export function barberoRealizaServicio(barbero, servicio) {
+  if (!barbero || !servicio) return false
+  if (barbero.serviciosCargados) {
+    return (barbero.servicios || []).some((relacion) => String(relacion.servicio_id ?? relacion.id) === String(servicio.id))
+  }
+  return barberoHaceServicio(barbero, servicio)
+}
+
+export function duracionServicioBarbero(barbero, servicio, fallback = 30) {
+  if (!servicio) return Number(fallback) || 30
+  const relacion = (barbero?.servicios || []).find((item) => String(item.servicio_id ?? item.id) === String(servicio.id))
+  return Number(relacion?.duracion_min ?? servicio.duracion_min ?? servicio.duracion ?? fallback) || Number(fallback) || 30
+}
+
+export function turnosSeSuperponen(aInicio, aDuracion, bInicio, bDuracion) {
+  const aStart = horaEnMinutos(aInicio)
+  const bStart = horaEnMinutos(bInicio)
+  const aLength = Math.max(0, Number(aDuracion) || 0)
+  const bLength = Math.max(0, Number(bDuracion) || 0)
+  return aStart < bStart + bLength && bStart < aStart + aLength
 }
 
 // Convierte el formato que ya usa el panel (por ejemplo: "Lun, Mar y Vie
@@ -125,8 +151,92 @@ export function parseHorarioTexto(horario = '') {
 export function barberoBloqueadoFecha(bloqueos, barberoId, fecha) {
   if (!bloqueos?.length || !fecha) return false
   return bloqueos.some(
-    (b) => b.fecha === fecha && (b.barbero_id == null || String(b.barbero_id) === String(barberoId))
+    (b) => b.fecha === fecha
+      && (b.barbero_id == null || String(b.barbero_id) === String(barberoId))
+      && horaEnMinutos(b.start_time || '00:00') <= 0
+      && horaEnMinutos(b.end_time || '23:59') >= 23 * 60 + 59
   )
+}
+
+function diaDeFecha(fecha) {
+  const [y, m, d] = String(fecha || '').split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+}
+
+function horaEnMinutos(value) {
+  const [h, m] = String(value || '00:00').slice(0, 5).split(':').map(Number)
+  return (Number(h) || 0) * 60 + (Number(m) || 0)
+}
+
+function ahoraEnZona(timezone) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone || 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())
+  return Number(parts.find((part) => part.type === 'hour')?.value || 0) * 60 + Number(parts.find((part) => part.type === 'minute')?.value || 0)
+}
+
+function fechaEnZona(timezone) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone || 'America/Argentina/Buenos_Aires' }).format(new Date())
+}
+
+function agendaDelDia(barbero, fecha) {
+  const dow = diaDeFecha(fecha)
+  if (dow == null) return { trabajo: [], cargada: false }
+
+  if (barbero?.agendaCargada) {
+    return {
+      trabajo: (barbero.agenda || [])
+        .filter((franja) => franja.activo !== false && Number(franja.day_of_week) === dow)
+        .map((franja) => ({ ini: horaEnMinutos(franja.start_time), fin: horaEnMinutos(franja.end_time) }))
+        .filter((franja) => franja.fin > franja.ini),
+      cargada: true,
+    }
+  }
+
+  const mapa = parseHorarioBarbero(barbero?.horario)
+  const bloques = mapa?.[dow] || []
+  const pausas = bloques.filter((franja) => franja.break)
+  const trabajo = []
+  for (const franja of bloques.filter((item) => !item.break)) {
+    let cursor = franja.ini
+    for (const pausa of pausas.sort((a, b) => a.ini - b.ini)) {
+      if (pausa.fin <= cursor || pausa.ini >= franja.fin) continue
+      if (cursor < pausa.ini) trabajo.push({ ini: cursor, fin: Math.min(pausa.ini, franja.fin) })
+      cursor = Math.max(cursor, pausa.fin)
+    }
+    if (cursor < franja.fin) trabajo.push({ ini: cursor, fin: franja.fin })
+  }
+  return { trabajo, cargada: false }
+}
+
+export function barberoTrabajaFecha(barbero, fecha) {
+  return agendaDelDia(barbero, fecha).trabajo.length > 0
+}
+
+function bloqueaHorario(bloqueos, barberoId, fecha, inicio, fin) {
+  return (bloqueos || []).some((bloqueo) => {
+    if (bloqueo.fecha !== fecha) return false
+    if (bloqueo.barbero_id != null && String(bloqueo.barbero_id) !== String(barberoId)) return false
+    return inicio < horaEnMinutos(bloqueo.end_time || '23:59') && fin > horaEnMinutos(bloqueo.start_time || '00:00')
+  })
+}
+
+// Cálculo compartido por el modal interno. La confirmación final sigue
+// ocurriendo en el trigger/RPC de PostgreSQL; esta función sólo evita ofrecer
+// opciones que ya sabemos que son imposibles.
+export function generarSlotsDisponibles(barbero, fecha, duracionMin = 30, bloqueos = [], step = 15, timezone = 'America/Argentina/Buenos_Aires', ignorePast = false) {
+  if (!barbero || !fecha) return []
+  const { trabajo } = agendaDelDia(barbero, fecha)
+  const duracion = Math.max(1, Number(duracionMin) || 30)
+  const slots = []
+  for (const franja of trabajo) {
+    for (let inicio = franja.ini; inicio + duracion <= franja.fin; inicio += step) {
+      if (!ignorePast && fecha === fechaEnZona(timezone) && inicio < ahoraEnZona(timezone)) continue
+      if (!bloqueaHorario(bloqueos, barbero.id, fecha, inicio, inicio + duracion)) {
+        slots.push(`${String(Math.floor(inicio / 60)).padStart(2, '0')}:${String(inicio % 60).padStart(2, '0')}`)
+      }
+    }
+  }
+  return [...new Set(slots)].sort()
 }
 
 // ===== PARSEO DE HORARIOS =====
@@ -207,30 +317,23 @@ export function parseHorarioBarbero(horario = '') {
 }
 
 // ===== DISPONIBILIDAD ESTRICTA =====
-export function barberoDisponible(barbero, fecha, hora, duracionMin = 0) {
+export function barberoDisponible(barbero, fecha, hora, duracionMin = 0, bloqueos = [], timezone = 'America/Argentina/Buenos_Aires', ignorePast = false) {
   if (!barbero) return false
   if (!fecha || !hora) return false
 
-  const mapa = parseHorarioBarbero(barbero?.horario)
-  if (!mapa) return false
-
-  const [y, m, d] = fecha.split('-').map(Number)
   const [hh, mm] = hora.split(':').map(Number)
-  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-  const bloques = mapa[dow]
-  if (!bloques) return false
+  const { trabajo } = agendaDelDia(barbero, fecha)
+  if (!trabajo.length) return false
 
   const minutos = hh * 60 + mm
+  if (!ignorePast && fecha === fechaEnZona(timezone) && minutos < ahoraEnZona(timezone)) return false
 
   const duracion = Math.max(0, Number(duracionMin) || 0)
   const fin = minutos + duracion
-  const trabajo = bloques.filter((b) => !b.break)
-  const pausas = bloques.filter((b) => b.break)
-
   // El turno debe entrar completo en una franja de trabajo y no puede
   // atravesar una pausa, incluso aunque el inicio sea válido.
   if (!trabajo.some((b) => minutos >= b.ini && fin <= b.fin)) return false
-  return !pausas.some((b) => minutos < b.fin && fin > b.ini)
+  return !bloqueaHorario(bloqueos, barbero.id, fecha, minutos, fin)
 }
 
 export function generarSlots(iniMin, finMin, step = 15) {

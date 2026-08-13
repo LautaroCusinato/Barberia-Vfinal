@@ -5,6 +5,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Info, CalendarCheck, MessageCircle, Plus, Bot, Download, AlertTriangle, X } from 'lucide-react'
 import NewTurnoModal from './components/NewTurnoModal'
+import { statusMeta } from './components/StatusSelect'
 import CobroModal from './components/CobroModal'
 import { logout } from './lib/auth.js'
 import { exportarCSV } from './lib/csv'
@@ -23,7 +24,7 @@ import Billing from './pages/Billing.jsx'
 import TenantSettings from './components/TenantSettings.jsx'
 import WorkspacePreparing from './components/WorkspacePreparing.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
-import { generarIdHabilidad, parseHabilidades, parseHorarioTexto, soloDigitos } from './lib/text'
+import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, parseHabilidades, parseHorarioTexto, soloDigitos } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
 import { clearWorkspaceTransition } from './lib/workspaceTransition.js'
 import {
@@ -48,16 +49,24 @@ function servicioFromDb(row) {
   return { ...row, duracion: row.duracion_min }
 }
 
-function barberoFromDb(row) {
-  return { ...row, horario: row.horario_texto, rol: row.especialidad }
+function barberoFromDb(row, servicios = [], agenda = [], serviciosCargados = true, agendaCargada = true) {
+  return {
+    ...row,
+    horario: row.horario_texto,
+    rol: row.especialidad,
+    servicios,
+    serviciosCargados,
+    agenda,
+    agendaCargada,
+  }
 }
 
 function turnoFromDb(row) {
   return { ...row, duracion: row.duracion_min }
 }
 
-function todayInClinicTZ() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date())
+function todayInClinicTZ(timezone = TZ) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone || TZ }).format(new Date())
 }
 
 function initialTheme(tenantId) {
@@ -92,6 +101,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const [notasFiltro, setNotasFiltro] = useState('')
   const [botActivo, setBotActivo] = useState(true)
   const [horariosDefault, setHorariosDefault] = useState({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] })
+  const [zonaHoraria, setZonaHoraria] = useState(TZ)
   const [dbError, setDbError] = useState('')
   const barberoWritesRef = useRef({})
 
@@ -102,7 +112,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     setDbError(mensaje)
   }
 
-  const todayKey = todayInClinicTZ()
+  const todayKey = todayInClinicTZ(zonaHoraria)
 
   useEffect(() => {
     setTheme(initialTheme(barberiaId))
@@ -154,6 +164,14 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       setTurnos((data ?? []).map(turnoFromDb))
     }
 
+    async function cargarBarberia() {
+      const { data, error } = await supabase
+        .from('barberias').select('zona_horaria').eq('id', barberiaId).maybeSingle()
+      if (cancelado) return
+      if (error) reportError('No se pudo cargar la zona horaria del negocio', error)
+      if (data?.zona_horaria) setZonaHoraria(data.zona_horaria)
+    }
+
     async function cargarClientes() {
       const { data, error } = await supabase.from('clientes').select('*').eq('barberia_id', barberiaId)
       if (cancelado) return []
@@ -189,7 +207,34 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       // parsea acá Y en parseHabilidades, el segundo parseo se rompe
       // (JSON.parse de un array ya parseado tira error) y todas las
       // habilidades quedan "vacías" apenas se recarga la lista.
-      if (data) setBarberos(data.map(barberoFromDb))
+      if (!data) return
+
+      const ids = data.map((barbero) => barbero.id)
+      if (!ids.length) {
+        setBarberos([])
+        return
+      }
+
+      const [serviciosResult, agendaResult] = await Promise.all([
+        supabase.from('barbero_servicios').select('barbero_id, servicio_id, duracion_min').in('barbero_id', ids),
+        supabase.from('horarios_barbero').select('barbero_id, day_of_week, start_time, end_time, activo').eq('barberia_id', barberiaId).in('barbero_id', ids),
+      ])
+      if (cancelado) return
+      if (serviciosResult.error) reportError('No se pudieron cargar los servicios del equipo', serviciosResult.error)
+      if (agendaResult.error) reportError('No se pudieron cargar los horarios del equipo', agendaResult.error)
+      const serviciosCargados = !serviciosResult.error
+      const agendaCargada = !agendaResult.error
+
+      const servicesByBarbero = (serviciosResult.data ?? []).reduce((acc, item) => { (acc[String(item.barbero_id)] ||= []).push(item); return acc }, {})
+      const agendaByBarbero = (agendaResult.data ?? []).reduce((acc, item) => { (acc[String(item.barbero_id)] ||= []).push(item); return acc }, {})
+
+      setBarberos(data.map((barbero) => barberoFromDb(
+        barbero,
+        servicesByBarbero[String(barbero.id)] ?? [],
+        agendaByBarbero[String(barbero.id)] ?? [],
+        serviciosCargados,
+        agendaCargada,
+      )))
     }
 
     async function cargarConfig() {
@@ -294,6 +339,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       cargarPagos()
       const secondaryPromise = Promise.all([cargarNotas(), mensajesPromise])
       await Promise.all([
+        cargarBarberia(),
         clientesPromise,
         cargarTurnos(),
         cargarServicios(),
@@ -495,6 +541,28 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   }
 
   const saveTurno = async ({ paciente, telefono, clienteId, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }, existingId) => {
+    const servicio = servicios.find((item) => String(item.id) === String(servicio_id))
+    const barbero = barberos.find((item) => String(item.id) === String(barbero_id))
+    const duracionReal = duracionServicioBarbero(barbero, servicio, duracion)
+    if (!servicio || !barbero || !barbero.activo || !barberoRealizaServicio(barbero, servicio)) {
+      setDbError('El profesional seleccionado ya no realiza ese servicio. Elegí otro profesional.')
+      return false
+    }
+    const horaMinutos = (value) => {
+      const [hours, minutes] = String(value || '').slice(0, 5).split(':').map(Number)
+      return (Number(hours) || 0) * 60 + (Number(minutes) || 0)
+    }
+    const superpuesto = turnos.some((turno) => {
+      if (turno.id === existingId || turno.fecha !== fecha || String(turno.barbero_id) !== String(barbero_id)) return false
+      if (['cancelado', 'no_asistio'].includes(statusMeta(turno.estado).value)) return false
+      const start = horaMinutos(hora)
+      const otherStart = horaMinutos(turno.hora)
+      return start < otherStart + Number(turno.duracion || turno.duracion_min || 30) && otherStart < start + duracionReal
+    })
+    if (superpuesto) {
+      setDbError('Ese horario acaba de ocuparse. Elegí otro horario.')
+      return false
+    }
     // Resolvemos el cliente ANTES de tocar el turno: si no vino ya elegido
     // pero hay teléfono, buscamos por teléfono (así no se duplica un
     // cliente que ya existe con otro formato de nombre) y si no existe,
@@ -524,7 +592,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       }
     }
 
-    const payload = { paciente, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion, clienteId: finalClienteId }
+    const payload = { paciente, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion: duracionReal, clienteId: finalClienteId }
     const dbPayload = {
       paciente,
       fecha,
@@ -534,7 +602,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       servicio_id,
       barbero_id,
       precio,
-      duracion_min: duracion,
+      duracion_min: duracionReal,
       cliente_id: finalClienteId,
       telefono: telefono ? soloDigitos(telefono) : null,
     }
@@ -546,24 +614,39 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
         const { error } = await supabase.from('turnos').update(dbPayload).eq('id', existingId)
         if (error) {
           if (turnoAnterior) setTurnos((prev) => prev.map((t) => (t.id === existingId ? turnoAnterior : t)))
-          reportError('No se pudo guardar el turno', error)
+          const message = String(error?.message || '').toLowerCase()
+          if (error.code === '23P01' || /exclusion|solap|ocup/.test(message)) setDbError('Ese horario acaba de ocuparse. Elegí otro horario.')
+          else if (/servicio|profesional/.test(message)) setDbError('El profesional seleccionado ya no realiza ese servicio.')
+          else if (/horario|jornada|trabaja/.test(message)) setDbError('El horario está fuera de la jornada laboral o atraviesa un descanso.')
+          else if (/bloque/.test(message)) setDbError('Ese horario está bloqueado. Elegí otro horario.')
+          else reportError('No se pudo guardar el turno', error)
+          return false
         }
       }
-      return
+      return true
     }
 
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.from('turnos').insert({ ...dbPayload, barberia_id: barberiaId }).select()
-      if (error) { reportError('No se pudo crear el turno', error); return }
+      if (error) {
+        const message = String(error?.message || '').toLowerCase()
+        if (error.code === '23P01' || /exclusion|solap|ocup/.test(message)) setDbError('Ese horario acaba de ocuparse. Elegí otro horario.')
+        else if (/servicio|profesional/.test(message)) setDbError('El profesional seleccionado ya no realiza ese servicio.')
+        else if (/horario|jornada|trabaja/.test(message)) setDbError('El horario está fuera de la jornada laboral o atraviesa un descanso.')
+        else if (/bloque/.test(message)) setDbError('Ese horario está bloqueado. Elegí otro horario.')
+        else reportError('No se pudo crear el turno', error)
+        return false
+      }
       if (data?.[0]) setTurnos((prev) => [...prev, turnoFromDb(data[0])])
     } else {
       setTurnos((prev) => [...prev, { id: nextLocalId(prev), ...payload, cliente_id: finalClienteId, origen: existingId ? undefined : 'panel' }])
     }
+    return true
   }
 
-  const openNewTurno = () => { setEditingTurno(null); setTurnoFechaPrefijada(null); setNewTurnoOpen(true) }
-  const openNewTurnoConFecha = (fecha) => { setEditingTurno(null); setTurnoFechaPrefijada(fecha); setNewTurnoOpen(true) }
-  const openEditTurno = (turno) => { setEditingTurno(turno); setTurnoFechaPrefijada(null); setNewTurnoOpen(true) }
+  const openNewTurno = () => { setDbError(''); setEditingTurno(null); setTurnoFechaPrefijada(null); setNewTurnoOpen(true) }
+  const openNewTurnoConFecha = (fecha) => { setDbError(''); setEditingTurno(null); setTurnoFechaPrefijada(fecha); setNewTurnoOpen(true) }
+  const openEditTurno = (turno) => { setDbError(''); setEditingTurno(turno); setTurnoFechaPrefijada(null); setNewTurnoOpen(true) }
   const closeTurnoModal = () => { setNewTurnoOpen(false); setEditingTurno(null); setTurnoFechaPrefijada(null) }
 
   const addPaciente = async (datos) => {
@@ -813,7 +896,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
           const { error: serviciosError } = await supabase.from('barbero_servicios').insert(relaciones)
           if (serviciosError) reportError('El barbero fue creado, pero no se pudieron guardar sus servicios', serviciosError)
         }
-        setBarberos((prev) => [...prev, barberoFromDb(nuevoBarbero)])
+        setBarberos((prev) => [...prev, barberoFromDb(nuevoBarbero, relaciones, horariosIniciales)])
       }
     } else {
       setBarberos((prev) => [...prev, { id: nextLocalId(prev), ...base }])
@@ -861,6 +944,11 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
               .insert(permitidos.map((s) => ({ barbero_id: id, servicio_id: s.id })))
             if (insertError) reportError('No se pudieron actualizar los servicios del barbero', insertError)
           }
+          setBarberos((prev) => prev.map((barbero) => (
+            barbero.id === id
+              ? { ...barbero, servicios: permitidos.map((servicio) => ({ barbero_id: id, servicio_id: servicio.id })), serviciosCargados: true }
+              : barbero
+          )))
         }
         if (!error && field === 'horario') {
           const franjas = parseHorarioTexto(valorAGuardar)
@@ -874,6 +962,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
                 franjas.map((franja) => ({ ...franja, barberia_id: barberiaId, barbero_id: id, activo: true }))
               )
               if (crearError) reportError('No se pudo actualizar la agenda del barbero', crearError)
+              else setBarberos((prev) => prev.map((barbero) => (
+                barbero.id === id ? { ...barbero, agenda: franjas.map((franja) => ({ ...franja, barbero_id: id, activo: true })), agendaCargada: true } : barbero
+              )))
             }
           }
         }
@@ -1231,6 +1322,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
         barberos={barberos}
         clientes={pacientes}
         bloqueos={bloqueos}
+        zonaHoraria={zonaHoraria}
+        errorMessage={dbError}
       />
 
       <CobroModal

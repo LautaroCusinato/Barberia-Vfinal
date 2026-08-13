@@ -7,11 +7,12 @@ import {
   PREFIJO_AR,
   soloDigitos,
   normalizar,
-  parseHorarioBarbero,
   barberoDisponible,
-  barberoHaceServicio,
+  barberoRealizaServicio,
+  duracionServicioBarbero,
   barberoBloqueadoFecha,
-  generarSlots,
+  generarSlotsDisponibles,
+  turnosSeSuperponen,
 } from '../lib/text'
 
 const ESTADOS_MODAL = ['confirmado', 'atendido']
@@ -20,12 +21,6 @@ const DEFAULT_DURACION = 30
 function toMinutes(hora = '00:00') {
   const [h, m] = hora.split(':').map(Number)
   return (h || 0) * 60 + (m || 0)
-}
-
-function seSuperponen(aInicio, aDuracion, bInicio, bDuracion) {
-  const aStart = toMinutes(aInicio)
-  const bStart = toMinutes(bInicio)
-  return aStart < bStart + bDuracion && bStart < aStart + aDuracion
 }
 
 // Saca una fecha (string YYYY-MM-DD) y devuelve el día de la semana en
@@ -50,6 +45,8 @@ export default function NewTurnoModal({
   barberos = [],
   clientes = [],
   bloqueos = [],
+  zonaHoraria = 'America/Argentina/Buenos_Aires',
+  errorMessage = '',
 }) {
   const esEdicion = Boolean(turnoExistente)
 
@@ -121,13 +118,16 @@ export default function NewTurnoModal({
   }, [open, defaultDate, turnoExistente, servicios, barberos, clientes])
 
   const servicioSeleccionado = servicios.find((s) => String(s.id) === String(servicioId))
-  const duracion = servicioSeleccionado?.duracion || turnoExistente?.duracion || DEFAULT_DURACION
+  const barberoParaServicio = barberos.find((b) => String(b.id) === String(barberoId))
+  const duracion = barberoParaServicio && servicioSeleccionado
+    ? duracionServicioBarbero(barberoParaServicio, servicioSeleccionado, turnoExistente?.duracion || DEFAULT_DURACION)
+    : servicioSeleccionado?.duracion || turnoExistente?.duracion || DEFAULT_DURACION
   const precio = servicioSeleccionado?.precio || turnoExistente?.precio || 0
   // Solo dejamos elegir barberos que sepan hacer el servicio seleccionado
   // (los que no tienen ninguna habilidad cargada cuentan como "hacen todo")
   // Y que no tengan un día libre/bloqueo cargado para la fecha elegida.
   const barberosDisponibles = barberos.filter(
-    (b) => barberoHaceServicio(b, servicioSeleccionado) && !barberoBloqueadoFecha(bloqueos, b.id, fecha)
+    (b) => b.activo !== false && barberoRealizaServicio(b, servicioSeleccionado) && !barberoBloqueadoFecha(bloqueos, b.id, fecha)
   )
   const barberoSeleccionado = barberos.find((b) => String(b.id) === String(barberoId))
   // Si cambiás el servicio o la fecha y el barbero que tenías elegido ya no
@@ -148,30 +148,10 @@ export default function NewTurnoModal({
   // hasta que termina, según la duración del servicio elegido) entra
   // antes del cierre y no pisa el horario de break — no alcanza con que
   // el horario de inicio caiga adentro.
-  const slotsDelBarbero = useMemo(() => {
-    const mapa = parseHorarioBarbero(barberoSeleccionado?.horario)
-    if (!mapa) {
-      return { slots: generarSlots(9 * 60, 20 * 60, 15), source: 'default' }
-    }
-    if (!fecha) return { slots: [], source: 'mapa' }
-    const [y, m, d] = fecha.split('-').map(Number)
-    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-    const bloques = mapa[dow] || []
-    const trabajo = bloques.filter((b) => !b.break)
-    const breaks = bloques.filter((b) => b.break)
-    const all = []
-    for (const b of trabajo) {
-      for (const slot of generarSlots(b.ini, b.fin, 15)) {
-        const [hh, mm] = slot.split(':').map(Number)
-        const inicio = hh * 60 + mm
-        const fin = inicio + (Number(duracion) || 0)
-        if (fin > b.fin) continue // no entra completo antes del cierre de este bloque
-        const pisaBreak = breaks.some((br) => inicio < br.fin && fin > br.ini)
-        if (!pisaBreak) all.push(slot)
-      }
-    }
-    return { slots: all, source: 'mapa' }
-  }, [barberoSeleccionado, fecha, duracion])
+  const slotsDelBarbero = useMemo(() => ({
+    slots: generarSlotsDisponibles(barberoSeleccionado, fecha, duracion, bloqueos, 15, zonaHoraria),
+    source: barberoSeleccionado?.agendaCargada ? 'agenda' : 'legacy',
+  }), [barberoSeleccionado, fecha, duracion, bloqueos, zonaHoraria])
 
   // Si cambia barbero o fecha, y la hora previamente elegida no entra
   // en la grilla nueva (ej: Mauro trabaja 10-19, Tomas 9-17, y el
@@ -205,7 +185,7 @@ export default function NewTurnoModal({
         t.fecha === fecha &&
         String(t.barbero_id) === String(barberoId) &&
         t.id !== turnoExistente?.id &&
-        statusMeta(t.estado).value !== 'no_asistio'
+        !['no_asistio', 'cancelado'].includes(statusMeta(t.estado).value)
     )
   }, [turnosExistentes, fecha, barberoId, turnoExistente])
 
@@ -222,7 +202,7 @@ export default function NewTurnoModal({
   if (!open) return null
 
   function slotOcupado(slot) {
-    return turnosDelBarberoEnFecha.some((t) => seSuperponen(slot, duracion, t.hora, t.duracion || DEFAULT_DURACION))
+    return turnosDelBarberoEnFecha.some((t) => turnosSeSuperponen(slot, duracion, t.hora, t.duracion || DEFAULT_DURACION))
   }
 
   // El cliente final que se va a guardar como "paciente" del turno
@@ -246,11 +226,11 @@ export default function NewTurnoModal({
   const telefonoLocal = soloDigitos(nuevoTelefono.slice(PREFIJO_AR.length))
 
   // Validaciones
-  const horaFueraHorario = barberoSeleccionado && fecha && hora && !barberoDisponible(barberoSeleccionado, fecha, hora, duracion)
+  const horaFueraHorario = barberoSeleccionado && fecha && hora && !barberoDisponible(barberoSeleccionado, fecha, hora, duracion, bloqueos, zonaHoraria)
   const superpuesto = (() => {
     if (!fecha || !hora || !barberoId) return null
     return turnosDelBarberoEnFecha.find((t) =>
-      seSuperponen(hora, duracion, t.hora, t.duracion || DEFAULT_DURACION)
+      turnosSeSuperponen(hora, duracion, t.hora, t.duracion || DEFAULT_DURACION)
     )
   })()
 
@@ -272,7 +252,7 @@ export default function NewTurnoModal({
     if (!valido || saving) return
     setSaving(true)
 
-    await onSubmit({
+    const saved = await onSubmit({
       paciente: nombreCompleto,
       telefono: clienteFinal.telefono,
       clienteId: clienteFinal.clienteId,
@@ -286,7 +266,7 @@ export default function NewTurnoModal({
       duracion,
     }, turnoExistente?.id)
     setSaving(false)
-    onClose()
+    if (saved !== false) onClose()
   }
 
   // Render helpers
@@ -329,7 +309,7 @@ export default function NewTurnoModal({
                 </select>
                 {barberosDisponibles.length === 0 && (
                   <p className="schedule-empty" style={{ marginTop: 6 }}>
-                    Ningún barbero tiene cargado ese servicio en "Habilidades" (Operación → Equipo).
+                    Ningún profesional realiza este servicio o tiene disponibilidad para la fecha elegida.
                   </p>
                 )}
               </div>
@@ -557,6 +537,12 @@ export default function NewTurnoModal({
           </section>
 
           {/* ====== Errores / avisos ====== */}
+          {errorMessage && (
+            <p className="login-error" role="alert" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+              {errorMessage}
+            </p>
+          )}
           {horaFueraHorario && !superpuesto && (
             <p className="login-error" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <AlertTriangle size={13} style={{ flexShrink: 0 }} />
