@@ -104,6 +104,7 @@ export default function Operations({
   // el usuario elige el segundo extremo conservamos el primero localmente,
   // sin persistir todavía un horario incompleto en Supabase.
   const [breakDrafts, setBreakDrafts] = useState({})
+  const [confirmDelete, setConfirmDelete] = useState(null)
 
   const horarioDe = (barbero) => {
     const base = parseHorario(barbero.horario)
@@ -309,14 +310,37 @@ export default function Operations({
                   </div>
                 </div>
 
-                <button
-                  className="btn-icon-plain"
-                  onClick={() => onDeleteServicio(servicio.id)}
-                  aria-label="Eliminar servicio"
-                  title="Eliminar servicio"
-                >
-                  <Trash2 size={15} />
-                </button>
+                {confirmDelete?.type === 'servicio' && confirmDelete.id === servicio.id ? (
+                  <div className="ops-delete-confirm" role="group" aria-label={`Confirmar eliminación de ${servicio.nombre}`}>
+                    <span className="ops-inline-error">¿Eliminar este servicio?</span>
+                    <button
+                      type="button"
+                      className="btn-icon-plain danger-solid"
+                      onClick={() => { onDeleteServicio(servicio.id); setConfirmDelete(null) }}
+                      aria-label="Confirmar eliminar servicio"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-icon-plain"
+                      onClick={() => setConfirmDelete(null)}
+                      aria-label="Cancelar eliminar servicio"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-icon-plain"
+                    onClick={() => setConfirmDelete({ type: 'servicio', id: servicio.id })}
+                    aria-label="Eliminar servicio"
+                    title="Eliminar servicio"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -487,14 +511,37 @@ export default function Operations({
                     </label>
                   </div>
 
-                  <button
-                    className="btn-icon-plain"
-                    onClick={() => onDeleteBarbero(barbero.id)}
-                    aria-label="Eliminar barbero"
-                    title="Eliminar barbero"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {confirmDelete?.type === 'barbero' && confirmDelete.id === barbero.id ? (
+                    <div className="ops-delete-confirm" role="group" aria-label={`Confirmar eliminación de ${barbero.nombre}`}>
+                      <span className="ops-inline-error">¿Eliminar este barbero?</span>
+                      <button
+                        type="button"
+                        className="btn-icon-plain danger-solid"
+                        onClick={() => { onDeleteBarbero(barbero.id); setConfirmDelete(null) }}
+                        aria-label="Confirmar eliminar barbero"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-icon-plain"
+                        onClick={() => setConfirmDelete(null)}
+                        aria-label="Cancelar eliminar barbero"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-icon-plain"
+                      onClick={() => setConfirmDelete({ type: 'barbero', id: barbero.id })}
+                      aria-label="Eliminar barbero"
+                      title="Eliminar barbero"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
               )
             })}

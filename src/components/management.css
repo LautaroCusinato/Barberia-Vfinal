@@ -236,6 +236,26 @@
   transform: translateY(-1px);
 }
 
+.management-operations .ops-delete-confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.management-operations .ops-delete-confirm .ops-inline-error {
+  color: var(--rose-text);
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.management-operations .ops-delete-confirm .btn-icon-plain {
+  flex: 0 0 auto;
+  min-height: var(--control-md);
+}
+
 .management-service-row .ops-edit-main,
 .management-employee-row .ops-edit-main {
   gap: var(--space-3);
@@ -622,6 +642,18 @@
   .management-service-row,
   .management-employee-row {
     position: relative;
+  }
+
+  .management-service-row > .ops-delete-confirm,
+  .management-employee-row > .ops-delete-confirm {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-top: var(--space-2);
+  }
+
+  .management-service-row > .ops-delete-confirm .ops-inline-error,
+  .management-employee-row > .ops-delete-confirm .ops-inline-error {
+    white-space: normal;
   }
 
   .management-service-row .ops-edit-main {

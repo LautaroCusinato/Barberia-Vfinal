@@ -67,6 +67,7 @@ const modalSource = readFileSync(resolve('src', 'components', 'NewTurnoModal.jsx
 const sidebarSource = readFileSync(resolve('src', 'components', 'Sidebar.jsx'), 'utf8')
 const checklistSource = readFileSync(resolve('src', 'components', 'OnboardingChecklist.jsx'), 'utf8')
 const settingsSource = readFileSync(resolve('src', 'components', 'TenantSettings.jsx'), 'utf8')
+const operationsSource = readFileSync(resolve('src', 'components', 'Operations.jsx'), 'utf8')
 assert.match(appSource, /turno\.id === existingId/, 'La validación de carrera debe excluir el turno que se está editando')
 assert.match(appSource, /error\.code === '23P01'/, 'El conflicto de exclusión debe convertirse en error de horario ocupado')
 assert.match(modalSource, /t\.id !== turnoExistente\?\.id/, 'La edición debe excluir su propio turno de la grilla de ocupación')
@@ -76,6 +77,10 @@ assert.match(appSource, /siguienteNombreServicio/, 'El alta de servicios debe ge
 assert.match(sidebarSource, /whatsappReady/, 'El sidebar no debe mostrar WhatsApp conectado sin integración')
 assert.match(checklistSource, /austral:onboarding-checklist/, 'El checklist debe persistir preferencias por usuario y tenant')
 assert.match(settingsSource, /onBrandingChange/, 'El branding guardado debe actualizar el shell del tenant')
+assert.match(operationsSource, /confirmDelete\?\.type === 'servicio'/, 'Eliminar servicios debe requerir confirmación explícita')
+assert.match(operationsSource, /confirmDelete\?\.type === 'barbero'/, 'Eliminar barberos debe requerir confirmación explícita')
+assert.match(operationsSource, /Confirmar eliminar servicio/, 'La confirmación de servicio debe ser accesible')
+assert.match(operationsSource, /Confirmar eliminar barbero/, 'La confirmación de barbero debe ser accesible')
 
 const publicBookingSql = readFileSync(resolve('supabase', 'migrations', '20260807041000_public_catalog_and_checklist.sql'), 'utf8')
 assert.match(publicBookingSql, /p_servicio_id/, 'La reserva pública debe validar el servicio solicitado')
