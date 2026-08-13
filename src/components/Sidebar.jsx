@@ -26,11 +26,35 @@ const GROUPS = [
 const TABBAR_PRINCIPAL = ['resumen', 'agenda', 'mensajes', 'pacientes']
 const TABBAR_MAS = ITEMS.filter((i) => !TABBAR_PRINCIPAL.includes(i.id))
 
-export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onLogout, onAccountSecurity, branding }) {
+export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onOpenBilling, onLogout, onAccountSecurity, branding }) {
   const isDark = theme === 'dark'
   const whatsappConfigured = Boolean(whatsappStatus.configured)
   const whatsappConnected = Boolean(whatsappStatus.connected)
-  const whatsappReady = whatsappConfigured && whatsappConnected
+  const entitlementLoading = whatsappStatus.entitlementLoading === true
+  const entitlementAllowed = whatsappStatus.entitled === true
+  const whatsappReady = whatsappConfigured && whatsappConnected && entitlementAllowed
+  const requiresPlan = whatsappStatus.entitlement === 'blocked'
+  const billingUnavailable = whatsappStatus.entitlement === 'unavailable'
+  const whatsappLabel = requiresPlan
+    ? 'WhatsApp requiere un plan'
+    : billingUnavailable
+      ? 'WhatsApp no disponible'
+      : entitlementLoading
+        ? 'Verificando WhatsApp…'
+        : whatsappReady
+          ? 'Bot de WhatsApp'
+          : whatsappConfigured
+            ? 'WhatsApp desconectado'
+            : 'Conectar WhatsApp'
+  const whatsappStatusLabel = requiresPlan
+    ? 'Plan no habilitado para esta función'
+    : billingUnavailable
+      ? 'No pudimos verificar el plan'
+      : whatsappReady
+        ? 'Conectado a WhatsApp vía n8n'
+        : whatsappConfigured
+          ? 'La integración necesita atención'
+          : 'Integración todavía no configurada'
   const [mostrarMas, setMostrarMas] = useState(false)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
 
@@ -73,10 +97,10 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
         </nav>
 
         <div className="sidebar-footer">
-          <button className="theme-toggle" type="button" aria-pressed={botActivo} onClick={onToggleBot} disabled={!whatsappReady} aria-describedby="whatsapp-status">
+          <button className="theme-toggle" type="button" aria-pressed={botActivo} onClick={onToggleBot} aria-describedby="whatsapp-status" aria-label={whatsappReady ? 'Activar o desactivar bot de WhatsApp' : whatsappLabel}>
             <span className="theme-toggle-label">
               <Bot size={14} />
-              {whatsappReady ? 'Bot de WhatsApp' : 'WhatsApp pendiente'}
+              {whatsappLabel}
             </span>
             <span className={`theme-switch ${botActivo ? 'on' : ''}`}>
               <span className="theme-switch-knob" />
@@ -93,9 +117,11 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
           </button>
           <div className="sidebar-status">
             <span className={`live-dot ${whatsappReady ? '' : 'is-offline'}`} />
-            <span id="whatsapp-status">{whatsappReady ? 'Conectado a WhatsApp via n8n' : 'WhatsApp no conectado'}</span>
+            <span id="whatsapp-status">{whatsappStatusLabel}</span>
           </div>
-          {!whatsappReady && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
+          {requiresPlan && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Ver facturación y planes</button>}
+          {!requiresPlan && !billingUnavailable && !whatsappReady && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
+          {billingUnavailable && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Revisar facturación</button>}
           {onAccountSecurity && <button className="theme-toggle" type="button" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
           <button className="theme-toggle" type="button" aria-label="Cerrar sesion" onClick={onLogout}>
             <span className="theme-toggle-label">

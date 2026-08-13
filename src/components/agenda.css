@@ -238,6 +238,9 @@
 }
 
 .agenda-item--enhanced {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
   display: grid;
   grid-template-columns: minmax(65px, auto) minmax(0, 1fr) auto;
   align-items: start;
@@ -249,6 +252,19 @@
   border-radius: var(--agenda-card-radius);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
+}
+
+/* Los popovers viven dentro de cada tarjeta para conservar el foco y el
+ * click-outside. La tarjeta activa debe elevarse sobre sus vecinas; un
+ * z-index del popover por sí solo no atraviesa el stacking context del item. */
+.agenda-item--enhanced.agenda-item--notes-open,
+.agenda-item--enhanced.agenda-item--delete-open {
+  z-index: 20;
+}
+
+.agenda-item--enhanced .note-popover,
+.agenda-item--enhanced .delete-confirm-popover {
+  z-index: 30;
 }
 
 .agenda-item--enhanced:hover {

@@ -101,6 +101,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const [notasFiltro, setNotasFiltro] = useState('')
   const [botActivo, setBotActivo] = useState(!isSupabaseConfigured)
   const [whatsappIntegration, setWhatsappIntegration] = useState({ loading: isSupabaseConfigured, configured: !isSupabaseConfigured, connected: !isSupabaseConfigured })
+  const [whatsappEntitlement, setWhatsappEntitlement] = useState({ loading: isSupabaseConfigured, entitlementLoading: isSupabaseConfigured, entitled: !isSupabaseConfigured, entitlement: isSupabaseConfigured ? 'checking' : 'allowed' })
   const [tenantBranding, setTenantBranding] = useState(null)
   const [horariosDefault, setHorariosDefault] = useState({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] })
   const [zonaHoraria, setZonaHoraria] = useState(TZ)
@@ -128,8 +129,34 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
 
   const toggleBot = async () => {
+    if (botActivo) {
+      const nuevo = false
+      setBotActivo(nuevo)
+      if (isSupabaseConfigured) {
+        const { error } = await supabase
+          .from('config')
+          .upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: String(nuevo) })
+        if (error) {
+          setBotActivo(true)
+          reportError('No se pudo cambiar el estado del bot', error)
+        }
+      }
+      return
+    }
+    if (whatsappEntitlement.entitlementLoading) {
+      setDbError('Estamos verificando el plan antes de activar WhatsApp. Intentá nuevamente en unos segundos')
+      return
+    }
+    if (!whatsappEntitlement.entitled) {
+      setDbError(whatsappEntitlement.entitlement === 'unavailable'
+        ? 'No pudimos verificar la habilitación de WhatsApp. Revisá Facturación antes de activarlo'
+        : 'WhatsApp requiere un plan habilitado. Revisá Facturación para continuar')
+      navigateFromMenu('facturacion')
+      return
+    }
     if (!whatsappIntegration.configured || !whatsappIntegration.connected) {
-      setDbError('WhatsApp todavía no está conectado. Configurá la integración antes de activar el bot')
+      setDbError('El plan permite WhatsApp, pero la integración todavía no está conectada. Configurala antes de activar el bot')
+      navigateFromMenu('configuracion')
       return
     }
     const nuevo = !botActivo
@@ -248,7 +275,11 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       const { data, error } = await supabase
         .from('config').select('*').eq('barberia_id', barberiaId).in('clave', ['bot_activo', 'horarios_default'])
       if (cancelado) return
-      if (error) { reportError('No se pudo cargar la configuración inicial', error); return }
+      if (error) {
+        reportError('No se pudo cargar la configuración inicial', error)
+        setWhatsappEntitlement({ loading: false, entitlementLoading: false, entitled: false, entitlement: 'unavailable' })
+        return
+      }
       const botConfig = data?.find((item) => item.clave === 'bot_activo')
       if (botConfig) setBotActivo(botConfig.valor === 'true')
       const horariosConfig = data?.find((item) => item.clave === 'horarios_default')
@@ -261,7 +292,20 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       // La integración propia del tenant es la fuente de verdad para
       // habilitar el bot. Se consulta después de leer la preferencia local
       // para que un tenant sin conexión nunca quede visualmente activo.
-      await cargarIntegracionWhatsApp()
+      await Promise.all([cargarIntegracionWhatsApp(), cargarBillingEntitlement()])
+    }
+
+    async function cargarBillingEntitlement() {
+      const { data, error } = await supabase.rpc('get_billing_portal', { p_barberia_id: barberiaId })
+      if (cancelado) return
+      if (error) {
+        const missing = error.code === 'P0002' || /no tiene una suscripci[oó]n|no hay una suscripci[oó]n/i.test(String(error.message || ''))
+        setWhatsappEntitlement({ loading: false, entitlementLoading: false, entitled: false, entitlement: missing ? 'blocked' : 'unavailable' })
+        return
+      }
+      const accessState = data?.access_state || data?.subscription?.estado
+      const entitled = ['active', 'trialing', 'past_due'].includes(accessState)
+      setWhatsappEntitlement({ loading: false, entitlementLoading: false, entitled, entitlement: entitled ? 'allowed' : 'blocked', accessState })
     }
 
     async function cargarIntegracionWhatsApp() {
@@ -1083,8 +1127,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
         onToggleTheme={toggleTheme}
         botActivo={botActivo}
         onToggleBot={toggleBot}
-        whatsappStatus={whatsappIntegration}
+        whatsappStatus={{ ...whatsappIntegration, ...whatsappEntitlement }}
         onConfigureWhatsApp={() => navigateFromMenu('configuracion')}
+        onOpenBilling={() => navigateFromMenu('facturacion')}
         branding={tenantBranding}
         onLogout={logout}
         onAccountSecurity={() => window.location.assign('/cuenta')}

@@ -85,20 +85,18 @@ export default function Billing({ barberiaId: _barberiaId }) {
     ])
     const portalFailed = portalResult.status === 'rejected'
     const catalogFailed = catalogResult.status === 'rejected' || Boolean(catalogResult.value?.error)
-    // Un trial vigente es un estado comercial válido, no un error técnico.
-    // Sólo mostramos alerta cuando falla la consulta o el catálogo.
-    if (portalFailed || catalogFailed) {
-      const portalMessage = portalResult.reason?.message || ''
-      const noSubscription = portalResult.reason?.code === 'subscription_missing' || /no tiene una suscripción/i.test(portalMessage)
-      setError(noSubscription ? 'Todavía no hay una suscripción asociada a este negocio. El trial se habilita al completar el onboarding.' : portalMessage || catalogResult.reason?.message || catalogResult.value?.error?.message || 'No se pudo cargar facturación')
-    }
-    const billingFailure = portalFailed ? classifyBillingFailure(portalResult.reason) : null
-    if (!catalogFailed && billingFailure?.kind === 'subscription_missing') {
+    const portalError = portalFailed ? portalResult.reason : null
+    const catalogError = catalogFailed ? (catalogResult.reason || catalogResult.value?.error) : null
+    const portalFailure = portalError ? classifyBillingFailure(portalError) : null
+    const catalogFailure = catalogError ? classifyBillingFailure(catalogError) : null
+    const commercialMissing = portalFailure?.kind === 'subscription_missing' || catalogFailure?.kind === 'subscription_missing'
+    // La ausencia de suscripción es un estado comercial válido. No debe
+    // presentarse como un fallo técnico ni exponer el mensaje del RPC.
+    if (commercialMissing) {
       setSubscriptionMissing(true)
       setError('')
-    }
-    if (catalogFailed && billingFailure?.kind === 'subscription_missing') {
-      setError(catalogResult.reason?.message || catalogResult.value?.error?.message || 'No se pudo cargar el catálogo de facturación')
+    } else if (portalFailed || catalogFailed) {
+      setError('No se pudo consultar facturación en este momento. Intentá nuevamente en unos segundos.')
     }
     setPortal(portalResult.status === 'fulfilled' ? portalResult.value : null)
     setCatalog(catalogResult.status === 'fulfilled' && Array.isArray(catalogResult.value.data) ? catalogResult.value.data : [])
@@ -138,7 +136,10 @@ export default function Billing({ barberiaId: _barberiaId }) {
         window.open(data.checkout_url, '_blank', 'noopener,noreferrer')
       } else setNotice(data?.message || 'El checkout quedó preparado; falta configuración sandbox.')
     } catch (apiError) {
-      setError(apiError.message)
+      const failure = classifyBillingFailure(apiError)
+      setError(failure.kind === 'subscription_missing'
+        ? 'La cuenta todavía no tiene una suscripción habilitada para iniciar el checkout.'
+        : 'No se pudo iniciar el checkout. No se generó ningún cobro.')
     }
     setSaving(false)
   }
@@ -184,8 +185,23 @@ export default function Billing({ barberiaId: _barberiaId }) {
       </section>
 
       <section className="panel billing-plans-panel">
-        <div className="panel-header"><div><h2 className="panel-title">Cambiar de plan</h2><p className="panel-subtitle">El precio se toma de Supabase; no se acepta desde el cliente.</p></div></div>
-        <div className="billing-plans-grid">{catalog.map((item) => { const externalPrice = findExternalPrice(item); const providerUnavailable = !selectedProvider?.activo; return <article className={`billing-plan ${item.codigo === subscription?.plan_codigo ? 'current' : ''}`} key={item.codigo}><div className="billing-plan-heading"><h3>{item.nombre}</h3>{item.codigo === subscription?.plan_codigo && <span className="status-pill">Actual</span>}</div><p className="billing-plan-description">{item.descripcion}</p><p className="billing-plan-price">{formatMoney(externalPrice?.importe ?? item.precio_mensual, externalPrice?.moneda || item.moneda)} <small>/ {externalPrice?.periodicidad === 'yearly' ? 'año' : 'mes'}{externalPrice ? ` · ${externalPrice.pais_codigo}` : ' · precio no configurado'}</small></p><ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul><button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice || providerUnavailable} onClick={() => startCheckout(item.codigo)}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'Proveedor no habilitado' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button></article> })}</div>
+        <div className="panel-header"><div><h2 className="panel-title">Cambiar de plan</h2><p className="panel-subtitle">El precio se toma de Supabase; no se acepta desde el cliente.</p><p className="billing-currency-note">Cuando el proveedor no tiene un precio configurado, mostramos sólo la referencia base del catálogo y el checkout permanece bloqueado.</p></div></div>
+        <div className="billing-plans-grid">{catalog.map((item) => {
+          const externalPrice = findExternalPrice(item)
+          const providerUnavailable = !selectedProvider?.activo
+          const basePrice = formatMoney(item.precio_mensual, item.moneda)
+          const displayPrice = externalPrice ? formatMoney(externalPrice.importe, externalPrice.moneda) : basePrice
+          const priceMeta = externalPrice
+            ? `/ ${externalPrice.periodicidad === 'yearly' ? 'año' : 'mes'} · ${externalPrice.pais_codigo}`
+            : `/ ${item.periodicidad === 'yearly' ? 'año' : 'mes'} · referencia base ${item.moneda || 'USD'}`
+          return <article className={`billing-plan ${item.codigo === subscription?.plan_codigo ? 'current' : ''}`} key={item.codigo}>
+            <div className="billing-plan-heading"><h3>{item.nombre}</h3>{item.codigo === subscription?.plan_codigo && <span className="status-pill">Actual</span>}</div>
+            <p className="billing-plan-description">{item.descripcion}</p>
+            <p className="billing-plan-price">{displayPrice} <small>{priceMeta}</small></p>
+            <ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul>
+            <button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice || providerUnavailable} onClick={() => startCheckout(item.codigo)}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'Proveedor no habilitado' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
+          </article>
+        })}</div>
       </section>
 
       <section className="billing-history-grid">

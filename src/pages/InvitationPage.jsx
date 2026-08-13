@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import { CheckCircle2, LoaderCircle, MailCheck, XCircle } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 
+function invitationErrorMessage(error) {
+  if (error?.code === '42501') return 'Esta invitación pertenece a otro email. Iniciá sesión con la cuenta invitada.'
+  if (error?.code === '28000') return 'Iniciá sesión para aceptar la invitación.'
+  return 'La invitación no es válida, ya fue utilizada o expiró.'
+}
+
 export default function InvitationPage({ token }) {
   const [state, setState] = useState('loading')
   const [message, setMessage] = useState('Verificando invitación…')
@@ -14,7 +20,7 @@ export default function InvitationPage({ token }) {
       if (!data.user) { setState('login'); setMessage('Iniciá sesión con el email invitado para aceptar el acceso.'); return }
       const { data: accepted, error } = await supabase.rpc('accept_barberia_invitation', { p_token: token })
       if (!active) return
-      if (error) { setState('error'); setMessage(error.message || 'La invitación no es válida o expiró.'); return }
+      if (error) { setState('error'); setMessage(invitationErrorMessage(error)); return }
       setState('success'); setMessage(`Acceso concedido como ${accepted?.role || 'colaborador'}.`)
     })
     return () => { active = false }

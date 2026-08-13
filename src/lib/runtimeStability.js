@@ -2,7 +2,9 @@ const REVALIDATION_INTERVAL_MS = 30_000
 
 export function isSubscriptionMissingError(error) {
   return error?.code === 'subscription_missing'
+    || error?.code === 'P0002'
     || (Number(error?.status) === 409 && /no tiene una suscripci[oó]n|no hay una suscripci[oó]n/i.test(String(error?.message || '')))
+    || /no tiene una suscripci[oó]n|no hay una suscripci[oó]n/i.test(String(error?.message || ''))
 }
 
 export function classifyBillingFailure(error) {

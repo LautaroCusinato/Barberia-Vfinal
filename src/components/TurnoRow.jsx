@@ -12,7 +12,6 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
   const notasPaciente = (notas || []).filter((n) => n.paciente === turno.paciente)
   const barbero = barberos.find((b) => String(b.id) === String(turno.barbero_id))
   const meta = statusMeta(turno.estado)
-  const statusVariant = meta.value === 'atendido' ? 'success' : meta.value === 'no_asistio' ? 'danger' : 'warning'
   const serviceLabel = turno.motivo || 'Servicio sin especificar'
   const durationLabel = `${turno.duracion || 30} min`
 
@@ -37,7 +36,7 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
 
   return (
     <article
-      className={`agenda-item agenda-item--enhanced agenda-item--${meta.value}`}
+      className={`agenda-item agenda-item--enhanced agenda-item--${meta.value}${notesOpen ? ' agenda-item--notes-open' : ''}${confirmDelete ? ' agenda-item--delete-open' : ''}`}
       ref={wrapRef}
       style={{ '--agenda-barber-color': barbero?.color || 'var(--accent)' }}
       aria-label={`${turno.paciente}, ${serviceLabel}, ${barbero?.nombre || 'sin profesional'}, ${durationLabel}, ${meta.label}`}
@@ -58,7 +57,6 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
             </span>
           )}
           </p>
-          <span className={`agenda-status agenda-status--${statusVariant}`}><span className="agenda-status-dot" aria-hidden="true" />{meta.label}</span>
         </div>
         <div className="agenda-card-meta">
           <span><Scissors size={12} aria-hidden="true" />{serviceLabel}</span>
