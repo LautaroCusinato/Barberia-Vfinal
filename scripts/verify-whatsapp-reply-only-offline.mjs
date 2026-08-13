@@ -22,11 +22,15 @@ import {
   validatePilotAllowlist,
 } from './whatsapp-reply-only-core.mjs'
 import { createMockSendTextAdapter } from './whatsapp-reply-only-adapter.mjs'
+import { authorizeWebhookSecret, WEBHOOK_HEADER_NAME } from './whatsapp-webhook-auth.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (file) => fs.readFile(path.join(root, file), 'utf8')
 
 const allowlist = validatePilotAllowlist([{ tenantId: 'E2E_QA_BARBERIA_A', integrationId: 'E2E_QA_WA_INTEGRATION_A', instance: 'e2e-qa-a', receiver: '5491100000001', mode: 'reply_only', active: true }])
+assert.equal(WEBHOOK_HEADER_NAME, 'x-austral-webhook-secret')
+assert.equal(authorizeWebhookSecret({ headerValue: 'offline-reply-secret', expectedSecret: 'offline-reply-secret' }).ok, true)
+assert.equal(authorizeWebhookSecret({ headerValue: 'wrong', expectedSecret: 'offline-reply-secret' }).status, 401)
 assert.throws(() => validatePilotAllowlist([]), /exactamente una/)
 assert.throws(() => validatePilotAllowlist([{ tenantId: 'A', integrationId: '*', instance: 'e2e', receiver: '5491100000001', mode: 'reply_only', active: true }]), /wildcard/)
 assert.throws(() => validatePilotAllowlist([{ tenantId: 'A', integrationId: 'i', instance: 'e2e', receiver: '5491100000001', mode: 'shadow', active: true }]), /reply_only/)
