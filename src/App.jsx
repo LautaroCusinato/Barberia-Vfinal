@@ -24,7 +24,7 @@ import Billing from './pages/Billing.jsx'
 import TenantSettings from './components/TenantSettings.jsx'
 import WorkspacePreparing from './components/WorkspacePreparing.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
-import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, parseHabilidades, parseHorarioTexto, soloDigitos } from './lib/text'
+import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, parseHabilidades, parseHorarioTexto, siguienteNombreServicio, soloDigitos } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
 import { clearWorkspaceTransition } from './lib/workspaceTransition.js'
 import {
@@ -99,7 +99,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const [editingTurno, setEditingTurno] = useState(null)
   const [turnoFechaPrefijada, setTurnoFechaPrefijada] = useState(null)
   const [notasFiltro, setNotasFiltro] = useState('')
-  const [botActivo, setBotActivo] = useState(true)
+  const [botActivo, setBotActivo] = useState(!isSupabaseConfigured)
+  const [whatsappIntegration, setWhatsappIntegration] = useState({ loading: isSupabaseConfigured, configured: !isSupabaseConfigured, connected: !isSupabaseConfigured })
+  const [tenantBranding, setTenantBranding] = useState(null)
   const [horariosDefault, setHorariosDefault] = useState({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] })
   const [zonaHoraria, setZonaHoraria] = useState(TZ)
   const [dbError, setDbError] = useState('')
@@ -126,6 +128,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
 
   const toggleBot = async () => {
+    if (!whatsappIntegration.configured || !whatsappIntegration.connected) {
+      setDbError('WhatsApp todavía no está conectado. Configurá la integración antes de activar el bot')
+      return
+    }
     const nuevo = !botActivo
     const anterior = botActivo
     setBotActivo(nuevo)
@@ -166,10 +172,11 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
 
     async function cargarBarberia() {
       const { data, error } = await supabase
-        .from('barberias').select('zona_horaria').eq('id', barberiaId).maybeSingle()
+        .from('barberias').select('nombre, logo_url, color_principal, color_secundario, zona_horaria').eq('id', barberiaId).maybeSingle()
       if (cancelado) return
       if (error) reportError('No se pudo cargar la zona horaria del negocio', error)
       if (data?.zona_horaria) setZonaHoraria(data.zona_horaria)
+      if (data) setTenantBranding(data)
     }
 
     async function cargarClientes() {
@@ -251,6 +258,32 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
           if (Array.isArray(parsed.dias) && parsed.inicio && parsed.fin) setHorariosDefault({ dias: parsed.dias, inicio: parsed.inicio, fin: parsed.fin, breaks: Array.isArray(parsed.breaks) ? parsed.breaks : [] })
         } catch { reportError('No se pudo interpretar el horario por defecto', new Error('JSON inválido')) }
       }
+      // La integración propia del tenant es la fuente de verdad para
+      // habilitar el bot. Se consulta después de leer la preferencia local
+      // para que un tenant sin conexión nunca quede visualmente activo.
+      await cargarIntegracionWhatsApp()
+    }
+
+    async function cargarIntegracionWhatsApp() {
+      const { data, error } = await supabase
+        .from('saas_integraciones')
+        .select('id, proveedor, estado, metadata')
+        .eq('barberia_id', barberiaId)
+        .eq('proveedor', 'evolution')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (cancelado) return
+      if (error) {
+        reportError('No se pudo verificar la integración de WhatsApp', error)
+        setWhatsappIntegration({ loading: false, configured: false, connected: false })
+        setBotActivo(false)
+        return
+      }
+      const configured = Boolean(data)
+      const connected = data?.estado === 'conectado'
+      setWhatsappIntegration({ loading: false, configured, connected, estado: data?.estado || 'pendiente' })
+      if (!connected) setBotActivo(false)
     }
 
     async function cargarBloqueos() {
@@ -382,6 +415,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'servicios', filter: `barberia_id=eq.${barberiaId}` }, () => cargarServicios())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barberos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarBarberos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'config', filter: `barberia_id=eq.${barberiaId}` }, () => cargarConfig())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'saas_integraciones', filter: `barberia_id=eq.${barberiaId}` }, () => cargarIntegracionWhatsApp())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bloqueos_agenda', filter: `barberia_id=eq.${barberiaId}` }, () => cargarBloqueos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarPagos())
       .subscribe((status, err) => {
@@ -780,13 +814,22 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   }
 
   const addServicio = async () => {
-    const base = { nombre: 'Nuevo servicio', precio: 0, duracion: 30, activo: true }
+    let serviciosDisponibles = servicios
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase.from('servicios').select('nombre').eq('barberia_id', barberiaId)
+      if (!error && data) serviciosDisponibles = data
+    }
+    const base = { nombre: siguienteNombreServicio(serviciosDisponibles), precio: 0, duracion: 30, activo: true }
     if (isSupabaseConfigured) {
       const { data, error } = await supabase
         .from('servicios')
         .insert({ nombre: base.nombre, precio: base.precio, duracion_min: base.duracion, activo: base.activo, barberia_id: barberiaId })
         .select()
-      if (error) { reportError('No se pudo crear el servicio', error); return }
+      if (error) {
+        const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
+        reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo crear el servicio', error)
+        return
+      }
       if (data?.[0]) {
         const nuevoServicio = data[0]
         // Mantiene la regla previa del panel: un barbero sin restricciones
@@ -812,7 +855,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       const { error } = await supabase.from('servicios').update({ [dbField]: parsed }).eq('id', id)
       if (error) {
         if (anterior) setServicios((prev) => prev.map((s) => (s.id === id ? anterior : s)))
-        reportError('No se pudo actualizar el servicio', error)
+        const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
+        reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo actualizar el servicio', error)
       }
     }
   }
@@ -1033,12 +1077,15 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       <Sidebar
         view={view}
         setView={navigateFromMenu}
-        clinicName={barberiaNombre || DEFAULT_BUSINESS_NAME}
+        clinicName={tenantBranding?.nombre || barberiaNombre || DEFAULT_BUSINESS_NAME}
         unreadCount={unreadCount}
         theme={theme}
         onToggleTheme={toggleTheme}
         botActivo={botActivo}
         onToggleBot={toggleBot}
+        whatsappStatus={whatsappIntegration}
+        onConfigureWhatsApp={() => navigateFromMenu('configuracion')}
+        branding={tenantBranding}
         onLogout={logout}
         onAccountSecurity={() => window.location.assign('/cuenta')}
       />
@@ -1306,7 +1353,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
           </div>
         )}
 
-        {view === 'configuracion' && <TenantSettings barberiaId={barberiaId} />}
+        {view === 'configuracion' && <TenantSettings barberiaId={barberiaId} onBrandingChange={setTenantBranding} />}
 
         {view === 'facturacion' && <Billing barberiaId={barberiaId} />}
       </main>

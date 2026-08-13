@@ -88,10 +88,10 @@ function BookingError({ message, onRetry }) {
   return <Card className="booking-state-card" role="alert"><EmptyState title="No pudimos abrir esta reserva" description={message || 'El negocio no está disponible en este momento.'} action={<Button variant="secondary" onClick={onRetry}>Intentar nuevamente</Button>} /></Card>
 }
 
-function BookingSuccess({ success, business, theme, accent, accentText, onThemeToggle }) {
+function BookingSuccess({ success, business, theme, accent, secondary, accentText, onThemeToggle }) {
   const service = success.servicio
   const professional = success.barbero
-  return <main className="public-booking" data-theme={theme} style={{ '--booking-accent': accent, '--booking-accent-foreground': accentText }}>
+  return <main className="public-booking" data-theme={theme} style={{ '--booking-accent': accent, '--booking-secondary': secondary, '--booking-accent-foreground': accentText }}>
     <header className="booking-header"><div className="booking-brand">{business?.logo_url ? <img src={business.logo_url} alt="" /> : <Scissors size={24} />}<span>{business?.nombre || 'Reservas online'}</span></div><IconButton className="booking-theme-toggle" label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} onClick={onThemeToggle}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</IconButton></header>
     <Card as="section" className="booking-success" aria-labelledby="booking-success-title"><StatusBadge status="success" label="Reserva confirmada" /><CheckCircle2 className="booking-success-icon" size={52} aria-hidden="true" /><h1 id="booking-success-title">¡Turno reservado!</h1><p>Te esperamos en <strong>{business?.nombre}</strong>.</p><div className="booking-success-details"><div><span>Servicio</span><strong>{service?.nombre || 'Tu servicio'}</strong></div><div><span>Profesional</span><strong>{professional?.barbero_nombre || 'Tu profesional'}</strong></div><div><span>Fecha y hora</span><strong>{formatDateLabel(success.fecha)} · {formatTime(success.hora)}</strong></div><div><span>Duración</span><strong>{professional?.duracion_min || success.duracion_min} min</strong></div><div><span>Total</span><strong>{formatMoney(service?.precio, success.moneda)}</strong></div></div>{business?.direccion && <p className="booking-success-note"><MapPin size={16} /> {business.direccion}</p>}<p className="booking-success-timezone">Horario local: {formatTimezone(business?.zona_horaria)}.</p><Button variant="secondary" className="booking-button booking-button-secondary" onClick={() => window.location.reload()}>Reservar otro turno</Button></Card>
   </main>
@@ -183,6 +183,7 @@ export default function PublicBooking({ slug }) {
   const barbero = profesionales.find((professional) => professional.barbero_id === barberoId)
   const currency = normalizeCurrency(catalogo?.barberia?.moneda || servicio?.moneda)
   const accent = normalizeHex(catalogo?.barberia?.color_principal)
+  const secondary = normalizeHex(catalogo?.barberia?.color_secundario, '#ede6d8')
   const accentText = accentForeground(accent)
   const phoneIsValid = soloDigitos(telefono).length === 13
   const activeStep = !servicio ? 1 : !barbero ? 2 : !hora ? 3 : !nombre.trim() || !phoneIsValid ? 4 : 5
@@ -216,13 +217,13 @@ export default function PublicBooking({ slug }) {
 
   const retry = () => { setError(''); setLoading(true); cargarCatalogo() }
 
-  if (success) return <BookingSuccess success={success} business={catalogo?.barberia} theme={theme} accent={accent} accentText={accentText} onThemeToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
-  if (loading) return <main className="public-booking" data-theme={theme} style={{ '--booking-accent': accent, '--booking-accent-foreground': accentText }}><BookingSkeleton /></main>
-  if (error && !catalogo) return <main className="public-booking" data-theme={theme} style={{ '--booking-accent': accent, '--booking-accent-foreground': accentText }}><BookingError message={error} onRetry={retry} /></main>
+  if (success) return <BookingSuccess success={success} business={catalogo?.barberia} theme={theme} accent={accent} secondary={secondary} accentText={accentText} onThemeToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
+  if (loading) return <main className="public-booking" data-theme={theme} style={{ '--booking-accent': accent, '--booking-secondary': secondary, '--booking-accent-foreground': accentText }}><BookingSkeleton /></main>
+  if (error && !catalogo) return <main className="public-booking" data-theme={theme} style={{ '--booking-accent': accent, '--booking-secondary': secondary, '--booking-accent-foreground': accentText }}><BookingError message={error} onRetry={retry} /></main>
 
   const business = catalogo.barberia
   return (
-    <main className="public-booking" data-theme={theme} style={{ '--booking-accent': accent, '--booking-accent-foreground': accentText }}>
+    <main className="public-booking" data-theme={theme} style={{ '--booking-accent': accent, '--booking-secondary': secondary, '--booking-accent-foreground': accentText }}>
       <header className="booking-header"><div className="booking-brand">{business.logo_url ? <img src={business.logo_url} alt="" /> : <Scissors size={24} />}<span>{business.nombre}</span></div><div className="booking-header-actions">{business.direccion && <span className="booking-address"><MapPin size={16} /> {business.direccion}</span>}<IconButton className="booking-theme-toggle" label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</IconButton></div></header>
       <div className="booking-layout">
         <BookingSummary service={servicio} professional={barbero} date={fecha} time={hora} currency={currency} />

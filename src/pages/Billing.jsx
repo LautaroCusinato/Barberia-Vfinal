@@ -52,7 +52,12 @@ async function billingApi(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   })
   const payload = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(payload?.error?.message || 'Error temporal de facturación.')
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || 'Error temporal de facturación.')
+    error.status = response.status
+    error.code = payload?.error?.code || null
+    throw error
+  }
   return payload
 }
 
@@ -73,7 +78,15 @@ export default function Billing({ barberiaId: _barberiaId }) {
       billingApi('status'),
       supabase.rpc('get_billing_catalog'),
     ])
-    if (portalResult.status === 'rejected' || catalogResult.status === 'rejected' || catalogResult.value.error) setError(portalResult.reason?.message || catalogResult.reason?.message || catalogResult.value?.error?.message || 'No se pudo cargar facturación')
+    const portalFailed = portalResult.status === 'rejected'
+    const catalogFailed = catalogResult.status === 'rejected' || Boolean(catalogResult.value?.error)
+    // Un trial vigente es un estado comercial válido, no un error técnico.
+    // Sólo mostramos alerta cuando falla la consulta o el catálogo.
+    if (portalFailed || catalogFailed) {
+      const portalMessage = portalResult.reason?.message || ''
+      const noSubscription = portalResult.reason?.code === 'subscription_missing' || /no tiene una suscripción/i.test(portalMessage)
+      setError(noSubscription ? 'Todavía no hay una suscripción asociada a este negocio. El trial se habilita al completar el onboarding.' : portalMessage || catalogResult.reason?.message || catalogResult.value?.error?.message || 'No se pudo cargar facturación')
+    }
     setPortal(portalResult.status === 'fulfilled' ? portalResult.value : null)
     setCatalog(catalogResult.status === 'fulfilled' && Array.isArray(catalogResult.value.data) ? catalogResult.value.data : [])
     setLoading(false)
@@ -87,7 +100,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const selectedProvider = providers.find((item) => item.codigo === provider)
   const tenantCountry = normalizeCountryCode(portal?.tenant?.pais)
   const findExternalPrice = (item) => {
-    const prices = (item?.precios_externos || []).filter((price) => price.proveedor_codigo === provider && price.activo !== false && (!selectedProvider?.entorno || price.entorno === selectedProvider.entorno))
+    const prices = (item?.precios_externos || []).filter((price) => price.proveedor_codigo === provider && price.activo !== false && price.habilitado !== false && (!selectedProvider?.entorno || price.entorno === selectedProvider.entorno))
     return prices.sort((left, right) => {
       const leftExact = left.pais_codigo === tenantCountry ? 0 : 1
       const rightExact = right.pais_codigo === tenantCountry ? 0 : 1
@@ -97,6 +110,10 @@ export default function Billing({ barberiaId: _barberiaId }) {
 
   const startCheckout = async (planCode) => {
     if (!isSupabaseConfigured) return
+    if (!selectedProvider?.activo) {
+      setError('El proveedor seleccionado todavía no está habilitado para este entorno.')
+      return
+    }
     setSaving(true)
     setError('')
     setNotice('')
@@ -152,7 +169,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
 
       <section className="panel billing-plans-panel">
         <div className="panel-header"><div><h2 className="panel-title">Cambiar de plan</h2><p className="panel-subtitle">El precio se toma de Supabase; no se acepta desde el cliente.</p></div></div>
-        <div className="billing-plans-grid">{catalog.map((item) => { const externalPrice = findExternalPrice(item); return <article className={`billing-plan ${item.codigo === subscription?.plan_codigo ? 'current' : ''}`} key={item.codigo}><div className="billing-plan-heading"><h3>{item.nombre}</h3>{item.codigo === subscription?.plan_codigo && <span className="status-pill">Actual</span>}</div><p className="billing-plan-description">{item.descripcion}</p><p className="billing-plan-price">{formatMoney(externalPrice?.importe ?? item.precio_mensual, externalPrice?.moneda || item.moneda)} <small>/ {externalPrice?.periodicidad === 'yearly' ? 'año' : 'mes'}{externalPrice ? ` · ${externalPrice.pais_codigo}` : ' · precio no configurado'}</small></p><ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul><button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice} onClick={() => startCheckout(item.codigo)}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button></article> })}</div>
+        <div className="billing-plans-grid">{catalog.map((item) => { const externalPrice = findExternalPrice(item); const providerUnavailable = !selectedProvider?.activo; return <article className={`billing-plan ${item.codigo === subscription?.plan_codigo ? 'current' : ''}`} key={item.codigo}><div className="billing-plan-heading"><h3>{item.nombre}</h3>{item.codigo === subscription?.plan_codigo && <span className="status-pill">Actual</span>}</div><p className="billing-plan-description">{item.descripcion}</p><p className="billing-plan-price">{formatMoney(externalPrice?.importe ?? item.precio_mensual, externalPrice?.moneda || item.moneda)} <small>/ {externalPrice?.periodicidad === 'yearly' ? 'año' : 'mes'}{externalPrice ? ` · ${externalPrice.pais_codigo}` : ' · precio no configurado'}</small></p><ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul><button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice || providerUnavailable} onClick={() => startCheckout(item.codigo)}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'Proveedor no habilitado' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button></article> })}</div>
       </section>
 
       <section className="billing-history-grid">

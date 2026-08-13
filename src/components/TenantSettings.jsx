@@ -11,7 +11,7 @@ const ROLE_LABELS = { admin: 'Administrador', recepcionista: 'Recepción', emple
 
 function cleanError(error) { return String(error?.message || 'No se pudo completar la operación.').replace(/^.*?ERROR:\s*/i, '').replace(/\s*DETAIL:.*$/i, '') }
 
-export default function TenantSettings({ barberiaId }) {
+export default function TenantSettings({ barberiaId, onBrandingChange }) {
   const [form, setForm] = useState(DEFAULTS)
   const [members, setMembers] = useState([])
   const [invitations, setInvitations] = useState([])
@@ -19,6 +19,7 @@ export default function TenantSettings({ barberiaId }) {
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [pendingOldLogoPath, setPendingOldLogoPath] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [invite, setInvite] = useState({ email: '', role: 'empleado', expires: 7 })
@@ -54,7 +55,16 @@ export default function TenantSettings({ barberiaId }) {
       p_color_principal: form.color_principal, p_color_secundario: form.color_secundario, p_reservas_publicas: form.reservas_publicas,
       p_politica_cancelacion: form.politica_cancelacion, p_anticipacion_minutos: Number(form.anticipacion_minutos), p_max_dias_reserva: Number(form.max_dias_reserva), p_intervalo_reserva_min: Number(form.intervalo_reserva_min),
     })
-    if (saveError) setError(cleanError(saveError)); else setNotice('Configuración guardada.')
+    if (saveError) { setError(cleanError(saveError)); setSaving(false); return } else {
+      if (pendingOldLogoPath && pendingOldLogoPath !== form.logo_storage_path) {
+        const { error: cleanupError } = await supabase.storage.from('tenant-logos').remove([pendingOldLogoPath])
+        if (cleanupError) setError('Configuración guardada, pero no se pudo limpiar el logo anterior.')
+      }
+      setPendingOldLogoPath('')
+      setNotice('Configuración guardada.')
+      onBrandingChange?.({ nombre: form.nombre, logo_url: form.logo_url, logo_storage_path: form.logo_storage_path, color_principal: form.color_principal, color_secundario: form.color_secundario })
+      await load()
+    }
     setSaving(false)
   }
 
@@ -67,10 +77,9 @@ export default function TenantSettings({ barberiaId }) {
     const path = `${barberiaId}/${crypto.randomUUID()}.${extension}`
     const { error: uploadError } = await supabase.storage.from('tenant-logos').upload(path, file, { upsert: false, contentType: file.type, cacheControl: '3600' })
     if (uploadError) { setError(cleanError(uploadError)); setUploading(false); return }
-    const oldPath = form.logo_storage_path
     const { data } = supabase.storage.from('tenant-logos').getPublicUrl(path)
     update('logo_url', data.publicUrl); update('logo_storage_path', path)
-    if (oldPath && oldPath !== path) await supabase.storage.from('tenant-logos').remove([oldPath])
+    if (form.logo_storage_path && form.logo_storage_path !== path) setPendingOldLogoPath(form.logo_storage_path)
     setNotice('Logo cargado. Guardá la configuración para publicarlo.'); setUploading(false)
   }
 

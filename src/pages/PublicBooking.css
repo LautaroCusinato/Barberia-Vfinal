@@ -10,6 +10,7 @@
   --booking-error-bg: #fff0ed;
   --booking-error: #8d3021;
   --booking-success-bg: #edf8f1;
+  --booking-secondary: #ede6d8;
   min-height: 100dvh;
   box-sizing: border-box;
   overflow-x: clip;
@@ -53,6 +54,8 @@
 
 .booking-layout { display: grid; grid-template-areas: 'main summary'; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); align-items: start; gap: clamp(var(--space-4), 3vw, var(--space-8)); }
 .booking-card { grid-area: main; min-width: 0; padding: clamp(var(--space-5), 4vw, var(--space-8)); border-color: var(--booking-line); border-radius: 22px; background: var(--booking-surface); color: var(--booking-ink); box-shadow: 0 18px 50px rgba(59, 43, 24, .08); }
+.booking-card,
+.booking-summary { background: color-mix(in srgb, var(--booking-surface) 92%, var(--booking-secondary)); }
 .public-booking[data-theme='dark'] .booking-card,
 .public-booking[data-theme='dark'] .booking-summary,
 .public-booking[data-theme='dark'] .booking-success { box-shadow: 0 18px 50px rgba(0, 0, 0, .35); }

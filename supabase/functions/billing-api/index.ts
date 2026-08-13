@@ -522,7 +522,12 @@ Deno.serve(async (request) => {
     if (request.method === 'GET' && route === 'status') {
       const tenantId = await ownerTenant(admin, user.id)
       const { data, error } = await admin.rpc('get_billing_portal', { p_barberia_id: tenantId })
-      if (error) throw Object.assign(new Error('No se pudo consultar facturación.'), { status: 502, code: 'billing_status_failed' })
+      if (error) {
+        // La ausencia de suscripción es un estado comercial válido durante
+        // un onboarding incompleto; no debe confundirse con una caída técnica.
+        if (error.code === 'P0002') throw Object.assign(new Error('La cuenta todavía no tiene una suscripción.'), { status: 409, code: 'subscription_missing' })
+        throw Object.assign(new Error('No se pudo consultar facturación.'), { status: 502, code: 'billing_status_failed' })
+      }
       return json(data)
     }
     if (request.method === 'GET' && route === 'config-status') return await configurationStatus(admin, user.id)

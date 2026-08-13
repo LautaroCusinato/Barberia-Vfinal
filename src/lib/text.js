@@ -62,6 +62,20 @@ export function formatFechaVisible(value = '') {
   return `${day}/${month}/${year}`
 }
 
+// Genera el primer nombre temporal libre para un servicio nuevo. La lista
+// local acelera la experiencia, pero la restricción de la base sigue siendo
+// la fuente de verdad frente a carreras entre usuarios.
+export function siguienteNombreServicio(servicios = []) {
+  const usados = new Set(
+    servicios
+      .map((servicio) => String(servicio?.nombre || '').trim().toLocaleLowerCase())
+      .filter(Boolean),
+  )
+  let indice = 1
+  while (usados.has(`nuevo servicio ${indice}`)) indice += 1
+  return `Nuevo servicio ${indice}`
+}
+
 // ===== HABILIDADES DE CADA BARBERO (que servicios puede hacer) =====
 // Se guardan como un JSON de ids (slug del nombre del servicio) en
 // barberos.habilidades. Un barbero SIN habilidades cargadas se interpreta

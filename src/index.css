@@ -205,6 +205,72 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   }
 }
 
+/* Shell de escritorio: el header y las acciones quedan siempre visibles;
+   sólo la navegación central consume scroll. En mobile se mantiene la
+   bottom navigation existente. */
+@media (min-width: 801px) {
+  .app-shell > .sidebar {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+  }
+
+  .app-shell > .sidebar > .brand,
+  .app-shell > .sidebar > .sidebar-footer {
+    flex: 0 0 auto;
+  }
+
+  .app-shell > .sidebar > .nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+  }
+}
+
+.sidebar-status-action {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  padding: 0.25rem 0 0.25rem 1.35rem;
+  cursor: pointer;
+}
+
+.sidebar-status-action:hover,
+.sidebar-status-action:focus-visible {
+  text-decoration: underline;
+}
+
+.theme-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.live-dot.is-offline {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.checklist-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .centered-state {
   min-height: 100dvh;
   display: grid;

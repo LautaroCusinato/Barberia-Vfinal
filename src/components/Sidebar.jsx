@@ -26,8 +26,11 @@ const GROUPS = [
 const TABBAR_PRINCIPAL = ['resumen', 'agenda', 'mensajes', 'pacientes']
 const TABBAR_MAS = ITEMS.filter((i) => !TABBAR_PRINCIPAL.includes(i.id))
 
-export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, onLogout, onAccountSecurity }) {
+export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onLogout, onAccountSecurity, branding }) {
   const isDark = theme === 'dark'
+  const whatsappConfigured = Boolean(whatsappStatus.configured)
+  const whatsappConnected = Boolean(whatsappStatus.connected)
+  const whatsappReady = whatsappConfigured && whatsappConnected
   const [mostrarMas, setMostrarMas] = useState(false)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
 
@@ -39,8 +42,8 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
   return (
     <>
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark"><Scissors size={18} strokeWidth={2.4} /></div>
+        <div className="brand" style={{ '--tenant-accent': branding?.color_principal || undefined, '--tenant-secondary': branding?.color_secundario || undefined }}>
+          <div className="brand-mark" style={{ background: branding?.color_principal || undefined }}>{branding?.logo_url ? <img src={branding.logo_url} alt="" /> : <Scissors size={18} strokeWidth={2.4} />}</div>
           <div>
             <div className="brand-name">{clinicName}</div>
             <div className="brand-sub">Panel de barberia</div>
@@ -70,10 +73,10 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
         </nav>
 
         <div className="sidebar-footer">
-          <button className="theme-toggle" type="button" aria-pressed={botActivo} onClick={onToggleBot}>
+          <button className="theme-toggle" type="button" aria-pressed={botActivo} onClick={onToggleBot} disabled={!whatsappReady} aria-describedby="whatsapp-status">
             <span className="theme-toggle-label">
               <Bot size={14} />
-              Bot de WhatsApp
+              {whatsappReady ? 'Bot de WhatsApp' : 'WhatsApp pendiente'}
             </span>
             <span className={`theme-switch ${botActivo ? 'on' : ''}`}>
               <span className="theme-switch-knob" />
@@ -89,9 +92,10 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             </span>
           </button>
           <div className="sidebar-status">
-            <span className="live-dot" />
-            <span>Conectado a WhatsApp via n8n</span>
+            <span className={`live-dot ${whatsappReady ? '' : 'is-offline'}`} />
+            <span id="whatsapp-status">{whatsappReady ? 'Conectado a WhatsApp via n8n' : 'WhatsApp no conectado'}</span>
           </div>
+          {!whatsappReady && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
           {onAccountSecurity && <button className="theme-toggle" type="button" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
           <button className="theme-toggle" type="button" aria-label="Cerrar sesion" onClick={onLogout}>
             <span className="theme-toggle-label">

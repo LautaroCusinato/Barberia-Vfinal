@@ -11,6 +11,7 @@ import {
   turnosSeSuperponen,
   parseHorarioTexto,
   parseHorarioBarbero,
+  siguienteNombreServicio,
 } from '../src/lib/text.js'
 
 const horario = 'Lun, Mar, Mié, Jue y Vie 09:00-18:00 break 13:00-14:00'
@@ -58,13 +59,23 @@ assert.equal(barberoBloqueadoFecha([{ fecha: '2030-01-07', barbero_id: 10, start
 assert.equal(barberoBloqueadoFecha([{ fecha: '2030-01-07', barbero_id: 10, start_time: '14:00', end_time: '15:00' }], 10, '2030-01-07'), false, 'Un bloqueo parcial no debe ocultar al profesional todo el día')
 assert.equal(turnosSeSuperponen('10:15', 30, '10:00', 40), true, 'Los turnos superpuestos deben bloquearse')
 assert.equal(turnosSeSuperponen('10:40', 30, '10:00', 40), false, 'Los turnos contiguos no se solapan')
+assert.equal(siguienteNombreServicio([{ nombre: 'Nuevo servicio 1' }, { nombre: 'Nuevo servicio 3' }]), 'Nuevo servicio 2', 'Los servicios nuevos deben usar el primer nombre temporal libre')
+assert.equal(siguienteNombreServicio([{ nombre: ' nuevo SERVICIO 1 ' }]), 'Nuevo servicio 2', 'La unicidad temporal debe ignorar mayúsculas y espacios')
 
 const appSource = readFileSync(resolve('src', 'App.jsx'), 'utf8')
 const modalSource = readFileSync(resolve('src', 'components', 'NewTurnoModal.jsx'), 'utf8')
+const sidebarSource = readFileSync(resolve('src', 'components', 'Sidebar.jsx'), 'utf8')
+const checklistSource = readFileSync(resolve('src', 'components', 'OnboardingChecklist.jsx'), 'utf8')
+const settingsSource = readFileSync(resolve('src', 'components', 'TenantSettings.jsx'), 'utf8')
 assert.match(appSource, /turno\.id === existingId/, 'La validación de carrera debe excluir el turno que se está editando')
 assert.match(appSource, /error\.code === '23P01'/, 'El conflicto de exclusión debe convertirse en error de horario ocupado')
 assert.match(modalSource, /t\.id !== turnoExistente\?\.id/, 'La edición debe excluir su propio turno de la grilla de ocupación')
 assert.match(modalSource, /saved !== false/, 'El modal no debe cerrarse si el backend rechaza el guardado')
+assert.match(appSource, /saas_integraciones/, 'WhatsApp debe resolver la integración propia del tenant')
+assert.match(appSource, /siguienteNombreServicio/, 'El alta de servicios debe generar nombres únicos')
+assert.match(sidebarSource, /whatsappReady/, 'El sidebar no debe mostrar WhatsApp conectado sin integración')
+assert.match(checklistSource, /austral:onboarding-checklist/, 'El checklist debe persistir preferencias por usuario y tenant')
+assert.match(settingsSource, /onBrandingChange/, 'El branding guardado debe actualizar el shell del tenant')
 
 const publicBookingSql = readFileSync(resolve('supabase', 'migrations', '20260807041000_public_catalog_and_checklist.sql'), 'utf8')
 assert.match(publicBookingSql, /p_servicio_id/, 'La reserva pública debe validar el servicio solicitado')
