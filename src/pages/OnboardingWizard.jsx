@@ -3,6 +3,8 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, Globe2, ImagePlus, 
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { sanitizeAuthError } from '../lib/authErrors'
 import { buildAuthRedirect } from '../lib/authRedirect'
+import { saveWorkspacePreference } from '../lib/workspacePreference.js'
+import { markWorkspaceTransition } from '../lib/workspaceTransition.js'
 
 const STEPS = [
   { title: '¿Cómo se llama tu negocio?', description: 'Podés cambiarlo más adelante.', icon: Scissors },
@@ -145,6 +147,8 @@ export default function OnboardingWizard() {
     if (completionError) { setError(errorMessage(completionError)); return }
     if (!data?.barberia_id) { setError('La cuenta se creó, pero no recibimos el negocio. Reintentá en unos segundos.'); return }
     completedRef.current = true
+    saveWorkspacePreference('business', data.barberia_id)
+    markWorkspaceTransition()
     try { localStorage.removeItem(storageKey) } catch { /* ignore */ }
     window.location.assign('/')
   }

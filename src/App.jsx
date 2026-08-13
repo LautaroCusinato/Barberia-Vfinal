@@ -21,9 +21,11 @@ import Operations from './components/Operations'
 import OnboardingChecklist from './components/OnboardingChecklist'
 import Billing from './pages/Billing.jsx'
 import TenantSettings from './components/TenantSettings.jsx'
+import WorkspacePreparing from './components/WorkspacePreparing.jsx'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { generarIdHabilidad, parseHabilidades, parseHorarioTexto, soloDigitos } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
+import { clearWorkspaceTransition } from './lib/workspaceTransition.js'
 import {
   mockBarberiaConfig,
   mockBarberos,
@@ -81,6 +83,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const [pagos, setPagos] = useState([])
   const [cobroTurno, setCobroTurno] = useState(null)
   const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [loadedForTenant, setLoadedForTenant] = useState(null)
   const [selectedConversationId, setSelectedConversationId] = useState(null)
   const [theme, setTheme] = useState(() => initialTheme(barberiaId))
   const [newTurnoOpen, setNewTurnoOpen] = useState(false)
@@ -90,6 +93,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const [botActivo, setBotActivo] = useState(true)
   const [horariosDefault, setHorariosDefault] = useState({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] })
   const [dbError, setDbError] = useState('')
+  const barberoWritesRef = useRef({})
 
   const reportError = (mensaje, error) => {
     console.error(mensaje, error)
@@ -139,15 +143,20 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   useEffect(() => {
     if (!isSupabaseConfigured) return
 
+    setLoading(true)
+    setLoadedForTenant(null)
+
     async function cargarTurnos() {
       const { data, error } = await supabase
         .from('turnos').select('*').eq('barberia_id', barberiaId).order('fecha').order('hora')
+      if (cancelado) return
       if (error) reportError('No se pudieron cargar los turnos', error)
       setTurnos((data ?? []).map(turnoFromDb))
     }
 
     async function cargarClientes() {
       const { data, error } = await supabase.from('clientes').select('*').eq('barberia_id', barberiaId)
+      if (cancelado) return []
       if (error) reportError('No se pudieron cargar los clientes', error)
       setPacientes(data ?? [])
       return data ?? []
@@ -156,6 +165,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     async function cargarNotas() {
       const { data, error } = await supabase
         .from('notas').select('*').eq('barberia_id', barberiaId).order('fecha', { ascending: false })
+      if (cancelado) return
       if (error) reportError('No se pudieron cargar las notas', error)
       setNotas(data ?? [])
     }
@@ -163,6 +173,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     async function cargarServicios() {
       const { data, error } = await supabase
         .from('servicios').select('*').eq('barberia_id', barberiaId).order('nombre')
+      if (cancelado) return
       if (error) reportError('No se pudieron cargar los servicios', error)
       if (data) setServicios(data.map(servicioFromDb))
     }
@@ -170,6 +181,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     async function cargarBarberos() {
       const { data, error } = await supabase
         .from('barberos').select('*').eq('barberia_id', barberiaId).order('nombre')
+      if (cancelado) return
       if (error) reportError('No se pudieron cargar los barberos', error)
       // OJO: "habilidades" queda tal cual viene de la base (texto JSON), no
       // se parsea acá. El único lugar que la convierte a array es
@@ -183,6 +195,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     async function cargarConfig() {
       const { data, error } = await supabase
         .from('config').select('*').eq('barberia_id', barberiaId).in('clave', ['bot_activo', 'horarios_default'])
+      if (cancelado) return
       if (error) { reportError('No se pudo cargar la configuración inicial', error); return }
       const botConfig = data?.find((item) => item.clave === 'bot_activo')
       if (botConfig) setBotActivo(botConfig.valor === 'true')
@@ -198,6 +211,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     async function cargarBloqueos() {
       const { data, error } = await supabase
         .from('bloqueos_agenda').select('*').eq('barberia_id', barberiaId).order('fecha')
+      if (cancelado) return
       if (error) reportError('No se pudieron cargar los días libres', error)
       setBloqueos(data ?? [])
     }
@@ -205,6 +219,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     async function cargarPagos() {
       const { data, error } = await supabase
         .from('pagos').select('*').eq('barberia_id', barberiaId).order('created_at', { ascending: false })
+      if (cancelado) return
       if (error) reportError('No se pudieron cargar los pagos', error)
       setPagos(data ?? [])
     }
@@ -215,6 +230,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
         mensajesPromise,
         clientesPromise || supabase.from('clientes').select('id, nombre').eq('barberia_id', barberiaId).then(({ data }) => data ?? []),
       ])
+      if (cancelado) return
       const { data } = mensajesResult
 
       // Agrupamos por cliente_id, NO por nombre. Si agrupáramos por nombre,
@@ -266,26 +282,33 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       setConversaciones(lista)
     }
 
+    let channel = null
+    let cancelado = false
+
     async function cargarTodo() {
-      setLoading(true)
       const clientesPromise = cargarClientes()
+      const mensajesPromise = cargarMensajes(clientesPromise)
+      // El panel se libera cuando están disponibles los datos que hacen
+      // coherentes Resumen y Agenda. Notas, mensajes y pagos siguen en
+      // paralelo como datos secundarios y no bloquean ese primer render.
+      cargarPagos()
+      const secondaryPromise = Promise.all([cargarNotas(), mensajesPromise])
       await Promise.all([
+        clientesPromise,
         cargarTurnos(),
-        cargarNotas(),
         cargarServicios(),
         cargarBarberos(),
         cargarConfig(),
-        cargarMensajes(clientesPromise),
         cargarBloqueos(),
-        cargarPagos(),
       ])
+      if (cancelado) return
       setLoading(false)
+      setLoadedForTenant(barberiaId)
+      clearWorkspaceTransition()
+      await secondaryPromise
     }
 
     cargarTodo()
-
-    let channel = null
-    let cancelado = false
 
     async function suscribirRealtime() {
       // Forzamos que la conexion de Realtime lleve el token de la sesion
@@ -368,6 +391,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       detenerFallback()
     }
   }, [barberiaId])
+
+  if (isSupabaseConfigured && (loading || loadedForTenant !== barberiaId)) {
+    return <WorkspacePreparing businessName={barberiaNombre || DEFAULT_BUSINESS_NAME} />
+  }
 
   const addNota = async (nueva) => {
     const conFecha = { ...nueva, fecha: todayKey }
@@ -798,8 +825,6 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   // Así, si tocás/destocás rápido una habilidad, los guardados a Supabase
   // salen siempre de a uno y en orden — nunca se pisan entre sí ni puede
   // "ganar" un click viejo por llegar después que uno nuevo.
-  const barberoWritesRef = useRef({})
-
   const updateBarbero = async (id, field, value) => {
     setBarberos((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)))
     if (!isSupabaseConfigured) return

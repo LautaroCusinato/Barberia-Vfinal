@@ -4,8 +4,10 @@ import { logout } from './lib/auth.js'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
 import { clearWorkspacePreference, readWorkspacePreference, saveWorkspacePreference } from './lib/workspacePreference.js'
+import { clearWorkspaceTransition, hasWorkspaceTransition } from './lib/workspaceTransition.js'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import LandingHero from './components/LandingHero.jsx'
+import WorkspacePreparing from './components/WorkspacePreparing.jsx'
 import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
 import './index.css'
 import './components/polish.css'
@@ -104,7 +106,6 @@ const invitationMatch = window.location.pathname.match(/^\/invitacion\/([^/]+)\/
 const verticalMatch = window.location.pathname.match(/^\/para\/([^/]+)\/?$/)
 const path = window.location.pathname
 const isPublicLandingPath = path === '/' || Boolean(verticalMatch)
-
 function LandingFallback() {
   return (
     <div className="marketing-page" data-public-landing="true">
@@ -158,6 +159,10 @@ function PublicLanding({ vertical = DEFAULT_VERTICAL }) {
   )
 }
 
+function RootSuspenseFallback() {
+  return hasWorkspaceTransition() ? <WorkspacePreparing /> : <RouteLoading />
+}
+
 function leerCache() {
   try {
     const raw = sessionStorage.getItem(CACHE_KEY)
@@ -190,6 +195,7 @@ function Root() {
   const [platformRole, setPlatformRole] = useState(null)
   const [workspace, setWorkspace] = useState(null)
   const [onboardingNeeded, setOnboardingNeeded] = useState(false)
+  const [workspaceTransition, setWorkspaceTransition] = useState(hasWorkspaceTransition)
 
   const yaResolvioAlgunaVezRef = useRef(false)
 
@@ -286,6 +292,8 @@ function Root() {
       setAuthed(Boolean(session))
       if (!session) {
         clearWorkspacePreference()
+        clearWorkspaceTransition()
+        setWorkspaceTransition(false)
         setChecking(false)
         return
       }
@@ -294,7 +302,11 @@ function Root() {
       try {
         await resolverBarberia(session.user.id)
       } finally {
-        if (mounted) setChecking(false)
+        clearWorkspaceTransition()
+        if (mounted) {
+          setWorkspaceTransition(false)
+          setChecking(false)
+        }
       }
     }
 
@@ -330,7 +342,7 @@ function Root() {
     }
   }, [])
 
-  if (checking) return isPublicLandingPath ? <LandingFallback /> : <RouteLoading />
+  if (checking) return workspaceTransition ? <WorkspacePreparing /> : (isPublicLandingPath ? <LandingFallback /> : <RouteLoading />)
   // En modo demo local no hay sesión real: conservamos el panel de ejemplo.
   if (!isSupabaseConfigured) {
     return <App barberiaId={DEFAULT_TENANT_ID} barberiaNombre={DEFAULT_BUSINESS_NAME} vertical={DEFAULT_VERTICAL} />
@@ -389,7 +401,7 @@ function Root() {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-    <Suspense fallback={isPublicLandingPath ? <LandingFallback /> : <RouteLoading />}>
+    <Suspense fallback={isPublicLandingPath ? <LandingFallback /> : <RootSuspenseFallback />}>
     {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} />
       : invitationMatch ? <InvitationPage token={decodeURIComponent(invitationMatch[1])} />
         : path === '/ingresar' ? <Login businessName="Austral Automatizaciones" onSuccess={() => window.location.assign('/')} />
