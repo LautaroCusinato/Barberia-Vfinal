@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-08-13T00:36:55.898Z",
+  "project_ref": "cmsymmszlzikqpvfqjre",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "results": [
+    {
+      "route": "landing-barberia",
+      "path": "/para/barberia",
+      "authenticated": false,
+      "status": 200,
+      "requests": 10,
+      "duplicate_requests": 0,
+      "asset_bytes_from_headers": 116149,
+      "js_requests": 4,
+      "css_requests": 2,
+      "metrics": {
+        "domContentLoaded": 2877.099999964237,
+        "loadEvent": 3182.5,
+        "ttfb": 6.300000011920929,
+        "firstPaint": 2916,
+        "firstContentfulPaint": 2916,
+        "lcp": 2952,
+        "cls": 0.002068040114604517,
+        "inp": null,
+        "mutations": 6
+      }
+    }
+  ]
+}
