@@ -23,6 +23,8 @@ En `ssagttjdgtypxjcgdnrw`, el proveedor Mercado Pago está `activo=false` y `ent
 
 La base tiene dos intentos de checkout fallidos, uno expirado y tres eventos de outbox pendientes del ensayo sandbox. No se ejecutó ninguna mutación durante esta auditoría. Antes de producción, esos eventos deben drenarse o clasificarse en el runbook sin mezclarlos con métricas productivas.
 
+El candidato comercial productivo preparado offline es `starter`, ARS 30.000 mensuales, con trial interno de 14 días. No existe todavía una fila productiva, `external_plan_id`, checkout ni secreto productivo; el precio sandbox de ARS 15.000 permanece sin cambios.
+
 ### Bloqueos encontrados
 
 1. Las Edge Functions actuales son deliberadamente sandbox-only: `MERCADOPAGO_ENVIRONMENT` distinto de `sandbox` se rechaza y la identidad permitida es el vendedor TEST. Esto es una protección correcta para esta etapa, pero significa que no se debe cambiar un secreto y esperar que producción funcione.

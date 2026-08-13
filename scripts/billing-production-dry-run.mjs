@@ -79,6 +79,7 @@ export function evaluateProductionDryRun(env = process.env) {
   addCheck(checks, blockers, 'plan_currency', /^[A-Z]{3}$/.test(String(env.BILLING_PLAN_CURRENCY || '').trim()), 'plan currency must be an ISO-4217 code')
   addCheck(checks, blockers, 'plan_amount', Number.isFinite(Number(env.BILLING_PLAN_AMOUNT)) && Number(env.BILLING_PLAN_AMOUNT) > 0, 'plan amount must be positive and explicitly configured')
   addCheck(checks, blockers, 'plan_periodicity', ['monthly', 'yearly'].includes(String(env.BILLING_PLAN_PERIODICITY || '').trim()), 'plan periodicity must be monthly or yearly')
+  addCheck(checks, blockers, 'trial_days', Number.isInteger(Number(env.BILLING_TRIAL_DAYS)) && Number(env.BILLING_TRIAL_DAYS) >= 0 && Number(env.BILLING_TRIAL_DAYS) <= 365, 'trial days must be an explicit integer from 0 to 365')
   addCheck(checks, blockers, 'external_plan_id', /^[A-Za-z0-9_-]{8,120}$/.test(String(env.BILLING_EXTERNAL_PLAN_ID || '').trim()), 'external plan ID must be present and verified')
 
   addCheck(checks, blockers, 'webhook_url', String(env.BILLING_WEBHOOK_URL || '').replace(/\/$/, '') === PRODUCTION_WEBHOOK_URL, 'production webhook URL must match the production project')

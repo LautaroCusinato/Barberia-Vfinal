@@ -67,7 +67,7 @@ La tabla de precios separa plan interno, proveedor, país, moneda, periodicidad 
 
 | Plan interno | Sandbox conocido | Producción |
 | --- | --- | --- |
-| Starter | ARS 15.000 mensual, Mercado Pago sandbox, tenant técnico 6 | precio/plan externo productivo aún no verificado; no listo |
+| Starter | ARS 15.000 mensual, Mercado Pago sandbox, tenant técnico 6 | candidato offline: ARS 30.000 mensual + trial interno de 14 días; plan externo aún no creado |
 | Pro | catálogo interno existente; no se cambia precio | precio/plan externo productivo pendiente de verificación |
 | Business | catálogo interno existente; no se cambia precio | precio/plan externo productivo pendiente de verificación |
 
@@ -94,17 +94,34 @@ Todas son informativas. El usuario puede cerrar el checkout, cambiar de pestaña
 - Eventos inválidos o fuera de allowlist quedan auditados como `ignored`/`failed` con errores sanitizados.
 - La reconciliación cubre webhook tardío o ausente; nunca se dispara sólo por el retorno del navegador. La API oficial espera HTTP 200/201 y puede reintentar si no recibe confirmación, por lo que el endpoint responde rápidamente y deja el trabajo pesado para la consulta/reconciliación server-side.
 
+## Candidato productivo preparado (offline)
+
+Los valores comerciales recibidos quedan preparados únicamente para el dry-run, sin crear filas, plan externo ni checkout:
+
+| Campo | Valor preparado |
+| --- | --- |
+| Plan interno | `starter` |
+| País | `AR` |
+| Moneda | `ARS` |
+| Importe | `30000` |
+| Periodicidad | `monthly` |
+| Trial | `14` días, interno de Austral |
+| Entorno/proveedor | `production` / `mercadopago`, aún bloqueado |
+
+El precio sandbox existente permanece en ARS 15.000. El candidato productivo debe implementarse como una fila separada, con un `external_plan_id` nuevo y seller/application productivos verificados. No se reutiliza el plan sandbox.
+
 ## Piloto productivo futuro
 
 No se eligió ni habilitó un tenant. La configuración futura debe permitir exactamente un ID, distinto de los protegidos 1, 5 y 6, con entorno `production`, proveedor `mercadopago`, plan/precio productivo explícitos y allowlist únicamente server-side. El frontend no puede elegirlo.
 
 ## Secrets y datos que faltan
 
-Datos no secretos que deberán definirse para un piloto (no se cargan todavía):
+Datos no secretos que todavía faltan para un piloto (los valores comerciales ya fueron definidos, pero no se cargan todavía):
 
 - seller ID y application ID productivos, verificados desde la misma aplicación;
-- código del plan interno, país, moneda, importe, periodicidad e ID externo del `preapproval_plan` productivo;
+- ID externo del `preapproval_plan` productivo, creado sólo después de una autorización separada;
 - ID del único tenant piloto (distinto de 1, 5 y 6);
+- evidencia de que el trial interno de 14 días y el precio ARS 30.000 coinciden con la fila productiva;
 - `MERCADOPAGO_ENVIRONMENT=production`, `MERCADOPAGO_API_BASE_URL=https://api.mercadopago.com`, `APP_BASE_URL` y la URL canónica del webhook;
 - allowlist server-side de un único tenant, `BILLING_PRODUCTION_ENABLED=0` hasta la autorización final, y PayPal deshabilitado.
 

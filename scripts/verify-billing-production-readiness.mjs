@@ -27,6 +27,7 @@ assert.doesNotMatch(billingApi, /billing=success[^\n]*(?:update|activate|transit
 
 const webhook = read('supabase/functions/billing-webhooks/index.ts')
 const providers = read('supabase/functions/_shared/providers.ts')
+const productionDryRun = read('scripts/billing-production-dry-run.mjs')
 for (const pattern of [/verifyMercadoPago/, /record_billing_webhook_event/, /saas_suscripciones_externas/, /transition_saas_subscription/]) assert.match(webhook, pattern)
 for (const pattern of [/x-signature/i, /x-request-id/i, /MERCADOPAGO_WEBHOOK_SECRET/, /crypto\.subtle\.verify/, /dataIdFromUrl/, /authorized_payments/, /preapproval_plan/, /preapproval_plan\/search\?q=/]) assert.match(providers, pattern)
 assert.match(providers, /resourcePath = input\.kind === 'subscription' \? `\/\$\{resource\}`/)
@@ -37,6 +38,7 @@ assert.ok(webhook.indexOf('plan_event_not_subscription') < webhook.indexOf('tran
 assert.match(webhook, /subscription_identity_mismatch/)
 assert.match(webhook, /EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID/)
 assert.match(webhook, /provider === 'paypal' \|\| resourceType === 'preapproval'/, 'los pagos de Mercado Pago no deben transicionar suscripciones')
+assert.match(productionDryRun, /trial_days/)
 
 const rollout = read('docs/BILLING-PRODUCTION-ROLLOUT.md')
 for (const phrase of ['NO ACTIVAR', 'MERCADOPAGO_ENVIRONMENT=production', 'BILLING_PRODUCTION_ENABLED', 'No activar por URL de retorno']) {
@@ -64,8 +66,9 @@ const readyCandidate = evaluateProductionDryRun({
   BILLING_PLAN_CODE: 'starter',
   BILLING_PLAN_COUNTRY: 'AR',
   BILLING_PLAN_CURRENCY: 'ARS',
-  BILLING_PLAN_AMOUNT: '15000',
+  BILLING_PLAN_AMOUNT: '30000',
   BILLING_PLAN_PERIODICITY: 'monthly',
+  BILLING_TRIAL_DAYS: '14',
   BILLING_EXTERNAL_PLAN_ID: 'production-plan-1234',
   BILLING_WEBHOOK_URL: `https://${PRODUCTION_PROJECT_REF}.supabase.co/functions/v1/billing-webhooks/mercadopago`,
   BILLING_WEBHOOK_VERIFIED: '1',
