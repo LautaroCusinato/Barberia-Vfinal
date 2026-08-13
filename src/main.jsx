@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { DEFAULT_BUSINESS_NAME, DEFAULT_TENANT_ID, DEFAULT_VERTICAL } from './lib/tenant'
 import { clearWorkspacePreference, readWorkspacePreference, saveWorkspacePreference } from './lib/workspacePreference.js'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import LandingHero from './components/LandingHero.jsx'
 import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
 import './index.css'
 import './components/polish.css'
@@ -106,10 +107,10 @@ const isPublicLandingPath = path === '/' || Boolean(verticalMatch)
 
 function LandingFallback() {
   return (
-    <main className="marketing-page marketing-loading" aria-busy="true">
-      <header className="marketing-header"><nav className="marketing-nav" aria-label="Navegación principal"><span className="marketing-brand"><span className="marketing-brand-mark">A</span><span><strong>Austral</strong><small>Automatizaciones</small></span></span><span className="marketing-loading-pill" /></nav></header>
-      <section className="marketing-hero"><div className="marketing-container marketing-loading-hero"><div className="marketing-hero-copy"><span className="marketing-eyebrow">Austral para negocios de servicios</span><h1>Turnos, equipo y clientes en un solo lugar.</h1><p>Reservas online, agenda, clientes, empleados, servicios y horarios conectados en una plataforma clara.</p><div className="marketing-actions"><a className="marketing-button primary" href="/registro">Probar gratis 14 días <span aria-hidden="true">→</span></a><a className="marketing-button secondary" href="/demo">Ver cómo funciona</a></div></div><div className="marketing-loading-preview" aria-hidden="true"><span /><span /><span /></div></div></section>
-    </main>
+    <div className="marketing-page" data-public-landing="true">
+      <LandingHero vertical={DEFAULT_VERTICAL} />
+      <LandingSectionsFallback />
+    </div>
   )
 }
 
@@ -123,8 +124,38 @@ class LandingBoundary extends React.Component {
   }
 }
 
+function LandingSectionsFallback() {
+  return (
+    <section className="marketing-section marketing-sections-loading" aria-busy="true" aria-label="Cargando contenido del producto">
+      <div className="marketing-container">
+        <div className="marketing-loading-section-heading" />
+        <div className="marketing-loading-section-grid"><span /><span /><span /></div>
+      </div>
+    </section>
+  )
+}
+
+class LandingSectionsBoundary extends React.Component {
+  state = { hasError: false }
+
+  static getDerivedStateFromError() { return { hasError: true } }
+
+  render() {
+    return this.state.hasError ? <LandingSectionsFallback /> : this.props.children
+  }
+}
+
 function PublicLanding({ vertical = DEFAULT_VERTICAL }) {
-  return <LandingBoundary><Landing vertical={vertical} /></LandingBoundary>
+  return (
+    <div className="marketing-page" data-public-landing="true">
+      <LandingBoundary><LandingHero vertical={vertical} /></LandingBoundary>
+      <LandingSectionsBoundary>
+        <Suspense fallback={<LandingSectionsFallback />}>
+          <Landing vertical={vertical} />
+        </Suspense>
+      </LandingSectionsBoundary>
+    </div>
+  )
 }
 
 function leerCache() {

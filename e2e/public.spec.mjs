@@ -8,6 +8,24 @@ test.describe('superficies públicas sin efectos externos', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 
+  test('el hero crítico permanece visible durante el ciclo de vida', async ({ page }) => {
+    await page.route('**/assets/Landing-*.js', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+      await route.abort()
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    const hero = page.locator('[data-hero-critical="true"]')
+    await expect(hero.getByRole('heading', { level: 1 })).toBeVisible()
+    await expect(hero.getByRole('link', { name: /probar gratis/i })).toBeVisible()
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+    await page.waitForTimeout(300)
+    await expect(hero.getByRole('heading', { level: 1 })).toBeVisible()
+    await expect(hero).toHaveCSS('visibility', 'visible')
+  })
+
   test('registro expone sólo los datos iniciales y validación de contraseña', async ({ page }) => {
     await page.goto('/registro')
     await expect(page.getByRole('heading', { name: /creá tu cuenta/i })).toBeVisible()

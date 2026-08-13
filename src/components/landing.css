@@ -21,6 +21,14 @@
   font-family: var(--font-ui);
 }
 
+/* The hero is rendered eagerly. Secondary sections may still be loading or
+ * fail independently, so their fallback must reserve space without covering
+ * the critical product message above. */
+.marketing-sections-loading { min-height: 340px; background: var(--marketing-surface); }
+.marketing-loading-section-heading { width: min(520px, 70%); height: 18px; margin-bottom: 28px; border-radius: 8px; background: color-mix(in srgb, var(--marketing-ink) 10%, transparent); }
+.marketing-loading-section-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.marketing-loading-section-grid span { display: block; min-height: 120px; border: 1px solid var(--marketing-border); border-radius: 14px; background: color-mix(in srgb, var(--marketing-surface-muted) 72%, transparent); }
+
 .marketing-page *,
 .marketing-page *::before,
 .marketing-page *::after { box-sizing: border-box; }
@@ -263,6 +271,7 @@
   .marketing-problem-grid, .marketing-feature-grid, .marketing-plan-grid { grid-template-columns: 1fr; }
   .marketing-problem-grid { gap: 0; }.marketing-problem-grid article { padding: 20px 0; }.marketing-feature-grid { gap: 10px; }.marketing-feature-grid article { min-height: 0; }.marketing-whatsapp-flow { grid-template-columns: 1fr; gap: 14px; padding-top: 16px; }.marketing-flow-step { grid-template-columns: 46px 1fr; justify-items: start; gap: 10px; text-align: left; }.marketing-flow-step > span { width: 46px; height: 46px; grid-row: span 2; }.marketing-flow-arrow { top: auto; right: auto; bottom: -13px; left: 14px; transform: rotate(90deg); }.marketing-flow-step:last-child .marketing-flow-arrow { display: none; }.marketing-safety-note { align-items: flex-start; text-align: left; }
   .marketing-steps-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }.marketing-steps-grid article { min-height: 165px; }.marketing-steps-grid h3 { margin-top: 22px; }.marketing-product-story { gap: 30px; }.marketing-product-story.reverse .marketing-product-story-copy { order: -1; }.marketing-plan-card { min-height: 0; }.marketing-plan-card:first-child { box-shadow: 0 0 0 2px var(--marketing-accent-soft); }.marketing-faq-list summary { min-height: 60px; font-size: 13px; }.marketing-faq-list p { margin-right: 0; }.marketing-final-cta { padding: 76px 0; }.marketing-footer-inner { grid-template-columns: 1fr; gap: 28px; }.marketing-footer-controls { justify-content: flex-start; }.marketing-footer-bottom { flex-direction: column; gap: 8px; }
+  .marketing-loading-section-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 420px) {
