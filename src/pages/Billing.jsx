@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, CreditCard, ExternalLink, LoaderCircle, ShieldCheck } from 'lucide-react'
 import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabaseClient'
 import { classifyBillingFailure } from '../lib/runtimeStability.js'
+import { getBillingReturnState } from '../lib/billingReturnState.js'
 
 const STATUS_LABELS = {
   trialing: 'Prueba gratuita',
@@ -71,6 +72,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [subscriptionMissing, setSubscriptionMissing] = useState(false)
+  const [returnState] = useState(() => getBillingReturnState())
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) { setLoading(false); return }
@@ -156,6 +158,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
       </div>
 
       {error && <div className="error-banner" role="alert">{error}</div>}
+      {returnState && <div className="billing-notice" role="status" data-billing-return={returnState.kind}><ShieldCheck size={16} /> {returnState.message}</div>}
       {subscriptionMissing && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Todavía no tenés una suscripción activa. El trial y el plan aparecen cuando el onboarding termina de crear la suscripción.</div>}
       {notice && <div className="billing-notice" role="status"><CheckCircle2 size={16} /> {notice}</div>}
 
