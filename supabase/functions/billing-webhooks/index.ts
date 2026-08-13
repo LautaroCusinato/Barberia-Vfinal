@@ -1,6 +1,6 @@
 import { adminClient } from '../_shared/supabase.ts'
 import { errorJson, json, requestId } from '../_shared/http.ts'
-import { mercadoPagoResource, normalizeStatus, paypalResource, verifyMercadoPago, verifyPayPal } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID, EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPagoResource, normalizeStatus, paypalResource, verifyMercadoPago, verifyPayPal } from '../_shared/providers.ts'
 
 function minimized(payload: Record<string, unknown>) {
   const resource = payload.resource as Record<string, unknown> | undefined
@@ -42,7 +42,15 @@ Deno.serve(async (request) => {
     }
 
     const resourceId = resource.id
-    const { data: externalSubscription } = await admin.from('saas_suscripciones_externas').select('suscripcion_id, barberia_id, external_subscription_id').eq('proveedor_codigo', provider).eq('external_subscription_id', resourceId).maybeSingle()
+    const resourceType = String((resource as Record<string, unknown>).resourceType || (provider === 'paypal' ? 'payment' : 'preapproval'))
+    // Plan notifications describe the plan template, not a payer's
+    // subscription. They are auditable but can never select a tenant or
+    // transition billing state.
+    if (provider === 'mercadopago' && resourceType === 'preapproval_plan') {
+      await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'plan_event_not_subscription', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
+      return json({ received: true, processed: false, reason: 'plan_event_not_subscription' }, 202)
+    }
+    const { data: externalSubscription } = await admin.from('saas_suscripciones_externas').select('suscripcion_id, barberia_id, external_subscription_id, external_plan_id, metadata').eq('proveedor_codigo', provider).eq('external_subscription_id', resourceId).maybeSingle()
     let { data: checkoutAttempt } = await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('proveedor_codigo', provider).eq('external_checkout_id', resourceId).maybeSingle()
     // En una notificación de pago, Mercado Pago entrega el ID del pago, no el
     // ID de la preferencia. El external_reference estable permite recuperar el
@@ -92,13 +100,32 @@ Deno.serve(async (request) => {
       await admin.from('saas_billing_webhook_events').update({ estado: 'failed', error_code: 'amount_or_currency_mismatch', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
       return errorJson('El importe o la moneda no coinciden con el plan interno.', 422, 'amount_or_currency_mismatch')
     }
-    const resourceType = String((resource as Record<string, unknown>).resourceType || (provider === 'paypal' ? 'payment' : 'preapproval'))
-    if (provider === 'mercadopago' && resourceType === 'preapproval_plan') {
-      await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'plan_event_not_subscription', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
-      return json({ received: true, processed: false, reason: 'plan_event_not_subscription' }, 202)
+    if (provider === 'mercadopago' && resourceType === 'preapproval') {
+      const verifiedResource = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
+      const verifiedCollectorId = Number(verifiedResource?.collector_id) || null
+      const expectedPlanId = String(checkoutAttempt?.metadata?.external_plan_id || externalSubscription?.external_plan_id || '')
+      const verifiedPlanId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
+      const expectedReference = String(checkoutAttempt?.metadata?.tenant_reference || checkoutAttempt?.metadata?.reference || '')
+      const verifiedReference = String(verifiedResource?.external_reference || '')
+      const expectedApplicationId = Number(Deno.env.get('MERCADOPAGO_EXPECTED_APPLICATION_ID') || EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID) || null
+      const verifiedApplicationId = Number(verifiedResource?.application_id) || null
+      const identityMismatch = verifiedCollectorId !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
+        || !expectedPlanId
+        || verifiedPlanId !== expectedPlanId
+        || Boolean(expectedReference && verifiedReference && verifiedReference !== expectedReference)
+        || Boolean(expectedApplicationId && verifiedApplicationId !== expectedApplicationId)
+      if (identityMismatch) {
+        await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'subscription_identity_mismatch', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
+        return json({ received: true, processed: false, reason: 'subscription_identity_mismatch' }, 202)
+      }
     }
-    const { error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: context.suscripcion_id, p_to_state: resource.normalizedStatus || normalizeStatus(provider as 'mercadopago' | 'paypal', resource.status), p_reason: `provider_event:${externalEventId}`, p_source: 'provider', p_provider_event_id: externalEventId, p_provider_event_at: minimal.updated_at || null })
-    if (transitionError) throw Object.assign(new Error('No se pudo actualizar la suscripción.'), { status: 502, code: 'subscription_transition_failed' })
+    // Only the verified subscription resource can transition a Mercado Pago
+    // subscription. Payment and authorized-payment topics reconcile money but
+    // never activate or otherwise transition the subscription by themselves.
+    if (provider === 'paypal' || resourceType === 'preapproval') {
+      const { error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: context.suscripcion_id, p_to_state: resource.normalizedStatus || normalizeStatus(provider as 'mercadopago' | 'paypal', resource.status), p_reason: `provider_event:${externalEventId}`, p_source: 'provider', p_provider_event_id: externalEventId, p_provider_event_at: minimal.updated_at || null })
+      if (transitionError) throw Object.assign(new Error('No se pudo actualizar la suscripción.'), { status: 502, code: 'subscription_transition_failed' })
+    }
     if (provider === 'mercadopago' && resourceType === 'preapproval' && checkoutAttempt?.suscripcion_id && resourceId) {
       const { error: externalLinkError } = await admin.from('saas_suscripciones_externas').upsert({
         suscripcion_id: checkoutAttempt.suscripcion_id,

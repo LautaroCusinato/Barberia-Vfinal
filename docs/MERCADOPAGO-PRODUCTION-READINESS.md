@@ -25,10 +25,35 @@ La documentación oficial argentina describe el flujo de plan asociado en dos pa
 
 - `billing-api` resuelve el precio externo en backend, crea una intención idempotente y, cuando hay `external_plan_id`, consulta el plan y devuelve su `init_point`; no crea una suscripción por URL ni confía en parámetros del navegador.
 - `billing-webhooks` valida HMAC con `x-signature`/`x-request-id`, prioriza el `data.id` del query param documentado, vuelve a consultar el recurso y deduplica antes de transicionar.
-- Se corrigió el enrutamiento server-side para que suscripciones usen `/preapproval/{id}`, pagos `/v1/payments/{id}`, pagos autorizados `/authorized_payments/{id}` y eventos de plan `/preapproval_plan/{id}`. Los eventos de plan se auditan como `ignored` y no pueden activar una suscripción.
+- Se corrigió el enrutamiento server-side para que suscripciones usen `/preapproval/{id}`, pagos `/v1/payments/{id}`, pagos autorizados `/authorized_payments/{id}` y eventos de plan `/preapproval_plan/search?q={id}`. Los eventos de plan, pagos y pagos autorizados se auditan/reconcilian sin transicionar; sólo un `preapproval` verificado puede cambiar el estado de la suscripción.
 - La documentación de Mercado Pago presenta una tensión entre la configuración general de Webhooks y el apartado de Suscripciones: una sección indica que la configuración por aplicación no está disponible para Suscripciones, mientras que la tabla de tópicos incluye `subscription_preapproval_plan`, `subscription_preapproval` y `subscription_authorized_payment`. Por eso el webhook productivo queda **pendiente de verificación en la aplicación productiva**; no se declara listo sólo por tener una URL.
 
 Conclusión de flujo: el sandbox validado usa un checkout hospedado derivado de `preapproval_plan`; para producción no se cambiará a Preferences ni se reutilizará el plan sandbox. Antes de activar hay que confirmar en la cuenta productiva si el enlace hospedado entrega los tópicos esperados. Si no los entrega, el cambio mínimo será completar el flujo oficial `/preapproval` con `card_token_id` tokenizado en cliente, manteniendo los mismos contratos internos, webhook, reconciliación e idempotencia.
+
+## Decision: `init_point` hospedado frente a `card_token_id`
+
+### Fuente exacta del checkout actual
+
+El checkout sandbox actual no es una Preference ni una suscripcion creada por el navegador. `billing-api` llama a `mercadoPago()` con el `external_plan_id` resuelto desde `saas_plan_precios`; esa funcion hace `GET /preapproval_plan/{id}` y devuelve `sandbox_init_point` (o `init_point` como fallback) del plan verificado. La respuesta se persiste en `saas_billing_checkout_attempts` y la UI solo navega a esa URL. No se envia `card_token_id` desde el frontend.
+
+### Lo que la documentacion confirma y lo que no
+
+Mercado Pago documenta que un plan tiene un `init_point` hospedado y que `POST /preapproval` puede crear una suscripcion asociada. La misma guia de plan asociado indica de forma explicita que la suscripcion debe incluir `preapproval_plan_id`, `card_token_id` y `status=authorized`. Por eso el enlace de plan es real y utilizable en sandbox, pero la documentacion no garantiza por si sola que un `init_point` de plan sea el flujo productivo completo para nuestra aplicacion. El estado productivo queda **no confirmado** hasta verificar una suscripcion y sus webhooks en la cuenta productiva.
+
+La decision es **Escenario B para produccion, Escenario A solo para sandbox**:
+
+- Sandbox: conservar el checkout hospedado del plan, sin capturar tarjetas ni crear credenciales nuevas.
+- Produccion: no habilitar el `init_point` hasta confirmar el comportamiento en la aplicacion productiva. Si no esta soportado, el cambio minimo es tokenizar la tarjeta con el SDK oficial en el cliente y enviar unicamente el `card_token_id` efimero a una Edge Function que cree `/preapproval` con `status=authorized`. Nunca se aceptara numero de tarjeta, CVV o token desde URLs, logs o tablas.
+
+No se modifican ahora los contratos internos: checkout attempts, suscripciones externas, webhooks firmados, reconciliacion, idempotencia, estados ni la UX de retorno siguen siendo los mismos.
+
+### Enrutamiento de eventos y activacion
+
+El webhook vuelve a consultar el recurso segun el topico documentado: `subscription_preapproval` usa el detalle `/preapproval/{id}` (la documentacion de notificaciones tambien ofrece `/preapproval/search`), `subscription_preapproval_plan` usa `/preapproval_plan/search?q={id}`, `subscription_authorized_payment` usa `/authorized_payments/{id}` y `payment` usa `/v1/payments/{id}`. Un evento de plan solo se audita como `ignored`; los pagos y pagos autorizados se registran sin cambiar el estado de la suscripcion. Solo un `preapproval` verificado, con vendedor, aplicacion (cuando esta configurada), plan, importe/moneda, tenant y referencia compatibles, puede ejecutar `transition_saas_subscription`.
+
+### Trial y datos pendientes
+
+No se crea ningun plan productivo en esta etapa. Antes de preparar uno, solo hay que definir: **plan interno, importe, moneda, periodicidad y trial**. La alternativa recomendada sigue siendo trial interno de Austral y solicitar el metodo de pago al finalizar; no se elige `free_trial` de Mercado Pago sin una decision comercial explicita.
 
 ## Contratos y estados
 

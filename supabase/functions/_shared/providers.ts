@@ -30,6 +30,7 @@ function mercadoPagoEnvironment() {
  * Mercado Pago can issue APP_USR credentials for a TEST seller as well.
  */
 export const EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID = 3595396521
+export const EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID = 3172086171935346
 
 export function mercadoPagoCredentialStatus() {
   const token = String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') || '').trim()
@@ -287,9 +288,23 @@ export async function mercadoPagoResource(payload: Record<string, unknown>, data
         ? 'payments'
         : 'preapproval'
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
-  const resourcePath = resource === 'payments' ? `/v1/${resource}` : `/${resource}`
-  const response = await fetch(`${base}${resourcePath}/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } })
-  const body = await responseJson(response, 'Mercado Pago')
+  // Mercado Pago's Webhooks reference maps plan notifications to the search
+  // endpoint. A plan event is audit-only, but it still needs a provider-side
+  // read before it is ignored. Subscription notifications have a known ID and
+  // use the documented detail endpoint; payments use their versioned endpoint.
+  const resourcePath = resource === 'payments'
+    ? `/v1/payments/${encodeURIComponent(id)}`
+    : resource === 'authorized_payments'
+      ? `/authorized_payments/${encodeURIComponent(id)}`
+      : resource === 'preapproval_plan'
+        ? `/preapproval_plan/search?q=${encodeURIComponent(id)}`
+        : `/preapproval/${encodeURIComponent(id)}`
+  const response = await fetch(`${base}${resourcePath}`, { headers: { Authorization: `Bearer ${token}` } })
+  const responseBody = await responseJson(response, 'Mercado Pago')
+  const body = resource === 'preapproval_plan'
+    ? (Array.isArray(responseBody.results) ? responseBody.results.find((item: Record<string, unknown>) => String(item.id || '') === id) : null)
+    : responseBody
+  if (!body) throw new ProviderError('Mercado Pago no devolvió el plan notificado.', 404, 'subscription_plan_not_found')
   const resourceType = resource === 'payments' || resource === 'authorized_payments' ? 'payment' : resource === 'preapproval_plan' ? 'preapproval_plan' : 'preapproval'
   return { id, status: body.status, normalizedStatus: mpStatus(body.status), amount: Number(body.transaction_amount || body.auto_recurring?.transaction_amount || body.amount || 0) || null, currency: body.currency_id || body.auto_recurring?.currency_id || body.currency || null, externalReference: body.external_reference || null, resourceType, resource: body }
 }
