@@ -87,15 +87,15 @@ Para borrar, se requieren simultáneamente `E2E_ALLOW_CLEANUP=1` y `--execute`; 
 - Catálogo de reserva pública QA (390): **OK**, sin crear reserva.
 - `billing-api` mock Edge Function: **ACTIVE sólo en QA**, JWT obligatorio, CORS limitado a orígenes conocidos, sin secretos ni proveedores externos.
 - Estados de billing ejercitados: `trialing`, `active`, `past_due`, `suspended`, `canceled`; checkout y reconciliación mock idempotentes.
-- Playwright autenticado: **144/144** escenarios reales en 6 proyectos.
-- Playwright público: **48/48** escenarios en 6 proyectos.
+- Playwright autenticado: **192/192** escenarios reales en 8 proyectos (corrida serial QA del 2026-08-13).
+- Playwright público: **72/72** escenarios en 8 proyectos (corrida serial).
 - Verificación billing mock: estados, checkout y reconciliación idempotente; usuario sin tenant bloqueado.
 - Host productivo contactado: **no**.
-- Evidencia: `docs/authenticated-qa/`.
+- Evidencia: `docs/authenticated-qa/`. Los usuarios ausentes detectados en la auditoría previa se restauraron con `npm run e2e:qa:fixtures -- --execute`; no se insertaron datos arbitrarios.
 
 ## Pendiente seguro
 
-No quedan bloqueos de infraestructura QA para la matriz autenticada. Billing sigue siendo un mock interno: no conecta Mercado Pago, PayPal, n8n, Evolution ni WhatsApp, y no debe desplegarse en producción.
+No quedan bloqueos de infraestructura QA para la matriz autenticada. Billing sigue siendo un mock interno: no conecta Mercado Pago, PayPal, n8n, Evolution ni WhatsApp, y no debe desplegarse en producción. El cleanup posterior a la corrida se dejó en dry-run y detectó solamente los dos tenants y 12 usuarios `E2E_QA_`.
 
 ## Rollback
 

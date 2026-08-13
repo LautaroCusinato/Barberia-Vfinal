@@ -37,19 +37,19 @@ El catálogo continúa proviniendo de `get_billing_catalog`; precios y monedas n
 
 `npm test` incluye `scripts/verify-runtime-stability.mjs`, que verifica la revalidación de background, la ausencia de reload en `Root`, la clasificación de `subscription_missing` y la separación de provider disabled.
 
-La validación autenticada se ejecutó únicamente contra el proyecto QA configurado localmente. La suite pública completa pasó 72/72 en ejecución serial. La suite autenticada no pudo completar el recorrido porque el proyecto QA no contiene los fixtures de Auth requeridos: `e2e_qa_unassigned@e2e-qa.invalid` bloquea los escenarios de onboarding y `e2e_qa_owner_a@e2e-qa.invalid` bloquea el resto de la matriz serial. En la corrida completa hubo 24 casos iniciales pasados, 8 fallos por `unassigned` y 152 casos que no se ejecutaron; excluyendo los dos escenarios dependientes de esos usuarios, hubo 24 pasados, 8 fallos por `ownerA` y 144 no ejecutados. Esto es un prerrequisito de datos QA, no una regresión del cambio de runtime.
+La validación final se ejecutó únicamente contra el proyecto QA configurado localmente. La suite pública completa pasó **72/72** y la suite autenticada **192/192** en ejecución serial. La causa del bloqueo previo fue la ausencia de los fixtures Auth `e2e_qa_unassigned@e2e-qa.invalid` y `e2e_qa_owner_a@e2e-qa.invalid`; el seeder idempotente los restauró junto con los roles necesarios, sin cambiar el código de producto ni tocar producción.
 
-No se consultó producción ni se modificó ningún tenant productivo durante esta corrección. Para cerrar la matriz autenticada hay que crear/restaurar los usuarios QA definidos en `docs/QA-SANDBOX.md` y repetir Playwright sin cambiar el código de producto.
+No se consultó producción ni se modificó ningún tenant productivo durante esta corrección. El cleanup posterior fue dry-run y permaneció limitado al prefijo `E2E_QA_`.
 
 ## Pendientes manuales
 
-- Ejecutar la matriz Playwright autenticada en QA con un tenant `E2E_QA_` nuevo.
+- Repetir la matriz cuando cambien componentes de autenticación o workspace.
 - Confirmar en DevTools que `visibilitychange` no dispara remount y que los requests de revalidación no se duplican.
-- Confirmar en QA los estados `trialing`, `active`, `provider disabled`, `subscription_missing`, 401/403/500 y Tenant A/B.
+- Mantener la cobertura QA de `trialing`, `active`, `provider disabled`, `subscription_missing`, 401/403/500 y Tenant A/B.
 
 ## Clasificación de hallazgos
 
 - P0: ninguno.
-- P1: ninguno en el código modificado; la ejecución autenticada queda bloqueada por fixtures QA ausentes.
-- P2: completar los usuarios QA y repetir la matriz; no requiere cambios de producción.
+- P1: ninguno.
+- P2: repetir la matriz después de cambios de autenticación; no requiere cambios de producción.
 - P3: instrumentar métricas de remount/request en una sesión real de dispositivo cuando QA esté disponible.

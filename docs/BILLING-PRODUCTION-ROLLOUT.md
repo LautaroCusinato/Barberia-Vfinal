@@ -1,5 +1,7 @@
 # Billing productivo: rollout seguro para RC1
 
+La matriz complementaria de readiness y UX está en [`docs/MERCADOPAGO-PRODUCTION-READINESS.md`](./MERCADOPAGO-PRODUCTION-READINESS.md). Estado de esta etapa: **NO ACTIVAR**.
+
 Estado actual: **NO ACTIVAR**. Este documento prepara el cambio de Mercado Pago sandbox a producción sin crear checkout, pagos ni suscripciones reales.
 
 Aplican Austral SaaS Architecture (tenant scoping, RLS/RPC, idempotencia, firma y rollback) y Austral Design System (cualquier control futuro debe reutilizar el Design System y no exponer secretos en la UI). Esta etapa no modifica reservas, WhatsApp, n8n, Evolution, DNS, Cloudflare ni datos de Barbería Central (id 1) o Barbería Nueva (id 5).
