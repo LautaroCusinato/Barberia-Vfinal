@@ -9,6 +9,7 @@ test.describe('superficies públicas sin efectos externos', () => {
   })
 
   test('el hero crítico permanece visible durante el ciclo de vida', async ({ page }) => {
+    test.setTimeout(45_000)
     await page.route('**/assets/Landing-*.js', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1200))
       await route.abort()
@@ -21,7 +22,7 @@ test.describe('superficies públicas sin efectos externos', () => {
     await page.evaluate(() => window.scrollTo(0, 0))
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
-    await page.waitForTimeout(300)
+    await page.waitForTimeout(30_000)
     await expect(hero.getByRole('heading', { level: 1 })).toBeVisible()
     await expect(hero).toHaveCSS('visibility', 'visible')
   })

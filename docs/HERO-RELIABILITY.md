@@ -19,9 +19,9 @@ La reproducción local y la inspección read-only de producción mostraron que e
 
 - `npm run build`: OK. Entry JS 232.50 kB raw / 59.97 kB gzip; `Landing` continúa separado en 23.48 kB raw / 6.57 kB gzip.
 - La medición QA en 390×844 (`docs/performance-sprint8/after-hero.json`) registró 10 requests, 0 duplicadas, LCP 260 ms y CLS 0.0034.
-- El test de Playwright aborta el chunk lazy `Landing-*.js` y mantiene visible el título y CTA del hero, además de verificar scroll, reduced motion y `visibilitychange`.
+- El test de Playwright aborta el chunk lazy `Landing-*.js` y mantiene visible el título y CTA del hero durante 30 segundos, además de verificar scroll, reduced motion y `visibilitychange`.
 - `npm run lint`, `npm test`, `npm run build`, Playwright público (9/9 en Chromium) y secret scan pasan.
 
 ## Producción
 
-La observación read-only previa en `https://barberia.cuchitron.lat/` fue saludable (hero visible, estilos aplicados y sin errores de consola). La corrección necesita desplegarse para validar el ciclo completo sobre el build nuevo; no se purgaron caches ni se modificó Cloudflare.
+La observación read-only previa en `https://barberia.cuchitron.lat/` fue saludable (hero visible, estilos aplicados y sin errores de consola). Tras el push, GitHub Actions terminó SUCCESS para `aae9b8f`, pero el dominio personalizado y los dominios Pages observados continuaron sirviendo el fingerprint anterior; no se purgaron caches ni se modificó Cloudflare. La validación de ciclo completo en producción queda bloqueada hasta que Pages publique este commit.
