@@ -1,0 +1,79 @@
+{
+  "name": "Austral WhatsApp Reply Only Pilot",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e2e-qa-manual-trigger",
+      "name": "E2E_QA Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first()?.json ?? {};\nconst mode = String($env.WHATSAPP_MODE ?? '').trim().toLowerCase();\nconst pilotMode = String($env.PILOT_MODE ?? '').trim().toLowerCase();\nconst killSwitch = String($env.REPLY_ONLY_KILL_SWITCH ?? 'disabled').trim().toLowerCase();\nconst payload = input.payload ?? input;\nconst fromMe = Boolean(payload.fromMe ?? payload.key?.fromMe ?? payload.data?.key?.fromMe);\nconst eventId = String(payload.event_id ?? payload.key?.id ?? '').trim();\nconst integrationId = String(payload.integration_id ?? '').trim();\nif (mode !== 'reply_only' || pilotMode !== 'reply_only' || killSwitch !== 'enabled') throw new Error('reply_only está bloqueado por configuración');\nif (!eventId || !integrationId || fromMe) throw new Error('evento inválido o generado por la propia cuenta');\nreturn [{ json: { event_id: eventId, integration_id: integrationId, instance: String(payload.instance ?? '').trim().toLowerCase(), receiver: String(payload.receiver ?? '').replace(/\\D/g, ''), sender: String(payload.sender ?? '').replace(/\\D/g, ''), text: String(payload.text ?? '').trim(), mode: 'reply_only', mutation_blocked: true, auth_required: true } }];"
+      },
+      "id": "e2e-qa-guard",
+      "name": "Guard reply-only + loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n// La resolución real debe ejecutarse con la Credential privada de Supabase QA.\n// Nunca aceptar tenant_id del payload. Esta plantilla queda inactiva hasta configurar una única allowlist server-side.\nif (!item.integration_id || !item.instance || !item.receiver) throw new Error('identidad incompleta');\nreturn [{ json: { ...item, tenant_resolution: 'server_side_allowlist_required', external_effects: false } }];"
+      },
+      "id": "e2e-qa-tenant",
+      "name": "Resolve tenant (server-side)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst supported = item.text.length > 0;\nconst intent = /reserv|turno/i.test(item.text) ? 'booking_request' : /precio|cu[aá]nto/i.test(item.text) ? 'price' : /horario|disponib/i.test(item.text) ? 'availability' : 'faq';\nconst reply = intent === 'booking_request' ? 'Puedo ayudarte a consultar horarios disponibles. La confirmación del turno debe realizarse desde la página de reservas.' : supported ? 'Respuesta propuesta de prueba: consultaré la información disponible del negocio.' : 'Por ahora puedo ayudarte mejor si me escribís tu consulta.';\nreturn [{ json: { ...item, intent, confidence: 0.9, proposed_response: reply, ai_mock: true, mutation_blocked: true } }];"
+      },
+      "id": "e2e-qa-ai",
+      "name": "AI deterministic QA mock",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst reply = String(item.proposed_response ?? '').trim();\nif (!reply || reply.length > 1000 || /^\\s*[\\[{]/.test(reply) || /credential|token|clave|stack trace/i.test(reply)) throw new Error('respuesta reply-only no segura');\nreturn [{ json: { ...item, reply_prepared: true, mutation_blocked: true, external_effects: false, mock_send: true } }];"
+      },
+      "id": "e2e-qa-prepare",
+      "name": "Prepare safe reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n// Adapter mock: no hay llamada a Evolution en QA/offline.\nreturn [{ json: { ...item, mock_adapter: 'no_external_request', reply_sent: false, mutation_blocked: true, reservations_created: 0, clients_modified: 0 } }];"
+      },
+      "id": "e2e-qa-mock-adapter",
+      "name": "Mock reply adapter (offline)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 0]
+    }
+  ],
+  "connections": {
+    "E2E_QA Manual Trigger": { "main": [[{ "node": "Guard reply-only + loop", "type": "main", "index": 0 }]] },
+    "Guard reply-only + loop": { "main": [[{ "node": "Resolve tenant (server-side)", "type": "main", "index": 0 }]] },
+    "Resolve tenant (server-side)": { "main": [[{ "node": "AI deterministic QA mock", "type": "main", "index": 0 }]] },
+    "AI deterministic QA mock": { "main": [[{ "node": "Prepare safe reply", "type": "main", "index": 0 }]] },
+    "Prepare safe reply": { "main": [[{ "node": "Mock reply adapter (offline)", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": { "purpose": "offline QA only; configure private Supabase QA Credential and one server-side allowlist row before any activation" },
+  "tags": []
+}
