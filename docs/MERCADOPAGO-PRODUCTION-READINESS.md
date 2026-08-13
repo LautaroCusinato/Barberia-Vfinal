@@ -19,7 +19,16 @@ No se cargaron credenciales productivas, no se consultó Mercado Pago productivo
 
 La implementación existente usa **suscripciones de Mercado Pago con `preapproval_plan` / `preapproval`**, no una Preference de Checkout Pro. `billing-api` crea una intención idempotente, resuelve el precio externo desde Supabase y devuelve sólo la URL del proveedor. `billing-webhooks` valida `x-signature`/`x-request-id`, vuelve a consultar el recurso en Mercado Pago y procesa una única transición. `billing-jobs` atiende outbox, trials y reconciliación con un secreto de cron server-side.
 
-La documentación oficial describe el flujo de plan asociado en dos pasos: crear el plan y luego crear la suscripción con `preapproval_plan_id`; también indica los tópicos de suscripción y el uso de Webhooks con firma. El código actual obtiene el `init_point`/`sandbox_init_point` del plan hospedado. Antes de producción debe confirmarse con la cuenta productiva que ese mismo flujo hospedado está habilitado para la aplicación; no se debe mezclar con Preferences ni con otra API. Referencias: [suscripciones con plan asociado](https://www.mercadopago.com.br/developers/en/docs/subscriptions/integration-configuration/subscription-associated-plan), [notificaciones de suscripciones](https://www.mercadopago.com.br/developers/en/docs/subscriptions/additional-content/your-integrations/notifications), [Webhooks y firma](https://www.mercadopago.com.br/developers/en/docs/subscriptions/additional-content/your-integrations/notifications/webhooks), [cuentas de prueba](https://www.mercadopago.com.br/developers/en/docs/subscriptions/additional-content/your-integrations/test/accounts).
+La documentación oficial argentina describe el flujo de plan asociado en dos pasos: crear el plan y luego crear la suscripción con `preapproval_plan_id`; para la suscripción API exige `card_token_id` y estado `authorized`. La referencia de `GET /preapproval_plan/{id}` también devuelve `init_point`, por lo que el enlace hospedado es un recurso documentado, pero la habilitación exacta para una cuenta productiva debe verificarse antes de cobrar. Referencias: [plan asociado](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/integration-configuration/subscription-associated-plan), [crear plan](https://www.mercadopago.com.ar/developers/es/reference/online-payments/subscriptions/create-preapproval-plan/post), [crear suscripción](https://www.mercadopago.com.ar/developers/es/reference/online-payments/subscriptions/create-preapproval/post), [obtener plan e `init_point`](https://www.mercadopago.com.ar/developers/es/reference/online-payments/subscriptions/get-preapproval-plan/get), [notificaciones](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/additional-content/your-integrations/notifications), [Webhooks y firma](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/additional-content/your-integrations/notifications/webhooks).
+
+### Auditoría técnica actualizada
+
+- `billing-api` resuelve el precio externo en backend, crea una intención idempotente y, cuando hay `external_plan_id`, consulta el plan y devuelve su `init_point`; no crea una suscripción por URL ni confía en parámetros del navegador.
+- `billing-webhooks` valida HMAC con `x-signature`/`x-request-id`, prioriza el `data.id` del query param documentado, vuelve a consultar el recurso y deduplica antes de transicionar.
+- Se corrigió el enrutamiento server-side para que suscripciones usen `/preapproval/{id}`, pagos `/v1/payments/{id}`, pagos autorizados `/authorized_payments/{id}` y eventos de plan `/preapproval_plan/{id}`. Los eventos de plan se auditan como `ignored` y no pueden activar una suscripción.
+- La documentación de Mercado Pago presenta una tensión entre la configuración general de Webhooks y el apartado de Suscripciones: una sección indica que la configuración por aplicación no está disponible para Suscripciones, mientras que la tabla de tópicos incluye `subscription_preapproval_plan`, `subscription_preapproval` y `subscription_authorized_payment`. Por eso el webhook productivo queda **pendiente de verificación en la aplicación productiva**; no se declara listo sólo por tener una URL.
+
+Conclusión de flujo: el sandbox validado usa un checkout hospedado derivado de `preapproval_plan`; para producción no se cambiará a Preferences ni se reutilizará el plan sandbox. Antes de activar hay que confirmar en la cuenta productiva si el enlace hospedado entrega los tópicos esperados. Si no los entrega, el cambio mínimo será completar el flujo oficial `/preapproval` con `card_token_id` tokenizado en cliente, manteniendo los mismos contratos internos, webhook, reconciliación e idempotencia.
 
 ## Contratos y estados
 
@@ -53,12 +62,12 @@ Todas son informativas. El usuario puede cerrar el checkout, cambiar de pestaña
 ## Webhook, idempotencia y reconciliación
 
 - Endpoint futuro: `https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-webhooks/mercadopago`.
-- HMAC y encabezados se validan antes de persistir.
+- HMAC y encabezados se validan antes de persistir; el identificador `data.id` del query param se usa en el manifiesto y se compara mediante WebCrypto.
 - El recurso se vuelve a consultar al proveedor para no confiar en el payload.
 - Seller, application, plan, precio, moneda y tenant piloto deben coincidir.
 - `record_billing_webhook_event` deduplica; un evento repetido no duplica pago, comprobante ni transición.
 - Eventos inválidos o fuera de allowlist quedan auditados como `ignored`/`failed` con errores sanitizados.
-- La reconciliación cubre webhook tardío o ausente; nunca se dispara sólo por el retorno del navegador.
+- La reconciliación cubre webhook tardío o ausente; nunca se dispara sólo por el retorno del navegador. La API oficial espera HTTP 200/201 y puede reintentar si no recibe confirmación, por lo que el endpoint responde rápidamente y deja el trabajo pesado para la consulta/reconciliación server-side.
 
 ## Piloto productivo futuro
 
@@ -66,14 +75,20 @@ No se eligió ni habilitó un tenant. La configuración futura debe permitir exa
 
 ## Secrets y datos que faltan
 
+Datos no secretos que deberán definirse para un piloto (no se cargan todavía):
+
+- seller ID y application ID productivos, verificados desde la misma aplicación;
+- código del plan interno, país, moneda, importe, periodicidad e ID externo del `preapproval_plan` productivo;
+- ID del único tenant piloto (distinto de 1, 5 y 6);
+- `MERCADOPAGO_ENVIRONMENT=production`, `MERCADOPAGO_API_BASE_URL=https://api.mercadopago.com`, `APP_BASE_URL` y la URL canónica del webhook;
+- allowlist server-side de un único tenant, `BILLING_PRODUCTION_ENABLED=0` hasta la autorización final, y PayPal deshabilitado.
+
 Sólo cuando exista autorización separada deberán configurarse en Supabase Edge Function Secrets:
 
 - `MERCADOPAGO_ACCESS_TOKEN` productivo;
 - `MERCADOPAGO_WEBHOOK_SECRET` de la misma aplicación productiva;
-- seller ID esperado;
-- application ID esperado;
-- ID de cada `preapproval_plan` productivo;
-- secreto privado de `billing-jobs` y evidencia de alerting/backup.
+- `BILLING_CRON_SECRET` para `billing-jobs`;
+- `BILLING_OUTBOX_SINK_SECRET` sólo si se habilita un sink privado de outbox.
 
 Los valores no deben enviarse por chat, commit, documentación, `VITE_*` ni bundle del navegador.
 
@@ -95,4 +110,3 @@ Los valores no deben enviarse por chat, commit, documentación, `VITE_*` ni bund
 ## Criterio de activación posterior
 
 Se requiere una autorización nueva que indique el tenant piloto exacto, plan/moneda/importe, seller/application verificados, webhook firmado, backup/restauración, alertas, rollback y permiso explícito para cobrar. Esta etapa no otorga esa autorización.
-

@@ -28,7 +28,12 @@ assert.doesNotMatch(billingApi, /billing=success[^\n]*(?:update|activate|transit
 const webhook = read('supabase/functions/billing-webhooks/index.ts')
 const providers = read('supabase/functions/_shared/providers.ts')
 for (const pattern of [/verifyMercadoPago/, /record_billing_webhook_event/, /saas_suscripciones_externas/, /transition_saas_subscription/]) assert.match(webhook, pattern)
-for (const pattern of [/x-signature/i, /x-request-id/i, /MERCADOPAGO_WEBHOOK_SECRET/, /crypto\.subtle/i]) assert.match(providers, pattern)
+for (const pattern of [/x-signature/i, /x-request-id/i, /MERCADOPAGO_WEBHOOK_SECRET/, /crypto\.subtle\.verify/, /dataIdFromUrl/, /authorized_payments/, /preapproval_plan/]) assert.match(providers, pattern)
+assert.match(providers, /resourcePath = input\.kind === 'subscription' \? `\/\$\{resource\}`/)
+assert.doesNotMatch(providers, /\/v1\/\$\{resource\}\/\$\{encodeURIComponent\(input\.externalId\)\}/)
+assert.match(webhook, /searchParams\.get\('data\.id'\)/)
+assert.match(webhook, /plan_event_not_subscription/)
+assert.ok(webhook.indexOf('plan_event_not_subscription') < webhook.indexOf('transition_saas_subscription'), 'los eventos de plan deben ignorarse antes de transicionar')
 
 const rollout = read('docs/BILLING-PRODUCTION-ROLLOUT.md')
 for (const phrase of ['NO ACTIVAR', 'MERCADOPAGO_ENVIRONMENT=production', 'BILLING_PRODUCTION_ENABLED', 'No activar por URL de retorno']) {

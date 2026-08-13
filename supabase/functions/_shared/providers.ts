@@ -250,31 +250,48 @@ export async function syncPayPalPlan(input: { name: string; description?: string
   return { externalPlanId: plan.id || null, externalProductId: productId }
 }
 
-export async function verifyMercadoPago(payload: Record<string, unknown>, headers: Headers) {
+function hexToBytes(value: string) {
+  if (!/^[0-9a-f]{64}$/i.test(value)) return null
+  const bytes = new Uint8Array(value.length / 2)
+  for (let index = 0; index < bytes.length; index += 1) bytes[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16)
+  return bytes
+}
+
+export async function verifyMercadoPago(payload: Record<string, unknown>, headers: Headers, dataIdFromUrl = '') {
   await mercadoPagoSandboxIdentity()
   requireEnv('Mercado Pago', ['MERCADOPAGO_WEBHOOK_SECRET'])
   const signature = headers.get('x-signature') || ''
   const requestId = headers.get('x-request-id') || ''
-  const notificationId = String((payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
+  // Mercado Pago documents `data.id` in the query string as the canonical
+  // identifier for HMAC. Keep the body fallback for older sandbox fixtures.
+  const notificationId = String(dataIdFromUrl || (payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
   const parts = Object.fromEntries(signature.split(',').map((part) => part.split('=').map((value) => value.trim())))
-  if (!signature || !requestId || !notificationId || !parts.ts || !parts.v1) return false
+  const expectedSignature = hexToBytes(String(parts.v1 || ''))
+  if (!signature || !requestId || !notificationId || !parts.ts || !expectedSignature) return false
   const manifest = `id:${notificationId};request-id:${requestId};ts:${parts.ts};`
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(Deno.env.get('MERCADOPAGO_WEBHOOK_SECRET')), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const digest = Array.from(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(manifest)))).map((byte) => byte.toString(16).padStart(2, '0')).join('')
-  return digest === parts.v1
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(Deno.env.get('MERCADOPAGO_WEBHOOK_SECRET')), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+  return crypto.subtle.verify('HMAC', key, expectedSignature, new TextEncoder().encode(manifest))
 }
 
-export async function mercadoPagoResource(payload: Record<string, unknown>) {
+export async function mercadoPagoResource(payload: Record<string, unknown>, dataIdFromUrl = '') {
   await mercadoPagoSandboxIdentity()
   const token = mercadoPagoAccessToken()
-  const id = String((payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
+  const id = String(dataIdFromUrl || (payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
   if (!id) throw new ProviderError('Evento Mercado Pago sin recurso.', 422, 'resource_id_missing')
-  const event = String(payload.type || payload.topic || '').toLowerCase()
-  const resource = event.includes('payment') || event === 'payment' ? 'payments' : 'preapproval'
+  const event = String(payload.type || payload.topic || payload.action || '').toLowerCase()
+  const resource = event.includes('subscription_authorized_payment')
+    ? 'authorized_payments'
+    : event.includes('subscription_preapproval_plan')
+      ? 'preapproval_plan'
+      : event.includes('payment') || event === 'payment'
+        ? 'payments'
+        : 'preapproval'
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
-  const response = await fetch(`${base}/v1/${resource}/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } })
+  const resourcePath = resource === 'payments' ? `/v1/${resource}` : `/${resource}`
+  const response = await fetch(`${base}${resourcePath}/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } })
   const body = await responseJson(response, 'Mercado Pago')
-  return { id, status: body.status, normalizedStatus: mpStatus(body.status), amount: Number(body.transaction_amount || body.auto_recurring?.transaction_amount || 0) || null, currency: body.currency_id || body.auto_recurring?.currency_id || null, externalReference: body.external_reference || null, resourceType: resource === 'payments' ? 'payment' : 'preapproval', resource: body }
+  const resourceType = resource === 'payments' || resource === 'authorized_payments' ? 'payment' : resource === 'preapproval_plan' ? 'preapproval_plan' : 'preapproval'
+  return { id, status: body.status, normalizedStatus: mpStatus(body.status), amount: Number(body.transaction_amount || body.auto_recurring?.transaction_amount || body.amount || 0) || null, currency: body.currency_id || body.auto_recurring?.currency_id || body.currency || null, externalReference: body.external_reference || null, resourceType, resource: body }
 }
 
 /** Consulta explícita de un recurso ya vinculado. Nunca acepta credenciales ni
@@ -285,7 +302,8 @@ export async function mercadoPagoExternalStatus(input: { externalId: string; kin
   const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const resource = input.kind === 'subscription' ? 'preapproval' : 'checkout/preferences'
-  const response = await fetch(`${base}/v1/${resource}/${encodeURIComponent(input.externalId)}`, { headers: { Authorization: `Bearer ${token}` } })
+  const resourcePath = input.kind === 'subscription' ? `/${resource}` : `/v1/${resource}`
+  const response = await fetch(`${base}${resourcePath}/${encodeURIComponent(input.externalId)}`, { headers: { Authorization: `Bearer ${token}` } })
   const body = await responseJson(response, 'Mercado Pago')
   return {
     status: body.status,

@@ -28,6 +28,7 @@ La base tiene dos intentos de checkout fallidos, uno expirado y tres eventos de 
 1. Las Edge Functions actuales son deliberadamente sandbox-only: `MERCADOPAGO_ENVIRONMENT` distinto de `sandbox` se rechaza y la identidad permitida es el vendedor TEST. Esto es una protección correcta para esta etapa, pero significa que no se debe cambiar un secreto y esperar que producción funcione.
 2. `saas_proveedores_pago` tiene una fila por proveedor con un único `entorno`; cambiarla en producción reemplazaría el contexto sandbox. No se debe actualizar esa fila ni el precio id 1 durante este cierre.
 3. No existe aún una identidad productiva verificada (seller/application), un precio productivo separado, un tenant piloto autorizado ni un monitor de webhook productivo.
+4. La documentación vigente de Mercado Pago exige comprobar el canal de notificaciones para la aplicación productiva. El endpoint de suscripción asociado documenta `preapproval` con `card_token_id`, mientras que el flujo actual entrega el `init_point` hospedado del plan. No se debe declarar compatibilidad productiva hasta verificar que ese checkout emite `subscription_preapproval_plan`/`subscription_authorized_payment` al endpoint autorizado; si no, se debe adoptar el flujo `/preapproval` con tokenización de tarjeta en cliente.
 
 Conclusión: no se requiere una migración ni una escritura de datos para este dry-run. Una futura activación debe introducir una configuración por entorno (o una fila/configuración equivalente) antes de permitir simultáneamente sandbox y producción; no se debe reutilizar la fila sandbox.
 
@@ -89,12 +90,14 @@ https://ssagttjdgtypxjcgdnrw.supabase.co/functions/v1/billing-webhooks/mercadopa
 Contrato preparado:
 
 1. Mercado Pago envía POST con `x-signature` y `x-request-id`.
-2. Se valida HMAC con el secreto productivo, antes de usar el body.
+2. Se valida HMAC con el secreto productivo, antes de usar el body; el manifiesto usa el `data.id` documentado en el query param y la comparación se realiza con WebCrypto.
 3. Se consulta el recurso al proveedor con el token productivo server-side.
 4. Se comprueban seller/application/plan/precio/moneda y tenant piloto.
 5. `record_billing_webhook_event` deduplica por proveedor + evento.
 6. La transición de suscripción y pagos se ejecuta sólo una vez; reintentos son idempotentes.
-7. Eventos inválidos, fuera de allowlist o desfasados quedan auditados como `ignored`/`failed` con códigos sanitizados.
+7. Eventos inválidos, fuera de allowlist o desfasados quedan auditados como `ignored`/`failed` con códigos sanitizados. Los eventos `subscription_preapproval_plan` sólo actualizan auditoría y nunca activan una suscripción.
+
+La documentación de Mercado Pago indica que el receptor debe responder HTTP 200/201 dentro de 22 segundos; los reintentos posteriores hacen necesaria la idempotencia existente. La verificación final del tópico y URL debe hacerse en el panel/API de la aplicación productiva, sin usar un pago real.
 
 La función desplegada todavía rechaza producción a propósito. No modificar secretos ni desplegar una nueva versión como parte de este cierre.
 
@@ -125,6 +128,7 @@ La función desplegada todavía rechaza producción a propósito. No modificar s
 - [ ] La fila de precio productivo coincide con el plan externo y el país del piloto.
 - [ ] El tenant piloto es el único allow-listed y no es Central/Nueva/sandbox técnico.
 - [ ] El webhook firma y procesa un evento sintético en QA; no usar pago real para validar firma.
+- [ ] La aplicación productiva confirma qué tópicos de Suscripciones están disponibles y el panel de notificaciones muestra entrega correcta a la URL productiva.
 - [ ] `billing-jobs` tiene cron secret, alertas y reconciliación preparados.
 - [ ] Dry-run completo verde.
 

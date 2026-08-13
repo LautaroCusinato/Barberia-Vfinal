@@ -20,13 +20,15 @@ Deno.serve(async (request) => {
   let recordedExternalId = ''
   try {
     if (request.method !== 'POST') return errorJson('Sólo POST.', 405, 'method_not_allowed')
-    const provider = new URL(request.url).pathname.split('/').filter(Boolean).pop() || ''
+    const webhookUrl = new URL(request.url)
+    const provider = webhookUrl.pathname.split('/').filter(Boolean).pop() || ''
     if (!['mercadopago', 'paypal'].includes(provider)) return errorJson('Proveedor inválido.', 404, 'provider_not_found')
     const payload = await body(request)
     const admin = adminClient()
-    const signatureValid = provider === 'mercadopago' ? await verifyMercadoPago(payload, request.headers) : await verifyPayPal(payload, request.headers)
+    const dataIdFromUrl = webhookUrl.searchParams.get('data.id') || webhookUrl.searchParams.get('data_id') || ''
+    const signatureValid = provider === 'mercadopago' ? await verifyMercadoPago(payload, request.headers, dataIdFromUrl) : await verifyPayPal(payload, request.headers)
     if (!signatureValid) return errorJson('Firma inválida.', 401, 'invalid_signature')
-    const resource = provider === 'mercadopago' ? await mercadoPagoResource(payload) : await paypalResource(payload)
+    const resource = provider === 'mercadopago' ? await mercadoPagoResource(payload, dataIdFromUrl) : await paypalResource(payload)
     const minimal = minimized(payload)
     const externalEventId = String(minimal.id || `${provider}-${crypto.randomUUID()}`)
     recordedProvider = provider
@@ -90,9 +92,13 @@ Deno.serve(async (request) => {
       await admin.from('saas_billing_webhook_events').update({ estado: 'failed', error_code: 'amount_or_currency_mismatch', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
       return errorJson('El importe o la moneda no coinciden con el plan interno.', 422, 'amount_or_currency_mismatch')
     }
+    const resourceType = String((resource as Record<string, unknown>).resourceType || (provider === 'paypal' ? 'payment' : 'preapproval'))
+    if (provider === 'mercadopago' && resourceType === 'preapproval_plan') {
+      await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'plan_event_not_subscription', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
+      return json({ received: true, processed: false, reason: 'plan_event_not_subscription' }, 202)
+    }
     const { error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: context.suscripcion_id, p_to_state: resource.normalizedStatus || normalizeStatus(provider as 'mercadopago' | 'paypal', resource.status), p_reason: `provider_event:${externalEventId}`, p_source: 'provider', p_provider_event_id: externalEventId, p_provider_event_at: minimal.updated_at || null })
     if (transitionError) throw Object.assign(new Error('No se pudo actualizar la suscripción.'), { status: 502, code: 'subscription_transition_failed' })
-    const resourceType = String((resource as Record<string, unknown>).resourceType || (provider === 'paypal' ? 'payment' : 'preapproval'))
     if (provider === 'mercadopago' && resourceType === 'preapproval' && checkoutAttempt?.suscripcion_id && resourceId) {
       const { error: externalLinkError } = await admin.from('saas_suscripciones_externas').upsert({
         suscripcion_id: checkoutAttempt.suscripcion_id,
