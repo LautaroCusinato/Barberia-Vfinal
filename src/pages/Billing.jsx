@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, CreditCard, ExternalLink, LoaderCircle, ShieldCheck } from 'lucide-react'
 import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabaseClient'
+import { classifyBillingFailure } from '../lib/runtimeStability.js'
 
 const STATUS_LABELS = {
   trialing: 'Prueba gratuita',
@@ -69,11 +70,13 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [subscriptionMissing, setSubscriptionMissing] = useState(false)
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) { setLoading(false); return }
     setLoading(true)
     setError('')
+    setSubscriptionMissing(false)
     const [portalResult, catalogResult] = await Promise.allSettled([
       billingApi('status'),
       supabase.rpc('get_billing_catalog'),
@@ -87,6 +90,14 @@ export default function Billing({ barberiaId: _barberiaId }) {
       const noSubscription = portalResult.reason?.code === 'subscription_missing' || /no tiene una suscripción/i.test(portalMessage)
       setError(noSubscription ? 'Todavía no hay una suscripción asociada a este negocio. El trial se habilita al completar el onboarding.' : portalMessage || catalogResult.reason?.message || catalogResult.value?.error?.message || 'No se pudo cargar facturación')
     }
+    const billingFailure = portalFailed ? classifyBillingFailure(portalResult.reason) : null
+    if (!catalogFailed && billingFailure?.kind === 'subscription_missing') {
+      setSubscriptionMissing(true)
+      setError('')
+    }
+    if (catalogFailed && billingFailure?.kind === 'subscription_missing') {
+      setError(catalogResult.reason?.message || catalogResult.value?.error?.message || 'No se pudo cargar el catálogo de facturación')
+    }
     setPortal(portalResult.status === 'fulfilled' ? portalResult.value : null)
     setCatalog(catalogResult.status === 'fulfilled' && Array.isArray(catalogResult.value.data) ? catalogResult.value.data : [])
     setLoading(false)
@@ -97,7 +108,8 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const subscription = portal?.subscription
   const plan = subscription?.plan
   const providers = useMemo(() => portal?.providers || [], [portal])
-  const selectedProvider = providers.find((item) => item.codigo === provider)
+  const displayProviders = providers.length ? providers : (subscriptionMissing ? [{ codigo: provider, nombre: PROVIDER_LABELS[provider] || provider, activo: false, unavailable: true }] : [])
+  const selectedProvider = displayProviders.find((item) => item.codigo === provider)
   const tenantCountry = normalizeCountryCode(portal?.tenant?.pais)
   const findExternalPrice = (item) => {
     const prices = (item?.precios_externos || []).filter((price) => price.proveedor_codigo === provider && price.activo !== false && price.habilitado !== false && (!selectedProvider?.entorno || price.entorno === selectedProvider.entorno))
@@ -144,14 +156,15 @@ export default function Billing({ barberiaId: _barberiaId }) {
       </div>
 
       {error && <div className="error-banner" role="alert">{error}</div>}
+      {subscriptionMissing && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Todavía no tenés una suscripción activa. El trial y el plan aparecen cuando el onboarding termina de crear la suscripción.</div>}
       {notice && <div className="billing-notice" role="status"><CheckCircle2 size={16} /> {notice}</div>}
 
       <section className="billing-summary-grid">
         <div className="panel billing-current-card">
-          <div className="billing-card-heading"><div><p className="panel-kicker">Plan actual</p><h2>{plan?.nombre || subscription?.plan_codigo || 'Sin plan'}</h2></div><span className={`status-pill billing-status-${subscription?.estado || 'unknown'}`}>{statusLabel(subscription?.estado)}</span></div>
-          <p className="billing-price">{formatMoney(subscription?.precio ?? plan?.precio_mensual, subscription?.moneda || plan?.moneda)} <small>/ {subscription?.periodicidad === 'yearly' ? 'año' : 'mes'}</small></p>
+          <div className="billing-card-heading"><div><p className="panel-kicker">Plan actual</p><h2>{subscriptionMissing ? 'Sin suscripción activa' : plan?.nombre || subscription?.plan_codigo || 'Sin plan'}</h2></div><span className={`status-pill billing-status-${subscription?.estado || 'unknown'}`}>{subscriptionMissing ? 'Pendiente de iniciar' : statusLabel(subscription?.estado)}</span></div>
+          <p className="billing-price">{subscriptionMissing ? '—' : formatMoney(subscription?.precio ?? plan?.precio_mensual, subscription?.moneda || plan?.moneda)} {!subscriptionMissing && <small>/ {subscription?.periodicidad === 'yearly' ? 'año' : 'mes'}</small>}</p>
           <dl className="billing-facts">
-            <div><dt>Acceso</dt><dd>{statusLabel(portal?.access_state)}</dd></div>
+            <div><dt>Acceso</dt><dd>{subscriptionMissing ? 'Pendiente de activar' : statusLabel(portal?.access_state)}</dd></div>
             <div><dt>Trial vence</dt><dd>{formatDate(subscription?.trial_ends_at)}</dd></div>
             <div><dt>Período actual</dt><dd>{formatDate(subscription?.current_period_end)}</dd></div>
           </dl>
@@ -161,9 +174,9 @@ export default function Billing({ barberiaId: _barberiaId }) {
           <h2>Elegí cómo pagar</h2>
           <p className="panel-subtitle">El checkout se solicita al backend sandbox desplegado. El navegador nunca maneja credenciales.</p>
           <div className="billing-provider-options">
-            {providers.map((item) => <label className={`billing-provider-option ${provider === item.codigo ? 'selected' : ''}`} key={item.codigo}><input type="radio" name="billing-provider" value={item.codigo} checked={provider === item.codigo} onChange={(event) => setProvider(event.target.value)} /><span><strong>{PROVIDER_LABELS[item.codigo] || item.nombre}</strong><small>{item.activo ? 'Sandbox configurado' : 'Pendiente de configuración'}</small></span></label>)}
+            {displayProviders.map((item) => <label className={`billing-provider-option ${provider === item.codigo ? 'selected' : ''}`} key={item.codigo}><input type="radio" name="billing-provider" value={item.codigo} checked={provider === item.codigo} onChange={(event) => setProvider(event.target.value)} /><span><strong>{PROVIDER_LABELS[item.codigo] || item.nombre}</strong><small>{item.activo ? 'Configurado' : 'Pagos todavía no habilitados para esta cuenta'}</small></span></label>)}
           </div>
-          {selectedProvider && !selectedProvider.activo && <p className="billing-helper">El administrador deberá agregar las credenciales sandbox en el backend antes de generar la URL.</p>}
+          {selectedProvider && !selectedProvider.activo && <p className="billing-helper">Los pagos todavía no están habilitados para esta cuenta. No se generará ningún cobro.</p>}
         </div>
       </section>
 

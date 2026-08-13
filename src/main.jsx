@@ -198,8 +198,11 @@ function Root() {
   const [workspaceTransition, setWorkspaceTransition] = useState(hasWorkspaceTransition)
 
   const yaResolvioAlgunaVezRef = useRef(false)
+  const resolvedUserIdRef = useRef(null)
+  const sessionResolutionRef = useRef(null)
+  const lastBackgroundRevalidationRef = useRef(0)
 
-  const resolverBarberia = async (userId) => {
+  const resolverBarberia = async (userId, { preserveUi = false } = {}) => {
     const [tenantResult, platformResult] = await Promise.all([
       supabase
         .from('barberia_members')
@@ -215,14 +218,10 @@ function Root() {
     const { data, error } = tenantResult
     const hasPlatformMembership = Boolean(platformResult.data)
     const nextPlatformRole = platformResult.data?.role || null
-    const preference = readWorkspacePreference()
-    const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
-
-    setPlatformMember(hasPlatformMembership)
-    setPlatformRole(nextPlatformRole)
-    yaResolvioAlgunaVezRef.current = true
-
-    if (error || !data) {
+    if (error || platformResult.error) {
+      // Mobile resume can be temporarily offline. Keep the authorized UI
+      // mounted and retry in background instead of showing WorkspacePreparing.
+      if (preserveUi && yaResolvioAlgunaVezRef.current) return false
       setOpciones([])
       setOnboardingNeeded(true)
       if (hasPlatformMembership) {
@@ -232,7 +231,26 @@ function Root() {
         clearWorkspacePreference()
         setWorkspace(null)
       }
-      return
+      return false
+    }
+    const preference = readWorkspacePreference()
+    const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
+
+    setPlatformMember(hasPlatformMembership)
+    setPlatformRole(nextPlatformRole)
+    yaResolvioAlgunaVezRef.current = true
+
+    if (!data) {
+      setOpciones([])
+      setOnboardingNeeded(true)
+      if (hasPlatformMembership) {
+        saveWorkspacePreference('platform')
+        setWorkspace('platform')
+      } else {
+        clearWorkspacePreference()
+        setWorkspace(null)
+      }
+      return true
     }
 
     setOpciones(data)
@@ -257,7 +275,7 @@ function Root() {
       setBarberiaId(preferredBusiness.barberia_id)
       setBarberiaNombre(preferredBusiness.barberias?.nombre || null)
       setOnboardingNeeded(preferredBusiness.barberias?.onboarding_completed === false)
-      return
+      return true
     }
 
     if (preference) clearWorkspacePreference()
@@ -269,11 +287,12 @@ function Root() {
       setBarberiaId(onlyBusiness.barberia_id)
       setBarberiaNombre(onlyBusiness.barberias?.nombre || null)
       setOnboardingNeeded(onlyBusiness.barberias?.onboarding_completed === false)
-      return
+      return true
     }
 
     setWorkspace(null)
     setOnboardingNeeded(false)
+    return true
   }
 
   useEffect(() => {
@@ -288,9 +307,11 @@ function Root() {
 
     let mounted = true
 
-    const resolveSession = async (session) => {
+    const resolveSession = async (session, { background = false } = {}) => {
       setAuthed(Boolean(session))
       if (!session) {
+        resolvedUserIdRef.current = null
+        yaResolvioAlgunaVezRef.current = false
         clearWorkspacePreference()
         clearWorkspaceTransition()
         setWorkspaceTransition(false)
@@ -298,9 +319,19 @@ function Root() {
         return
       }
 
+      const sameResolvedUser = resolvedUserIdRef.current === session.user.id && yaResolvioAlgunaVezRef.current
+      if (sameResolvedUser || background) {
+        await resolverBarberia(session.user.id, { preserveUi: true })
+        return
+      }
+
       setChecking(true)
       try {
-        await resolverBarberia(session.user.id)
+        const resolved = await resolverBarberia(session.user.id)
+        if (resolved !== false) {
+          resolvedUserIdRef.current = session.user.id
+          yaResolvioAlgunaVezRef.current = true
+        }
       } finally {
         clearWorkspaceTransition()
         if (mounted) {
@@ -315,6 +346,8 @@ function Root() {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthed(Boolean(session))
       if (!session) {
+        resolvedUserIdRef.current = null
+        yaResolvioAlgunaVezRef.current = false
         clearWorkspacePreference()
         setOpciones(null)
         setBarberiaId(null)
@@ -332,13 +365,35 @@ function Root() {
       // "Cargando tu barbería..." sin necesidad. Solo resolvemos de nuevo
       // en un login real, o si por algun motivo todavia no la resolvimos.
       if (event === 'SIGNED_IN' || !yaResolvioAlgunaVezRef.current) {
-        resolveSession(session)
+        if (!sessionResolutionRef.current) {
+          sessionResolutionRef.current = resolveSession(session).finally(() => { sessionResolutionRef.current = null })
+        }
       }
     })
+
+    const revalidateInBackground = () => {
+      if (document.visibilityState === 'hidden') return
+      const now = Date.now()
+      if (now - lastBackgroundRevalidationRef.current < 30_000) return
+      lastBackgroundRevalidationRef.current = now
+      supabase.auth.getSession().then(({ data }) => {
+        if (!data.session) {
+          resolveSession(null)
+          return
+        }
+        if (!sessionResolutionRef.current) {
+          sessionResolutionRef.current = resolveSession(data.session, { background: true }).finally(() => { sessionResolutionRef.current = null })
+        }
+      })
+    }
+    document.addEventListener('visibilitychange', revalidateInBackground)
+    window.addEventListener('focus', revalidateInBackground)
 
     return () => {
       mounted = false
       listener?.subscription?.unsubscribe()
+      document.removeEventListener('visibilitychange', revalidateInBackground)
+      window.removeEventListener('focus', revalidateInBackground)
     }
   }, [])
 
