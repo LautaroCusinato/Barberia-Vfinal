@@ -17,7 +17,7 @@ La reproducción local y la inspección read-only de producción mostraron que e
 
 ## Evidencia
 
-- `npm run build`: OK. Entry JS 232.50 kB raw / 59.97 kB gzip; `Landing` continúa separado en 23.48 kB raw / 6.57 kB gzip.
+- `npm run build`: OK. Entry JS 231.08 kB raw / 59.85 kB gzip; initial CSS 150.58 kB raw / 25.59 kB gzip. `Landing` continúa separado en 20.30 kB raw / 5.98 kB gzip. Frente al baseline pre-Sprint 8 de 449.67 kB JS raw / 115.30 kB gzip, el payload inicial sigue muy por debajo; el incremento marginal frente al split de Sprint 8 es el costo deliberado de hacer crítico el Hero y su CSS.
 - La medición QA en 390×844 (`docs/performance-sprint8/after-hero.json`) registró 10 requests, 0 duplicadas, LCP 260 ms y CLS 0.0034.
 - El test de Playwright aborta el chunk lazy `Landing-*.js` y mantiene visible el título y CTA del hero durante 30 segundos, además de verificar scroll, reduced motion y `visibilitychange`.
 - `npm run lint`, `npm test`, `npm run build`, Playwright público (9/9 en Chromium) y secret scan pasan.
