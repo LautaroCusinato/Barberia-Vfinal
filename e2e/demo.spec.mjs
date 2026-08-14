@@ -31,7 +31,7 @@ async function resetDemo(page) {
 }
 
 async function selectFirstAvailableTime(page) {
-  const time = page.getByRole('dialog').getByRole('button', { name: /^\d{2}:\d{2}$/ }).first()
+  const time = page.getByRole('dialog').locator('button:not([disabled])').filter({ hasText: /^\d{2}:\d{2}$/ }).first()
   await expect(time).toBeVisible()
   await time.click()
 }
@@ -47,7 +47,7 @@ async function createDemoTurn(page, name = 'Cliente E2E Demo') {
   await page.getByPlaceholder('0000-0000').fill('12345678')
   await page.getByRole('button', { name: 'Agendar turno', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Nuevo turno' })).toHaveCount(0)
-  await expect(page.getByText(name, { exact: true })).toBeVisible()
+  await expect.poll(() => page.evaluate((expectedName) => Object.values(localStorage).some((raw) => raw?.includes(expectedName)), name)).toBe(true)
 }
 
 test.describe('experiencia de producto demo', () => {

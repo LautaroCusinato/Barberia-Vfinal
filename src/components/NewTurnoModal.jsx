@@ -47,6 +47,7 @@ export default function NewTurnoModal({
   bloqueos = [],
   zonaHoraria = 'America/Argentina/Buenos_Aires',
   errorMessage = '',
+  demoMode = false,
 }) {
   const esEdicion = Boolean(turnoExistente)
 
@@ -149,9 +150,9 @@ export default function NewTurnoModal({
   // antes del cierre y no pisa el horario de break — no alcanza con que
   // el horario de inicio caiga adentro.
   const slotsDelBarbero = useMemo(() => ({
-    slots: generarSlotsDisponibles(barberoSeleccionado, fecha, duracion, bloqueos, 15, zonaHoraria),
+    slots: generarSlotsDisponibles(barberoSeleccionado, fecha, duracion, bloqueos, 15, zonaHoraria, demoMode && esEdicion),
     source: barberoSeleccionado?.agendaCargada ? 'agenda' : 'legacy',
-  }), [barberoSeleccionado, fecha, duracion, bloqueos, zonaHoraria])
+  }), [barberoSeleccionado, fecha, duracion, bloqueos, zonaHoraria, demoMode, esEdicion])
 
   // Si cambia barbero o fecha, y la hora previamente elegida no entra
   // en la grilla nueva (ej: Mauro trabaja 10-19, Tomas 9-17, y el
@@ -226,7 +227,7 @@ export default function NewTurnoModal({
   const telefonoLocal = soloDigitos(nuevoTelefono.slice(PREFIJO_AR.length))
 
   // Validaciones
-  const horaFueraHorario = barberoSeleccionado && fecha && hora && !barberoDisponible(barberoSeleccionado, fecha, hora, duracion, bloqueos, zonaHoraria)
+  const horaFueraHorario = barberoSeleccionado && fecha && hora && !barberoDisponible(barberoSeleccionado, fecha, hora, duracion, bloqueos, zonaHoraria, demoMode && esEdicion)
   const superpuesto = (() => {
     if (!fecha || !hora || !barberoId) return null
     return turnosDelBarberoEnFecha.find((t) =>

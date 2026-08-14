@@ -24,7 +24,7 @@ import Billing from './pages/Billing.jsx'
 import TenantSettings from './components/TenantSettings.jsx'
 import WorkspacePreparing from './components/WorkspacePreparing.jsx'
 import { supabase, isSupabaseConfigured as supabaseConfigured } from './lib/supabaseClient'
-import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, parseHabilidades, parseHorarioTexto, siguienteNombreServicio, soloDigitos } from './lib/text'
+import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, generarSlotsDisponibles, parseHabilidades, parseHorarioTexto, siguienteNombreServicio, soloDigitos } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
 import { clearWorkspaceTransition } from './lib/workspaceTransition.js'
 import {
@@ -68,6 +68,36 @@ function turnoFromDb(row) {
 
 function todayInClinicTZ(timezone = TZ) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone || TZ }).format(new Date())
+}
+
+function addCalendarDays(value, offset) {
+  const date = new Date(`${value}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + offset)
+  return date.toISOString().slice(0, 10)
+}
+
+function demoBookingDate(todayKey, barberos, servicios, bloqueos, timezone) {
+  const servicio = servicios.find((item) => item.activo !== false)
+  if (!servicio) return todayKey
+  const preferredBarber = barberos.find((barbero) => (
+    barbero.activo !== false && barberoRealizaServicio(barbero, servicio)
+  ))
+  if (!preferredBarber) return todayKey
+
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const candidate = addCalendarDays(todayKey, offset)
+    const slots = generarSlotsDisponibles(
+      preferredBarber,
+      candidate,
+      duracionServicioBarbero(preferredBarber, servicio, servicio.duracion || 30),
+      bloqueos,
+      15,
+      timezone,
+    )
+    if (slots.length > 0) return candidate
+  }
+
+  return todayKey
 }
 
 function initialTheme(tenantId, storageKey = null) {
@@ -152,6 +182,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   }, [demoMode, demoSessionId, turnos, conversaciones, pacientes, notas, servicios, barberos, bloqueos, pagos, tenantBranding, horariosDefault, zonaHoraria])
 
   const todayKey = todayInClinicTZ(zonaHoraria)
+  const demoDefaultTurnDate = demoMode && !turnoFechaPrefijada
+    ? demoBookingDate(todayKey, barberos, servicios, bloqueos, zonaHoraria)
+    : (turnoFechaPrefijada || todayKey)
 
   useEffect(() => {
     setTheme(initialTheme(barberiaId, demoMode ? 'austral-demo-theme' : null))
@@ -1458,7 +1491,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         open={newTurnoOpen}
         onClose={closeTurnoModal}
         onSubmit={saveTurno}
-        defaultDate={turnoFechaPrefijada || todayKey}
+        defaultDate={demoDefaultTurnDate}
+        demoMode={demoMode}
         turnoExistente={editingTurno}
         turnosExistentes={turnos}
         servicios={servicios}
