@@ -46,15 +46,18 @@ test.describe('superficies públicas sin efectos externos', () => {
     await expect(page.getByRole('button', { name: /enviar un nuevo enlace/i })).toBeVisible()
   })
 
-  test('demo aislada permite cambiar vertical, branding, servicio y reiniciar', async ({ page }) => {
+  test('demo comercial abre el panel real, mantiene su sesión y puede reiniciarse', async ({ page }) => {
     await page.goto('/demo')
-    await expect(page.getByRole('heading', { name: /mostrá una operación completa/i })).toBeVisible()
-    await page.getByLabel('Vertical').selectOption('estetica')
-    await expect(page.getByRole('heading', { name: 'Centro de estética' })).toBeVisible()
-    await page.getByRole('button', { name: /reservar en sandbox/i }).click()
-    await expect(page.getByRole('status')).toContainText('Reserva de prueba creada')
+    await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible()
+    await expect(page.getByText('Modo demostración')).toBeVisible()
+    await expect(page.getByText('Barbería Demo Austral')).toBeVisible()
+    await page.getByRole('button', { name: 'Agenda' }).click()
+    await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible()
+    page.once('dialog', (dialog) => dialog.accept())
     await page.getByRole('button', { name: /reiniciar demo/i }).click()
-    await expect(page.getByRole('button', { name: /reservar en sandbox/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible()
   })
 
   test('rutas de reserva e invitación fallan de forma controlada', async ({ page }) => {
