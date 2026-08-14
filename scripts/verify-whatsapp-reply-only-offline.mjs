@@ -109,6 +109,8 @@ const templateText = await read('integrations/templates/Austral WhatsApp Reply O
 const template = JSON.parse(templateText)
 assert.equal(template.active, false)
 assert.match(template.name, /Reply Only Pilot/)
+assert.doesNotMatch(templateText, /\$env/, 'Reply Only template must not access blocked Code-node environment')
+assert.match(templateText, /\$vars/, 'Reply Only template must use supported n8n variables with fail-closed defaults')
 assert.doesNotMatch(templateText, /sendText|crear_reserva_whatsapp|update_booking|cancel_booking|service_role|EVOLUTION_API_KEY|DEEPSEEK_API_KEY/i)
 assert.match(templateText, /mutation_blocked/)
 assert.match(await read('supabase/migrations/20260813120000_whatsapp_reply_only_pilot.sql'), /uq_reply_only_single_enabled/)
