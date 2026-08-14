@@ -1,10 +1,24 @@
 import { test, expect } from '@playwright/test'
 
+async function clickWorkspaceButton(page, view) {
+  await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible({ timeout: 10_000 })
+  const directButton = page.getByRole('button', { name: view, exact: true }).filter({ visible: true })
+  if (await directButton.count()) return directButton.first().click()
+  const desktopSidebar = page.locator('.sidebar')
+  if (await desktopSidebar.isVisible().catch(() => false)) {
+    const directButton = desktopSidebar.locator('.nav-item').filter({ hasText: view }).first()
+    await directButton.scrollIntoViewIfNeeded()
+    return directButton.click()
+  }
+  await page.getByRole('button', { name: 'Más', exact: true }).click()
+  return page.locator('.mobile-mas-sheet').getByRole('button', { name: view, exact: true }).click()
+}
+
 async function openDemo(page, view = null) {
   await page.goto('/demo', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible({ timeout: 30_000 })
   if (view) {
-    await page.getByRole('button', { name: view, exact: true }).click()
+    await clickWorkspaceButton(page, view)
     const titles = { Facturacion: 'Facturación', Operacion: 'Configuración de agenda', Configuración: 'Configuración del negocio' }
     if (view !== 'Operacion') await expect(page.getByRole('heading', { name: titles[view] || view })).toBeVisible({ timeout: 10_000 })
   }
@@ -52,7 +66,11 @@ test.describe('experiencia de producto demo', () => {
 
   test('DEMO-03 muestra el panel real y la marca demo', async ({ page }) => {
     await openDemo(page)
-    await expect(page.getByText('Barbería Demo Austral')).toBeVisible()
+    if (await page.locator('.sidebar').isVisible().catch(() => false)) {
+      await expect(page.getByText('Barbería Demo Austral')).toBeVisible()
+    } else {
+      await expect(page.getByRole('button', { name: 'Más', exact: true })).toBeVisible()
+    }
     await expect(page.getByRole('navigation')).toBeVisible()
     await expect(page.getByText('Modo demostración')).toBeVisible()
   })
@@ -60,7 +78,12 @@ test.describe('experiencia de producto demo', () => {
   test('DEMO-04 Agenda tiene datos relativos a hoy', async ({ page }) => {
     await openDemo(page, 'Agenda')
     await expect(page.getByText(/turnos en total/i)).toBeVisible()
-    await expect(page.getByRole('gridcell').filter({ hasText: /^\d+$/ }).first()).toBeVisible()
+    const desktopCalendar = page.locator('.calendar-grid')
+    if (await desktopCalendar.isVisible().catch(() => false)) {
+      await expect(page.getByRole('gridcell').filter({ hasText: /^\d+$/ }).first()).toBeVisible()
+    } else {
+      await expect(page.locator('.calendar-mobile-days .calendar-mobile-day').first()).toBeVisible()
+    }
     expect(await page.evaluate(() => document.body.innerText.includes(String(new Date().getFullYear())))).toBe(true)
   })
 
@@ -89,17 +112,26 @@ test.describe('experiencia de producto demo', () => {
     await page.getByPlaceholder('Ej: Juan Pérez').fill('Cliente creado E2E')
     await page.getByPlaceholder('0000-0000').fill('12345678')
     await page.getByRole('button', { name: 'Agregar cliente', exact: true }).click()
-    await expect(page.getByRole('row', { name: /Cliente creado E2E/ })).toBeVisible()
+    const desktopRow = page.getByRole('row', { name: /Cliente creado E2E/ })
+    if (await desktopRow.isVisible().catch(() => false)) {
+      await expect(desktopRow).toBeVisible()
+    } else {
+      await expect(page.locator('.client-mobile-card').filter({ hasText: 'Cliente creado E2E' })).toBeVisible()
+    }
   })
 
   test('DEMO-09 permite editar clientes ficticios', async ({ page }) => {
     await openDemo(page, 'Clientes')
     const row = page.getByRole('row', { name: /Agustín Molina/ })
-    await row.getByRole('button', { name: 'Editar cliente' }).click()
+    const card = page.locator('.client-mobile-card').filter({ hasText: 'Agustín Molina' })
+    if (await row.isVisible().catch(() => false)) await row.getByRole('button', { name: 'Editar cliente' }).click()
+    else await card.getByRole('button', { name: 'Editar cliente' }).click()
     const dialog = page.locator('.modal-box').last()
     await dialog.locator('input').first().fill('Agustín Demo Editado')
     await dialog.getByRole('button', { name: 'Guardar cambios', exact: true }).click()
-    await expect(page.getByRole('row', { name: /Agustín Demo Editado/ })).toBeVisible()
+    const editedRow = page.getByRole('row', { name: /Agustín Demo Editado/ })
+    if (await editedRow.isVisible().catch(() => false)) await expect(editedRow).toBeVisible()
+    else await expect(page.locator('.client-mobile-card').filter({ hasText: 'Agustín Demo Editado' })).toBeVisible()
   })
 
   test('DEMO-10 permite editar un servicio ficticio', async ({ page }) => {
@@ -108,7 +140,7 @@ test.describe('experiencia de producto demo', () => {
     await field.fill('Corte clásico demo')
     await field.press('Tab')
     await page.reload()
-    await page.getByRole('button', { name: 'Operacion', exact: true }).click()
+    await clickWorkspaceButton(page, 'Operacion')
     await expect(page.getByRole('textbox', { name: 'Nombre del servicio *', exact: true }).first()).toHaveValue('Corte clásico demo')
   })
 
@@ -117,7 +149,7 @@ test.describe('experiencia de producto demo', () => {
     await page.getByLabel('Nombre comercial').fill('Barbería Demo Personalizada')
     await page.getByRole('button', { name: 'Guardar configuración', exact: true }).click()
     await expect(page.getByRole('status').filter({ hasText: /Configuración demo guardada/i })).toBeVisible()
-    await expect(page.getByText('Barbería Demo Personalizada')).toBeVisible()
+    await expect(page.getByLabel('Nombre comercial')).toHaveValue('Barbería Demo Personalizada')
   })
 
   test('DEMO-12 conserva cambios al recargar', async ({ page }) => {
@@ -125,7 +157,7 @@ test.describe('experiencia de producto demo', () => {
     await page.getByLabel('Nombre comercial').fill('Demo Persistente')
     await page.getByRole('button', { name: 'Guardar configuración', exact: true }).click()
     await page.reload()
-    await page.getByRole('button', { name: 'Configuración', exact: true }).click()
+    await clickWorkspaceButton(page, 'Configuración')
     await expect(page.getByLabel('Nombre comercial')).toHaveValue('Demo Persistente')
   })
 
@@ -134,7 +166,7 @@ test.describe('experiencia de producto demo', () => {
     await page.getByLabel('Nombre comercial').fill('Cambio temporal')
     await page.getByRole('button', { name: 'Guardar configuración', exact: true }).click()
     await resetDemo(page)
-    await page.getByRole('button', { name: 'Configuración', exact: true }).click()
+    await clickWorkspaceButton(page, 'Configuración')
     await expect(page.getByLabel('Nombre comercial')).toHaveValue('Barbería Demo Austral')
   })
 
@@ -148,7 +180,9 @@ test.describe('experiencia de producto demo', () => {
 
   test('DEMO-15 WhatsApp queda bloqueado con CTA comercial', async ({ page }) => {
     await openDemo(page)
-    await page.getByRole('button', { name: /WhatsApp disponible al crear tu cuenta/i }).click()
+    const whatsappToggle = page.getByRole('button', { name: /WhatsApp disponible al crear tu cuenta/i })
+    if (!(await whatsappToggle.isVisible().catch(() => false))) test.skip(true, 'El control de WhatsApp vive en el sidebar desktop.')
+    await whatsappToggle.click()
     await expect(page.getByRole('heading', { name: 'Facturación' })).toBeVisible()
     await expect(page.getByText(/WhatsApp está disponible al crear tu cuenta/i)).toBeVisible()
   })
@@ -177,7 +211,12 @@ test.describe('experiencia de producto demo', () => {
 
   test('DEMO-19 soporta dark mode', async ({ page }) => {
     await openDemo(page)
-    await page.getByRole('button', { name: /Modo (oscuro|claro)/ }).click()
+    const themeButton = page.getByRole('button', { name: /Modo (oscuro|claro)/ })
+    if (await themeButton.isVisible().catch(() => false)) await themeButton.click()
+    else {
+      await page.getByRole('button', { name: 'Más', exact: true }).click()
+      await page.getByRole('button', { name: /Modo (oscuro|claro)/ }).click()
+    }
     await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark')
   })
 

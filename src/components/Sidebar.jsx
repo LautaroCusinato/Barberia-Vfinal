@@ -180,6 +180,10 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
                 {label}
               </button>
             ))}
+            <button className="mobile-mas-item" type="button" aria-pressed={isDark} onClick={onToggleTheme}>
+              {isDark ? <Moon size={18} strokeWidth={2} /> : <Sun size={18} strokeWidth={2} />}
+              Modo {isDark ? 'oscuro' : 'claro'}
+            </button>
             <button className="mobile-mas-item mobile-mas-item-danger" aria-label="Cerrar sesion" onClick={onLogout}>
               <LogOut size={18} strokeWidth={2} />
               Cerrar sesion
