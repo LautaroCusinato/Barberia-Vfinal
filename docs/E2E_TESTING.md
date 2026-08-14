@@ -1,6 +1,6 @@
 # Estrategia E2E segura
 
-El proyecto usa Playwright para validar las superficies públicas en Chromium desktop, tablet y móvil. La matriz incluye 390×844, 360×800, 768×1024, 1366×768 y 1920×1080. Las pruebas públicas no envían formularios de registro, no crean reservas y no llaman a proveedores externos. La ruta `/demo` usa `sessionStorage` y servicios ficticios.
+El proyecto usa Playwright para validar las superficies públicas en Chromium desktop, tablet y móvil. La matriz incluye 390×844, 360×800, 768×1024, 1366×768 y 1920×1080. Las pruebas públicas no envían formularios de registro, no crean reservas productivas y no llaman a proveedores externos. La ruta `/demo` reutiliza el panel real en modo local aislado, con `demo_session_id`, snapshot en `localStorage`, TTL de 8 horas y reset explícito. La matriz específica está en `e2e/demo.spec.mjs` y la arquitectura en `docs/DEMO-PRODUCT-EXPERIENCE.md`.
 
 ## Instalación y ejecución
 
