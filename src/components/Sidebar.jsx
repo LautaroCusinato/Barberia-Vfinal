@@ -52,9 +52,28 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
       ? 'No pudimos verificar el plan'
       : whatsappReady
         ? 'Conectado a WhatsApp vía n8n'
-        : whatsappConfigured
-          ? 'La integración necesita atención'
-          : 'Integración todavía no configurada'
+          : whatsappConfigured
+            ? 'La integración necesita atención'
+            : 'Integración todavía no configurada'
+  const whatsappState = entitlementLoading
+    ? 'checking'
+    : requiresPlan
+      ? 'requires-plan'
+      : billingUnavailable
+        ? 'unavailable'
+        : whatsappReady
+          ? 'connected'
+          : whatsappConfigured
+            ? 'disconnected'
+            : 'needs-config'
+  const whatsappStateShort = {
+    checking: 'Verificando',
+    'requires-plan': 'Requiere plan',
+    unavailable: 'No disponible',
+    connected: 'Listo',
+    disconnected: 'Desconectado',
+    'needs-config': 'Requiere configuración',
+  }[whatsappState]
   const [mostrarMas, setMostrarMas] = useState(false)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
 
@@ -97,15 +116,25 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
         </nav>
 
         <div className="sidebar-footer">
-          <button className="theme-toggle" type="button" aria-pressed={botActivo} onClick={onToggleBot} aria-describedby="whatsapp-status" aria-label={whatsappReady ? 'Activar o desactivar bot de WhatsApp' : whatsappLabel}>
-            <span className="theme-toggle-label">
-              <Bot size={14} />
-              {whatsappLabel}
-            </span>
-            <span className={`theme-switch ${botActivo ? 'on' : ''}`}>
-              <span className="theme-switch-knob" />
-            </span>
-          </button>
+          <div className={`sidebar-whatsapp-status whatsapp-state-${whatsappState}`} aria-label="Estado de WhatsApp">
+            <button className="theme-toggle" type="button" aria-pressed={botActivo} onClick={onToggleBot} aria-describedby="whatsapp-status" aria-label={whatsappReady ? 'Activar o desactivar bot de WhatsApp' : whatsappLabel}>
+              <span className="theme-toggle-label">
+                <Bot size={14} />
+                {whatsappLabel}
+              </span>
+              <span className={`theme-switch ${botActivo ? 'on' : ''}`}>
+                <span className="theme-switch-knob" />
+              </span>
+            </button>
+            <div className="sidebar-status">
+              <span className={`live-dot ${whatsappReady ? '' : 'is-offline'}`} />
+              <span id="whatsapp-status">{whatsappStatusLabel}</span>
+              <span className="sidebar-status-badge">{whatsappStateShort}</span>
+            </div>
+            {requiresPlan && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Ver facturación y planes</button>}
+            {!requiresPlan && !billingUnavailable && !whatsappReady && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
+            {billingUnavailable && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Revisar facturación</button>}
+          </div>
           <button className="theme-toggle" type="button" aria-pressed={isDark} onClick={onToggleTheme}>
             <span className="theme-toggle-label">
               {isDark ? <Moon size={14} /> : <Sun size={14} />}
@@ -115,13 +144,6 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
               <span className="theme-switch-knob" />
             </span>
           </button>
-          <div className="sidebar-status">
-            <span className={`live-dot ${whatsappReady ? '' : 'is-offline'}`} />
-            <span id="whatsapp-status">{whatsappStatusLabel}</span>
-          </div>
-          {requiresPlan && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Ver facturación y planes</button>}
-          {!requiresPlan && !billingUnavailable && !whatsappReady && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
-          {billingUnavailable && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Revisar facturación</button>}
           {onAccountSecurity && <button className="theme-toggle" type="button" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
           <button className="theme-toggle" type="button" aria-label="Cerrar sesion" onClick={onLogout}>
             <span className="theme-toggle-label">

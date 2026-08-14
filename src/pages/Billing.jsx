@@ -115,6 +115,9 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const displayProviders = providers.length ? providers : (subscriptionMissing ? [{ codigo: provider, nombre: PROVIDER_LABELS[provider] || provider, activo: false, unavailable: true }] : [])
   const selectedProvider = displayProviders.find((item) => item.codigo === provider)
   const productionCheckoutReady = selectedProvider?.codigo === 'mercadopago' && selectedProvider?.entorno === 'production' && portal?.production_checkout_ready === true
+  const currentAmount = subscription?.precio ?? plan?.precio_mensual
+  const currentIsTrial = !subscriptionMissing && subscription?.estado === 'trialing' && Number(currentAmount) === 0
+  const currentPrice = currentIsTrial ? 'Sin cargo durante el trial' : formatMoney(currentAmount, subscription?.moneda || plan?.moneda)
   const tenantCountry = normalizeCountryCode(portal?.tenant?.pais)
   const findExternalPrice = (item) => {
     const prices = (item?.precios_externos || []).filter((price) => price.proveedor_codigo === provider && price.activo !== false && price.habilitado !== false && (!selectedProvider?.entorno || price.entorno === selectedProvider.entorno))
@@ -189,7 +192,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
       <section className="billing-summary-grid">
         <div className="panel billing-current-card">
           <div className="billing-card-heading"><div><p className="panel-kicker">Plan actual</p><h2>{subscriptionMissing ? 'Sin suscripción activa' : plan?.nombre || subscription?.plan_codigo || 'Sin plan'}</h2></div><span className={`status-pill billing-status-${subscription?.estado || 'unknown'}`}>{subscriptionMissing ? 'Pendiente de iniciar' : statusLabel(subscription?.estado)}</span></div>
-          <p className="billing-price">{subscriptionMissing ? '—' : formatMoney(subscription?.precio ?? plan?.precio_mensual, subscription?.moneda || plan?.moneda)} {!subscriptionMissing && <small>/ {subscription?.periodicidad === 'yearly' ? 'año' : 'mes'}</small>}</p>
+          <p className={`billing-price ${currentIsTrial ? 'billing-price--trial' : ''}`}>{subscriptionMissing ? '—' : currentPrice} {!subscriptionMissing && <small>{currentIsTrial ? 'No se cobra durante el trial' : `/ ${subscription?.periodicidad === 'yearly' ? 'año' : 'mes'}`}</small>}</p>
           <dl className="billing-facts">
             <div><dt>Acceso</dt><dd>{subscriptionMissing ? 'Pendiente de activar' : statusLabel(portal?.access_state)}</dd></div>
             <div><dt>Trial vence</dt><dd>{formatDate(subscription?.trial_ends_at)}</dd></div>
@@ -199,11 +202,12 @@ export default function Billing({ barberiaId: _barberiaId }) {
         <div className="panel billing-provider-card">
           <p className="panel-kicker">Proveedor para el checkout</p>
           <h2>Elegí cómo pagar</h2>
-          <p className="panel-subtitle">El checkout se solicita al backend sandbox desplegado. El navegador nunca maneja credenciales.</p>
-          <div className="billing-provider-options">
-            {displayProviders.map((item) => <label className={`billing-provider-option ${provider === item.codigo ? 'selected' : ''}`} key={item.codigo}><input type="radio" name="billing-provider" value={item.codigo} checked={provider === item.codigo} onChange={(event) => setProvider(event.target.value)} /><span><strong>{PROVIDER_LABELS[item.codigo] || item.nombre}</strong><small>{item.activo ? 'Configurado' : 'Pagos todavía no habilitados para esta cuenta'}</small></span></label>)}
-          </div>
-          {selectedProvider && !selectedProvider.activo && <p className="billing-helper">Los pagos todavía no están habilitados para esta cuenta. No se generará ningún cobro.</p>}
+          <p className="panel-subtitle">El checkout se solicita al backend configurado para tu cuenta. El navegador nunca maneja credenciales.</p>
+          {displayProviders.length > 0 && <div className="billing-provider-options">
+            {displayProviders.map((item) => <label className={`billing-provider-option ${provider === item.codigo ? 'selected' : ''}`} key={item.codigo}><input type="radio" name="billing-provider" value={item.codigo} checked={provider === item.codigo} onChange={(event) => setProvider(event.target.value)} /><span><strong>{PROVIDER_LABELS[item.codigo] || item.nombre}</strong><small>{item.activo ? 'Configurado' : 'Pagos todavía no habilitados'}</small></span></label>)}
+          </div>}
+          {selectedProvider && !selectedProvider.activo && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><CreditCard size={17} /></div><div><strong>{PROVIDER_LABELS[selectedProvider.codigo] || selectedProvider.nombre} todavía no está disponible</strong><p>La cuenta puede consultar sus planes, pero el checkout permanece bloqueado hasta completar la configuración del proveedor.</p><span className="status-pill">Sin cobros habilitados</span></div></div>}
+          {!selectedProvider && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><ShieldCheck size={17} /></div><div><strong>Proveedor pendiente de configuración</strong><p>Cuando se habilite un medio de pago, aparecerá acá sin modificar tu plan actual.</p><span className="status-pill">Configuración pendiente</span></div></div>}
         </div>
       </section>
 
@@ -220,9 +224,10 @@ export default function Billing({ barberiaId: _barberiaId }) {
           return <article className={`billing-plan ${item.codigo === subscription?.plan_codigo ? 'current' : ''}`} key={item.codigo}>
             <div className="billing-plan-heading"><h3>{item.nombre}</h3>{item.codigo === subscription?.plan_codigo && <span className="status-pill">Actual</span>}</div>
             <p className="billing-plan-description">{item.descripcion}</p>
-            <p className="billing-plan-price">{displayPrice} <small>{priceMeta}</small></p>
+            <p className={`billing-plan-price ${externalPrice ? '' : 'billing-plan-price--reference'}`}>{displayPrice} <small>{priceMeta}</small></p>
+            {!externalPrice && <p className="billing-plan-unavailable">Referencia informativa: no hay un precio externo habilitado para {PROVIDER_LABELS[provider] || provider}.</p>}
             <ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul>
-            <button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice || providerUnavailable} onClick={() => { if (productionCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'Proveedor no habilitado' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
+            <button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice || providerUnavailable} onClick={() => { if (productionCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
             {productionCheckoutReady && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitProductionSubscription(item.codigo, token)} /></Suspense>}
           </article>
         })}</div>
