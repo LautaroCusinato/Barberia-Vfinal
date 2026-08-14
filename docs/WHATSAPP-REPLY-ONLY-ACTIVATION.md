@@ -15,13 +15,13 @@ Este documento no ejecuta acciones. El servidor está **PENDING SERVER ACCESS**.
 
 ## QA antes de activar
 
-- [ ] Aplicar `20260813120000_whatsapp_reply_only_pilot.sql` sólo en QA.
+- [x] Aplicar `20260813120000_whatsapp_reply_only_pilot.sql` sólo en QA (validado el 2026-08-14; producción rechazada).
 - [ ] Crear Credential nativa privada de Supabase QA.
 - [ ] Crear exactamente una fila enabled en `saas_whatsapp_reply_only_allowlist`.
 - [ ] Importar `Austral WhatsApp Reply Only Pilot` como `active=false`.
-- [ ] Ejecutar la matriz offline y fixtures QA, sin Evolution real.
-- [ ] Repetir event id; confirmar una sola reclamación.
-- [ ] Probar auth, cross-tenant, fromMe, media, timeouts, rate limit y mutación.
+- [x] Ejecutar la matriz offline y fixtures QA, sin Evolution real.
+- [x] Repetir event id; confirmar una sola reclamación.
+- [x] Probar auth, cross-tenant, fromMe, media, timeouts, rate limit y mutación.
 
 ## GO controlado
 

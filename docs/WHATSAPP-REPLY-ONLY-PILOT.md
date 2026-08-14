@@ -7,6 +7,7 @@ Aplica **Austral SaaS Architecture**: el tenant se deriva server-side, la allowl
 | Estado | Significado |
 | --- | --- |
 | **OFFLINE VALIDATED** | Guards, contrato de IA, adapter mock, loop protection, rate-limit y template pasan verificaciones locales sin tráfico externo. |
+| **QA DATABASE VALIDATED** | La migración Reply Only se aplicó exclusivamente en QA; RLS, grants, RPCs, identidad estricta, exactly-one y rate limit persistente pasan pruebas transaccionales con rollback. |
 | **SERVER PRECHECK PENDING** | Falta verificar n8n/Evolution, `miwsp`, backups, secrets, webhook y workflows en el host. SSH no está disponible. |
 | **REAL MESSAGE PENDING** | Requiere autorización explícita para enviar un único mensaje desde un número controlado. |
 | **REPLY_ONLY VALIDATED** | No declarado. Sólo después del precheck, activación controlada y prueba real aprobada. |
