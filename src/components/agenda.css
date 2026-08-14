@@ -570,8 +570,21 @@
     grid-column: 1 / -1;
     width: 100%;
     justify-content: flex-end;
+    flex-wrap: wrap;
+    padding-left: 0;
     padding-top: 8px;
     border-top: 1px solid var(--border);
+  }
+
+  .agenda-item--enhanced .turno-status-actions {
+    flex: 1 0 100%;
+    justify-content: stretch;
+  }
+
+  .agenda-item--enhanced .turno-status-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 5px;
   }
 
   .agenda-card-heading {
