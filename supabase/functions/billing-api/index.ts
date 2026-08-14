@@ -41,7 +41,7 @@ async function resolveExternalPrice(
   return { ...price, country }
 }
 
-async function checkoutTenant(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+async function checkoutTenant(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>, { sandboxOnly = false } = {}) {
   // Platform owners/admins may exercise billing against an isolated technical
   // tenant without becoming a member of it. This is deliberately restricted
   // to rows explicitly marked as sandbox, so production tenants can never be
@@ -51,6 +51,7 @@ async function checkoutTenant(admin: ReturnType<typeof adminClient>, userId: str
     if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
     const tenantId = Number(body.tenant_id)
     if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw Object.assign(new Error('Tenant sandbox inválido.'), { status: 422, code: 'invalid_sandbox_tenant' })
+    if (sandboxOnly && tenantId !== SANDBOX_BILLING.tenantId) throw Object.assign(new Error('Mercado Pago sandbox sólo permite el tenant técnico autorizado.'), { status: 403, code: 'sandbox_scope_required' })
     const { data: tenant, error } = await admin.from('barberias').select('id, metadata').eq('id', tenantId).maybeSingle()
     if (error) throw Object.assign(new Error('No se pudo resolver el tenant sandbox.'), { status: 500, code: 'tenant_lookup_failed' })
     const metadata = tenant?.metadata && typeof tenant.metadata === 'object' ? tenant.metadata as Record<string, unknown> : {}
@@ -61,11 +62,11 @@ async function checkoutTenant(admin: ReturnType<typeof adminClient>, userId: str
 }
 
 async function checkout(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
-  const tenantId = await checkoutTenant(admin, userId, body)
   const planCode = String(body.plan_codigo || '').trim().toLowerCase()
   const provider = String(body.proveedor_codigo || '').trim().toLowerCase()
   if (!/^[a-z][a-z0-9_-]{1,39}$/.test(planCode)) throw Object.assign(new Error('Plan inválido.'), { status: 422, code: 'invalid_plan' })
   if (!PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
+  const tenantId = await checkoutTenant(admin, userId, body, { sandboxOnly: provider === 'mercadopago' })
 
   const [{ data: providerRow }, { data: tenant }] = await Promise.all([
     admin.from('saas_proveedores_pago').select('codigo, activo, entorno, metadata').eq('codigo', provider).maybeSingle(),
@@ -207,6 +208,7 @@ async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>
   const requestedTenantId = body.tenant_id == null ? 6 : Number(body.tenant_id)
   if (provider === 'mercadopago' && (requestedTenantId !== 6 || planCode !== 'starter')) throw Object.assign(new Error('Mercado Pago sandbox solo permite sincronizar starter del tenant tecnico #6.'), { status: 403, code: 'sandbox_scope_required' })
   if (!/^[a-z][a-z0-9_-]{1,39}$/.test(planCode)) throw Object.assign(new Error('Para sincronizar se debe indicar un único plan válido.'), { status: 422, code: 'invalid_plan' })
+  if (provider === 'mercadopago') await checkoutTenant(admin, userId, { tenant_id: requestedTenantId }, { sandboxOnly: true })
   const config = providerConfigured(provider as 'mercadopago' | 'paypal', provider === 'mercadopago' ? 'plan_sync' : 'all')
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
   const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo, entorno, metadata').eq('codigo', provider).single()
@@ -257,11 +259,11 @@ async function externalStatus(admin: ReturnType<typeof adminClient>, userId: str
   // Platform owners/admins may query the isolated technical sandbox tenant by
   // passing tenant_id. Regular tenant owners keep the existing behaviour and
   // can only query their own tenant.
-  const tenantId = await checkoutTenant(admin, userId, body)
   const requestedAttempt = body.checkout_attempt_id == null ? null : Number(body.checkout_attempt_id)
   if (requestedAttempt !== null && (!Number.isSafeInteger(requestedAttempt) || requestedAttempt <= 0)) throw Object.assign(new Error('Intento de checkout inválido.'), { status: 422, code: 'invalid_checkout_attempt' })
   const provider = body.proveedor_codigo ? String(body.proveedor_codigo).trim().toLowerCase() : null
   if (provider && !PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
+  const tenantId = await checkoutTenant(admin, userId, body, { sandboxOnly: provider === 'mercadopago' })
   const records = requestedAttempt
     ? (await admin.from('saas_billing_checkout_attempts').select('id, proveedor_codigo, external_checkout_id').eq('id', requestedAttempt).eq('barberia_id', tenantId).maybeSingle()).data
     : (await admin.from('saas_suscripciones_externas').select('proveedor_codigo, external_subscription_id').eq('barberia_id', tenantId).maybeSingle()).data

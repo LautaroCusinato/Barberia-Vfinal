@@ -21,7 +21,8 @@ function requireEnv(provider: string, names: string[]) {
 }
 
 function mercadoPagoEnvironment() {
-  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || 'sandbox').trim().toLowerCase()
+  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
+  if (!environment) throw new ProviderError('El entorno de Mercado Pago no está configurado.', 409, 'invalid_provider_environment')
   if (environment !== 'sandbox') throw new ProviderError('Mercado Pago de producción está deshabilitado para este entorno.', 409, 'production_provider_disabled')
   return environment
 }
@@ -105,7 +106,7 @@ function mercadoPagoAccessToken() {
 }
 
 async function mercadoPagoWebhookIdentity() {
-  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || 'sandbox').trim().toLowerCase()
+  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
   if (environment === 'sandbox') return mercadoPagoSandboxIdentity()
   if (environment !== 'production') throw new ProviderError('Entorno de Mercado Pago inválido.', 409, 'invalid_provider_environment')
   const readiness = mercadoPagoProductionReadiness()
@@ -361,7 +362,6 @@ function hexToBytes(value: string) {
 }
 
 export async function verifyMercadoPago(payload: Record<string, unknown>, headers: Headers, dataIdFromUrl = '') {
-  await mercadoPagoWebhookIdentity()
   requireEnv('Mercado Pago', ['MERCADOPAGO_WEBHOOK_SECRET'])
   const signature = headers.get('x-signature') || ''
   const requestId = headers.get('x-request-id') || ''
@@ -373,7 +373,12 @@ export async function verifyMercadoPago(payload: Record<string, unknown>, header
   if (!signature || !requestId || !notificationId || !parts.ts || !expectedSignature) return false
   const manifest = `id:${notificationId};request-id:${requestId};ts:${parts.ts};`
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(Deno.env.get('MERCADOPAGO_WEBHOOK_SECRET')), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
-  return crypto.subtle.verify('HMAC', key, expectedSignature, new TextEncoder().encode(manifest))
+  const valid = await crypto.subtle.verify('HMAC', key, expectedSignature, new TextEncoder().encode(manifest))
+  // Sólo una firma válida puede disparar una consulta al proveedor. Esto
+  // evita que requests falsificados conviertan /users/me en un amplificador.
+  if (!valid) return false
+  await mercadoPagoWebhookIdentity()
+  return true
 }
 
 export async function mercadoPagoResource(payload: Record<string, unknown>, dataIdFromUrl = '') {

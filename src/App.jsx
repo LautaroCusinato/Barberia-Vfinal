@@ -450,7 +450,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       channel = supabase
       .channel(`dashboard-realtime-${Date.now()}-${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mensajes', filter: `barberia_id=eq.${barberiaId}` }, (payload) => {
-        console.log('[realtime] evento en mensajes:', payload)
+        // Nunca imprimir el payload: puede contener texto, teléfonos o datos
+        // de clientes. En desarrollo sólo dejamos el tipo de evento.
+        if (import.meta.env.DEV) console.debug('[realtime] mensaje actualizado', { event: payload.event })
         cargarMensajes()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'turnos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarTurnos())
@@ -462,16 +464,18 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'saas_integraciones', filter: `barberia_id=eq.${barberiaId}` }, () => cargarIntegracionWhatsApp())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bloqueos_agenda', filter: `barberia_id=eq.${barberiaId}` }, () => cargarBloqueos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarPagos())
-      .subscribe((status, err) => {
+      .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           realtimeActivo = true
           pollDelay = 15000
           detenerFallback()
-          console.log('[realtime] conectado OK')
+          if (import.meta.env.DEV) console.debug('[realtime] conectado OK')
         } else if (!cancelado && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
           realtimeActivo = false
           activarFallback()
-          console.error('[realtime] problema con la suscripcion:', status, err)
+          // El error completo puede incluir datos del transporte; el estado
+          // es suficiente para diagnosticar y evita filtrarlo en producción.
+          if (import.meta.env.DEV) console.warn('[realtime] problema con la suscripcion:', status)
         }
       })
     }
