@@ -73,7 +73,7 @@ cleanup_requires_explicit_execute=true
 fixture_prefix=E2E_QA_
 ```
 
-El seed autorizado creó/reutilizó únicamente fixtures con prefijo `E2E_QA_` (2 tenants ficticios y 12 usuarios QA; sin proveedores externos). La suite autenticada completa pasó **192/192** en Chromium, mobile 390/360/412/430, tablet 768 y desktop 1366/1920 antes del cierre de esta auditoría; se repite nuevamente después de los cambios actuales.
+El seed autorizado creó/reutilizó únicamente fixtures con prefijo `E2E_QA_` (2 tenants ficticios y 12 usuarios QA; sin proveedores externos). La ejecución final de la suite autenticada pasó **192/192** en Chromium, mobile 390/360/412/430, tablet 768 y desktop 1366/1920 después de los cambios actuales.
 
 La primera ejecución sin Vite apuntando al proyecto QA fue bloqueada por el guard (`vite_runtime_project_mismatch` / runtime de producción). Esto es un resultado esperado y correcto: el guard impide una prueba QA contra `ssagttjdgtypxjcgdnrw`.
 
@@ -165,4 +165,3 @@ Riesgos operativos no modificados: ausencia de healthchecks en algunos servicios
 ## Criterio de cierre
 
 El cierre se declarará sólo después de repetir lint, tests, build, 9 escenarios públicos, 192 escenarios autenticados QA, WhatsApp offline, diff-check y secret scan sobre este estado, seguido de un commit y push normal sin secretos. Cualquier fallo deja el estado en `RC2 AUDIT BLOCKED` y se documenta sin tocar producción.
-
