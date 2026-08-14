@@ -22,6 +22,18 @@ const STATUS_LABELS = {
 
 const PROVIDER_LABELS = { mercadopago: 'Mercado Pago', paypal: 'PayPal' }
 
+const DEMO_PORTAL = {
+  tenant: { pais: 'AR', billing_email: '' },
+  access_state: 'trialing',
+  subscription: { estado: 'trialing', plan_codigo: 'starter', precio: 30000, moneda: 'ARS', periodicidad: 'monthly', trial_ends_at: null, current_period_end: null, plan: { nombre: 'Starter', precio_mensual: 30000, moneda: 'ARS' } },
+  providers: [{ codigo: 'mercadopago', nombre: 'Mercado Pago', activo: false, unavailable: true, entorno: 'demo' }],
+  payments: [],
+  invoices: [],
+  production_checkout_ready: false,
+}
+
+const DEMO_CATALOG = [{ codigo: 'starter', nombre: 'Starter', descripcion: 'La base para ordenar turnos, equipo y clientes.', precio_mensual: 30000, moneda: 'ARS', periodicidad: 'monthly', limites: { empleados: 'Equipo completo', reservas: 'Reservas online', whatsapp: 'Preparado para conectar' }, precios_externos: [] }]
+
 function statusLabel(value) {
   return STATUS_LABELS[value] || value || 'Sin estado'
 }
@@ -65,11 +77,11 @@ async function billingApi(path, options = {}) {
   return payload
 }
 
-export default function Billing({ barberiaId: _barberiaId }) {
-  const [portal, setPortal] = useState(null)
-  const [catalog, setCatalog] = useState([])
+export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
+  const [portal, setPortal] = useState(() => (demoMode ? DEMO_PORTAL : null))
+  const [catalog, setCatalog] = useState(() => (demoMode ? DEMO_CATALOG : []))
   const [provider, setProvider] = useState('mercadopago')
-  const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [loading, setLoading] = useState(isSupabaseConfigured && !demoMode)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -79,6 +91,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
   const [returnState] = useState(() => getBillingReturnState())
 
   const load = useCallback(async () => {
+    if (demoMode) { setPortal(DEMO_PORTAL); setCatalog(DEMO_CATALOG); setLoading(false); return }
     if (!isSupabaseConfigured) { setLoading(false); return }
     setLoading(true)
     setError('')
@@ -105,7 +118,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
     setPortal(portalResult.status === 'fulfilled' ? portalResult.value : null)
     setCatalog(catalogResult.status === 'fulfilled' && Array.isArray(catalogResult.value.data) ? catalogResult.value.data : [])
     setLoading(false)
-  }, [])
+  }, [demoMode])
 
   useEffect(() => { load() }, [load])
 
@@ -129,6 +142,10 @@ export default function Billing({ barberiaId: _barberiaId }) {
   }
 
   const startCheckout = async (planCode) => {
+    if (demoMode) {
+      window.location.assign('/registro?source=demo-billing')
+      return
+    }
     if (!isSupabaseConfigured) return
     if (!selectedProvider?.activo) {
       setError('El proveedor seleccionado todavía no está habilitado para este entorno.')
@@ -170,7 +187,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
     }
   }
 
-  if (!isSupabaseConfigured) return <div className="panel billing-empty"><CreditCard size={18} /><p>Conectá Supabase para consultar el estado de facturación.</p></div>
+  if (!isSupabaseConfigured && !demoMode) return <div className="panel billing-empty"><CreditCard size={18} /><p>Conectá Supabase para consultar el estado de facturación.</p></div>
   if (loading) return <div className="panel billing-empty"><LoaderCircle className="spin" size={18} /> Cargando facturación…</div>
 
   return (
@@ -186,6 +203,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
 
       {error && <div className="error-banner" role="alert">{error}</div>}
       {returnState && <div className="billing-notice" role="status" data-billing-return={returnState.kind}><ShieldCheck size={16} /> {returnState.message}</div>}
+      {demoMode && <div className="billing-notice" role="status"><ShieldCheck size={16} /> La facturación de la demo es informativa: Starter incluye 14 días de prueba y cuesta ARS 30.000 por mes. El checkout se habilita al crear tu cuenta real.</div>}
       {subscriptionMissing && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Todavía no tenés una suscripción activa. El trial y el plan aparecen cuando el onboarding termina de crear la suscripción.</div>}
       {notice && <div className="billing-notice" role="status"><CheckCircle2 size={16} /> {notice}</div>}
 
@@ -227,7 +245,7 @@ export default function Billing({ barberiaId: _barberiaId }) {
             <p className={`billing-plan-price ${externalPrice ? '' : 'billing-plan-price--reference'}`}>{displayPrice} <small>{priceMeta}</small></p>
             {!externalPrice && <p className="billing-plan-unavailable">Referencia informativa: no hay un precio externo habilitado para {PROVIDER_LABELS[provider] || provider}.</p>}
             <ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul>
-            <button className="btn btn-primary billing-plan-action" disabled={saving || item.codigo === subscription?.plan_codigo || !externalPrice || providerUnavailable} onClick={() => { if (productionCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
+            <button className="btn btn-primary billing-plan-action" disabled={saving || (item.codigo === subscription?.plan_codigo && !demoMode) || (!demoMode && (!externalPrice || providerUnavailable))} onClick={() => { if (demoMode) startCheckout(item.codigo); else if (productionCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{demoMode ? 'Empezar prueba gratuita' : item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
             {productionCheckoutReady && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitProductionSubscription(item.codigo, token)} /></Suspense>}
           </article>
         })}</div>

@@ -23,7 +23,7 @@ import OnboardingChecklist from './components/OnboardingChecklist'
 import Billing from './pages/Billing.jsx'
 import TenantSettings from './components/TenantSettings.jsx'
 import WorkspacePreparing from './components/WorkspacePreparing.jsx'
-import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
+import { supabase, isSupabaseConfigured as supabaseConfigured } from './lib/supabaseClient'
 import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, parseHabilidades, parseHorarioTexto, siguienteNombreServicio, soloDigitos } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
 import { clearWorkspaceTransition } from './lib/workspaceTransition.js'
@@ -36,6 +36,7 @@ import {
   mockServicios,
   mockTurnos,
 } from './data/mockData'
+import { getDemoSnapshot, resetDemoSession, saveDemoSnapshot } from './lib/demoStore.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
@@ -69,8 +70,8 @@ function todayInClinicTZ(timezone = TZ) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone || TZ }).format(new Date())
 }
 
-function initialTheme(tenantId) {
-  const saved = localStorage.getItem(tenantStorageKey('theme', tenantId)) || localStorage.getItem(LEGACY_THEME_KEY)
+function initialTheme(tenantId, storageKey = null) {
+  const saved = localStorage.getItem(storageKey || tenantStorageKey('theme', tenantId)) || localStorage.getItem(LEGACY_THEME_KEY)
   if (saved === 'light' || saved === 'dark') return saved
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
@@ -79,32 +80,37 @@ function SkeletonBlock({ height = 90 }) {
   return <div className="skeleton" style={{ height, width: '100%', marginBottom: 10 }} />
 }
 
-export default function App({ barberiaId, barberiaNombre, vertical: _vertical }) {
-  const themeKey = tenantStorageKey('theme', barberiaId)
+export default function App({ barberiaId, barberiaNombre, vertical: _vertical, demoMode = false, demoSessionId = null }) {
+  // Demo mode deliberately reuses every local branch of the real panel while
+  // making the Supabase adapter unavailable. This keeps the tenant boundary
+  // explicit: no demo callback can reach an authenticated or server adapter.
+  const isSupabaseConfigured = supabaseConfigured && !demoMode
+  const demoSnapshot = demoMode ? getDemoSnapshot(demoSessionId) : null
+  const themeKey = demoMode ? 'austral-demo-theme' : tenantStorageKey('theme', barberiaId)
   const [view, setView] = useState('resumen')
-  const [turnos, setTurnos] = useState(mockTurnos)
-  const [conversaciones, setConversaciones] = useState(mockConversaciones)
-  const [pacientes, setPacientes] = useState(mockPacientes)
-  const [notas, setNotas] = useState(mockNotas)
-  const [servicios, setServicios] = useState(mockServicios)
-  const [barberos, setBarberos] = useState(mockBarberos)
-  const [bloqueos, setBloqueos] = useState([])
-  const [pagos, setPagos] = useState([])
+  const [turnos, setTurnos] = useState(() => demoSnapshot?.turnos || mockTurnos)
+  const [conversaciones, setConversaciones] = useState(() => demoSnapshot?.conversaciones || mockConversaciones)
+  const [pacientes, setPacientes] = useState(() => demoSnapshot?.pacientes || mockPacientes)
+  const [notas, setNotas] = useState(() => demoSnapshot?.notas || mockNotas)
+  const [servicios, setServicios] = useState(() => demoSnapshot?.servicios || mockServicios)
+  const [barberos, setBarberos] = useState(() => demoSnapshot?.barberos || mockBarberos)
+  const [bloqueos, setBloqueos] = useState(() => demoSnapshot?.bloqueos || [])
+  const [pagos, setPagos] = useState(() => demoSnapshot?.pagos || [])
   const [cobroTurno, setCobroTurno] = useState(null)
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [loadedForTenant, setLoadedForTenant] = useState(null)
   const [selectedConversationId, setSelectedConversationId] = useState(null)
-  const [theme, setTheme] = useState(() => initialTheme(barberiaId))
+  const [theme, setTheme] = useState(() => initialTheme(barberiaId, demoMode ? 'austral-demo-theme' : null))
   const [newTurnoOpen, setNewTurnoOpen] = useState(false)
   const [editingTurno, setEditingTurno] = useState(null)
   const [turnoFechaPrefijada, setTurnoFechaPrefijada] = useState(null)
   const [notasFiltro, setNotasFiltro] = useState('')
-  const [botActivo, setBotActivo] = useState(!isSupabaseConfigured)
-  const [whatsappIntegration, setWhatsappIntegration] = useState({ loading: isSupabaseConfigured, configured: !isSupabaseConfigured, connected: !isSupabaseConfigured })
-  const [whatsappEntitlement, setWhatsappEntitlement] = useState({ loading: isSupabaseConfigured, entitlementLoading: isSupabaseConfigured, entitled: !isSupabaseConfigured, entitlement: isSupabaseConfigured ? 'checking' : 'allowed' })
-  const [tenantBranding, setTenantBranding] = useState(null)
-  const [horariosDefault, setHorariosDefault] = useState({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] })
-  const [zonaHoraria, setZonaHoraria] = useState(TZ)
+  const [botActivo, setBotActivo] = useState(() => (demoMode ? false : !isSupabaseConfigured))
+  const [whatsappIntegration, setWhatsappIntegration] = useState(() => (demoMode ? { loading: false, configured: false, connected: false, estado: 'no_disponible' } : { loading: isSupabaseConfigured, configured: !isSupabaseConfigured, connected: !isSupabaseConfigured }))
+  const [whatsappEntitlement, setWhatsappEntitlement] = useState(() => (demoMode ? { loading: false, entitlementLoading: false, entitled: false, entitlement: 'blocked' } : { loading: isSupabaseConfigured, entitlementLoading: isSupabaseConfigured, entitled: !isSupabaseConfigured, entitlement: isSupabaseConfigured ? 'checking' : 'allowed' }))
+  const [tenantBranding, setTenantBranding] = useState(() => demoSnapshot?.tenantBranding || null)
+  const [horariosDefault, setHorariosDefault] = useState(() => demoSnapshot?.horariosDefault || ({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] }))
+  const [zonaHoraria, setZonaHoraria] = useState(() => demoSnapshot?.zonaHoraria || TZ)
   const [dbError, setDbError] = useState('')
   const barberoWritesRef = useRef({})
 
@@ -115,11 +121,41 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     setDbError(mensaje)
   }
 
+  useEffect(() => {
+    if (!demoMode || !demoSessionId) return undefined
+    const syncFromStorage = () => {
+      const snapshot = getDemoSnapshot(demoSessionId)
+      setTurnos(snapshot.turnos)
+      setConversaciones(snapshot.conversaciones)
+      setPacientes(snapshot.pacientes)
+      setNotas(snapshot.notas)
+      setServicios(snapshot.servicios)
+      setBarberos(snapshot.barberos)
+      setBloqueos(snapshot.bloqueos)
+      setPagos(snapshot.pagos)
+      setTenantBranding(snapshot.tenantBranding)
+      setHorariosDefault(snapshot.horariosDefault)
+      setZonaHoraria(snapshot.zonaHoraria)
+    }
+    const handleUpdate = (event) => { if (event.detail?.sessionId === demoSessionId) syncFromStorage() }
+    window.addEventListener('storage', handleUpdate)
+    window.addEventListener('austral:demo-update', handleUpdate)
+    return () => {
+      window.removeEventListener('storage', handleUpdate)
+      window.removeEventListener('austral:demo-update', handleUpdate)
+    }
+  }, [demoMode, demoSessionId])
+
+  useEffect(() => {
+    if (!demoMode || !demoSessionId) return
+    saveDemoSnapshot(demoSessionId, { turnos, conversaciones, pacientes, notas, servicios, barberos, bloqueos, pagos, tenantBranding, horariosDefault, zonaHoraria })
+  }, [demoMode, demoSessionId, turnos, conversaciones, pacientes, notas, servicios, barberos, bloqueos, pagos, tenantBranding, horariosDefault, zonaHoraria])
+
   const todayKey = todayInClinicTZ(zonaHoraria)
 
   useEffect(() => {
-    setTheme(initialTheme(barberiaId))
-  }, [barberiaId])
+    setTheme(initialTheme(barberiaId, demoMode ? 'austral-demo-theme' : null))
+  }, [barberiaId, demoMode])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -129,6 +165,11 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
 
   const toggleBot = async () => {
+    if (demoMode) {
+      setDbError('WhatsApp está disponible al crear tu cuenta.')
+      navigateFromMenu('facturacion')
+      return
+    }
     if (botActivo) {
       const nuevo = false
       setBotActivo(nuevo)
@@ -518,7 +559,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
       if (channel) supabase.removeChannel(channel)
       detenerFallback()
     }
-  }, [barberiaId])
+  }, [barberiaId, isSupabaseConfigured])
 
   if (isSupabaseConfigured && (loading || loadedForTenant !== barberiaId)) {
     return <WorkspacePreparing businessName={barberiaNombre || DEFAULT_BUSINESS_NAME} />
@@ -835,7 +876,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
     }
 
     const telefono = clienteId ? pacientes.find((p) => p.id === clienteId)?.telefono : null
-    if (telefono && N8N_SEND_WEBHOOK_URL) {
+    if (!demoMode && telefono && N8N_SEND_WEBHOOK_URL) {
       try {
         const res = await fetch(N8N_SEND_WEBHOOK_URL, {
           method: 'POST',
@@ -1135,11 +1176,17 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
         onConfigureWhatsApp={() => navigateFromMenu('configuracion')}
         onOpenBilling={() => navigateFromMenu('facturacion')}
         branding={tenantBranding}
-        onLogout={logout}
-        onAccountSecurity={() => window.location.assign('/cuenta')}
+        onLogout={() => (demoMode ? window.location.assign('/') : logout())}
+        onAccountSecurity={() => (demoMode ? navigateFromMenu('configuracion') : window.location.assign('/cuenta'))}
+        demoMode={demoMode}
       />
       <main className="main">
-        {!isSupabaseConfigured && (
+        {demoMode ? (
+          <div className="demo-mode-banner" role="status">
+            <div className="demo-mode-banner__message"><Info size={15} /><span><strong>Modo demostración</strong><small>Los cambios son temporales y sólo viven en este navegador.</small></span></div>
+            <div className="demo-mode-banner__actions"><button type="button" className="btn btn-primary" onClick={() => window.location.assign('/registro?source=demo')}>Crear mi cuenta</button><button type="button" className="btn" onClick={() => { if (!window.confirm('¿Reiniciar la demo y borrar los cambios temporales?')) return; resetDemoSession(demoSessionId); localStorage.removeItem(`austral-demo-settings:${barberiaId}`); window.location.reload() }}>Reiniciar demo</button><button type="button" className="btn btn-ghost" onClick={() => window.location.assign('/')}>Salir</button></div>
+          </div>
+        ) : !isSupabaseConfigured && (
           <div className="demo-banner">
             <Info size={15} />
             Mostrando datos de ejemplo. Conecta Supabase en <code>.env</code> para ver datos reales de la barberia.
@@ -1156,7 +1203,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
           </div>
         )}
 
-        {!botActivo && (
+        {!demoMode && !botActivo && (
           <div className="demo-banner" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
             <Bot size={15} />
             El bot de WhatsApp esta desactivado. Estas atendiendo los mensajes manualmente. Lo reactivas desde el interruptor del menu.
@@ -1185,7 +1232,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
               </>
             ) : (
               <>
-                <OnboardingChecklist barberiaId={barberiaId} onNavigate={navigateFromMenu} />
+                <OnboardingChecklist barberiaId={barberiaId} demoMode={demoMode} onNavigate={navigateFromMenu} />
                 <StatsCards turnos={turnosHoy} conversaciones={conversaciones} todayKey={todayKey} />
                 <div className="two-col">
                   <div className="panel resumen-agenda-panel">
@@ -1402,9 +1449,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical })
           </div>
         )}
 
-        {view === 'configuracion' && <TenantSettings barberiaId={barberiaId} onBrandingChange={setTenantBranding} />}
+        {view === 'configuracion' && <TenantSettings barberiaId={barberiaId} demoMode={demoMode} onBrandingChange={setTenantBranding} />}
 
-        {view === 'facturacion' && <Billing barberiaId={barberiaId} />}
+        {view === 'facturacion' && <Billing barberiaId={barberiaId} demoMode={demoMode} />}
       </main>
 
       <NewTurnoModal

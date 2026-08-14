@@ -26,7 +26,7 @@ const GROUPS = [
 const TABBAR_PRINCIPAL = ['resumen', 'agenda', 'mensajes', 'pacientes']
 const TABBAR_MAS = ITEMS.filter((i) => !TABBAR_PRINCIPAL.includes(i.id))
 
-export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onOpenBilling, onLogout, onAccountSecurity, branding }) {
+export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onOpenBilling, onLogout, onAccountSecurity, branding, demoMode = false }) {
   const isDark = theme === 'dark'
   const whatsappConfigured = Boolean(whatsappStatus.configured)
   const whatsappConnected = Boolean(whatsappStatus.connected)
@@ -35,7 +35,9 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
   const whatsappReady = whatsappConfigured && whatsappConnected && entitlementAllowed
   const requiresPlan = whatsappStatus.entitlement === 'blocked'
   const billingUnavailable = whatsappStatus.entitlement === 'unavailable'
-  const whatsappLabel = requiresPlan
+  const whatsappLabel = demoMode
+    ? 'WhatsApp disponible al crear tu cuenta'
+    : requiresPlan
     ? 'WhatsApp requiere un plan'
     : billingUnavailable
       ? 'WhatsApp no disponible'
@@ -46,7 +48,9 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
           : whatsappConfigured
             ? 'WhatsApp desconectado'
             : 'Conectar WhatsApp'
-  const whatsappStatusLabel = requiresPlan
+  const whatsappStatusLabel = demoMode
+    ? 'Activación disponible al crear tu cuenta'
+    : requiresPlan
     ? 'Plan no habilitado para esta función'
     : billingUnavailable
       ? 'No pudimos verificar el plan'
@@ -55,7 +59,9 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
           : whatsappConfigured
             ? 'La integración necesita atención'
             : 'Integración todavía no configurada'
-  const whatsappState = entitlementLoading
+  const whatsappState = demoMode
+    ? 'requires-plan'
+    : entitlementLoading
     ? 'checking'
     : requiresPlan
       ? 'requires-plan'

@@ -11,12 +11,15 @@ const ROLE_LABELS = { admin: 'Administrador', recepcionista: 'Recepción', emple
 
 function cleanError(error) { return String(error?.message || 'No se pudo completar la operación.').replace(/^.*?ERROR:\s*/i, '').replace(/\s*DETAIL:.*$/i, '') }
 
-export default function TenantSettings({ barberiaId, onBrandingChange }) {
-  const [form, setForm] = useState(DEFAULTS)
+export default function TenantSettings({ barberiaId, onBrandingChange, demoMode = false }) {
+  const demoStorageKey = `austral-demo-settings:${barberiaId}`
+  const demoDefaults = useMemo(() => ({ ...DEFAULTS, nombre: 'Barbería Demo Austral', descripcion: 'Un negocio de servicios listo para ordenar su operación.', slug: 'barberia-demo-austral', pais: 'AR', locale: 'es-AR', zona_horaria: 'America/Argentina/Buenos_Aires', moneda: 'ARS', direccion: 'Av. Demo 123, CABA', email: 'hola@barberia-demo.invalid', telefono: '+54 9 11 0000 0000', whatsapp: '+54 9 11 0000 0000', reservas_publicas: true, color_principal: '#9B6A2F', color_secundario: '#EDE6D8' }), [])
+  const readDemoForm = useCallback(() => { try { return { ...demoDefaults, ...(JSON.parse(localStorage.getItem(demoStorageKey) || 'null') || {}) } } catch { return demoDefaults } }, [demoDefaults, demoStorageKey])
+  const [form, setForm] = useState(() => (demoMode ? readDemoForm() : DEFAULTS))
   const [members, setMembers] = useState([])
   const [invitations, setInvitations] = useState([])
   const [activity, setActivity] = useState([])
-  const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [loading, setLoading] = useState(isSupabaseConfigured && !demoMode)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [pendingOldLogoPath, setPendingOldLogoPath] = useState('')
@@ -30,6 +33,11 @@ export default function TenantSettings({ barberiaId, onBrandingChange }) {
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
 
   const load = useCallback(async () => {
+    if (demoMode) {
+      setForm(readDemoForm())
+      setMembers([{ id: 'demo-owner', role: 'owner', profiles: { full_name: 'Equipo Demo Austral' } }])
+      setInvitations([]); setActivity([]); setLoading(false); return
+    }
     if (!isSupabaseConfigured) { setLoading(false); return }
     setLoading(true); setError('')
     const [settingsResult, membersResult, invitationsResult, activityResult] = await Promise.all([
@@ -44,12 +52,19 @@ export default function TenantSettings({ barberiaId, onBrandingChange }) {
     if (!invitationsResult.error) setInvitations(invitationsResult.data || [])
     if (!activityResult.error) setActivity(activityResult.data || [])
     setLoading(false)
-  }, [barberiaId])
+  }, [barberiaId, demoMode, readDemoForm])
 
   useEffect(() => { load() }, [load])
 
   const save = async (event) => {
     event.preventDefault(); setSaving(true); setError(''); setNotice('')
+    if (demoMode) {
+      localStorage.setItem(demoStorageKey, JSON.stringify(form))
+      setNotice('Configuración demo guardada. Sólo afecta esta sesión local.')
+      onBrandingChange?.({ nombre: form.nombre, logo_url: form.logo_url, logo_storage_path: form.logo_storage_path, color_principal: form.color_principal, color_secundario: form.color_secundario, zona_horaria: form.zona_horaria })
+      setSaving(false)
+      return
+    }
     const { error: saveError } = await supabase.rpc('update_tenant_settings', {
       p_barberia_id: barberiaId, p_nombre: form.nombre, p_descripcion: form.descripcion, p_slug: form.slug, p_vertical: form.vertical,
       p_pais: form.pais, p_locale: form.locale, p_zona_horaria: form.zona_horaria, p_moneda: form.moneda, p_direccion: form.direccion,
@@ -71,6 +86,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange }) {
   }
 
   const uploadLogo = async (event) => {
+    if (demoMode) { setError('La demo no sube archivos. Podés probar colores y branding sin tocar Storage.'); return }
     const file = event.target.files?.[0]
     if (!file) return
     if (!['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'].includes(file.type) || file.size > 2 * 1024 * 1024) { setError('El logo debe ser PNG, JPG, WebP o SVG y pesar hasta 2 MB.'); return }
@@ -87,6 +103,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange }) {
 
   const createInvite = async (event) => {
     event.preventDefault()
+    if (demoMode) { setNotice('Las invitaciones se habilitan al crear tu cuenta real.'); return }
     if (inviteSaving) return
     setInviteSaving(true); setError(''); setNotice(''); setInviteLink('')
     try {
@@ -104,7 +121,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange }) {
   }
 
   const copyInvite = async () => { await navigator.clipboard?.writeText(inviteLink); setNotice('Enlace copiado para compartir manualmente.') }
-  const cancelInvite = async (id) => { const { error: cancelError } = await supabase.from('barberia_invitaciones').update({ status: 'canceled' }).eq('id', id).eq('barberia_id', barberiaId).eq('status', 'pending'); if (cancelError) setError(cleanError(cancelError)); else load() }
+  const cancelInvite = async (id) => { if (demoMode) return; const { error: cancelError } = await supabase.from('barberia_invitaciones').update({ status: 'canceled' }).eq('id', id).eq('barberia_id', barberiaId).eq('status', 'pending'); if (cancelError) setError(cleanError(cancelError)); else load() }
 
   const invitationState = (item) => {
     if (item.status === 'pending' && item.expires_at && new Date(item.expires_at).getTime() <= invitationNow) return { label: 'Vencida', tone: 'expired', actionable: false }
@@ -113,16 +130,16 @@ export default function TenantSettings({ barberiaId, onBrandingChange }) {
     if (item.status === 'rejected') return { label: 'Rechazada', tone: 'canceled', actionable: false }
     return { label: 'Pendiente', tone: 'pending', actionable: true }
   }
-  const changeRole = async (member, role) => { if (member.role === 'owner') return; const { error: roleError } = await supabase.from('barberia_members').update({ role }).eq('id', member.id).eq('barberia_id', barberiaId); if (roleError) setError(cleanError(roleError)); else load() }
-  const removeMember = async (member) => { if (member.role === 'owner' || !window.confirm(`¿Retirar el acceso de ${member.profiles?.full_name || member.user_id}?`)) return; const { error: removeError } = await supabase.from('barberia_members').delete().eq('id', member.id).eq('barberia_id', barberiaId); if (removeError) setError(cleanError(removeError)); else load() }
+  const changeRole = async (member, role) => { if (demoMode || member.role === 'owner') return; const { error: roleError } = await supabase.from('barberia_members').update({ role }).eq('id', member.id).eq('barberia_id', barberiaId); if (roleError) setError(cleanError(roleError)); else load() }
+  const removeMember = async (member) => { if (demoMode || member.role === 'owner' || !window.confirm(`¿Retirar el acceso de ${member.profiles?.full_name || member.user_id}?`)) return; const { error: removeError } = await supabase.from('barberia_members').delete().eq('id', member.id).eq('barberia_id', barberiaId); if (removeError) setError(cleanError(removeError)); else load() }
 
   const publicUrl = useMemo(() => form.slug ? `${window.location.origin}/reservar/${form.slug}` : '', [form.slug])
 
   if (loading) return <div className="panel settings-loading"><LoaderCircle className="spin" size={18} /> Cargando configuración…</div>
-  if (!isSupabaseConfigured) return <div className="panel empty-state">Configurá Supabase para editar el negocio.</div>
+  if (!isSupabaseConfigured && !demoMode) return <div className="panel empty-state">Configurá Supabase para editar el negocio.</div>
 
   return <div className="management-screen management-settings settings-page fade-in">
-    <div className="page-header"><div><p className="page-kicker">Tenant y marca</p><h1 className="page-title">Configuración del negocio</h1><p className="page-date">Los cambios se validan en Supabase y afectan sólo a este negocio.</p></div><span className="billing-security"><ShieldCheck size={14} /> RLS activo</span></div>
+    <div className="page-header"><div><p className="page-kicker">Tenant y marca</p><h1 className="page-title">Configuración del negocio</h1><p className="page-date">{demoMode ? 'Probá branding y preferencias sin modificar ningún negocio real.' : 'Los cambios se validan en Supabase y afectan sólo a este negocio.'}</p></div><span className="billing-security"><ShieldCheck size={14} /> {demoMode ? 'Sesión aislada' : 'RLS activo'}</span></div>
     {error && <div className="error-banner" role="alert">{error}</div>}{notice && <div className="settings-notice" role="status"><Check size={15} /> {notice}</div>}
     <form className="settings-grid" onSubmit={save}>
       <section className="panel settings-card"><h2 className="panel-title">Identidad y contacto</h2><div className="settings-fields">

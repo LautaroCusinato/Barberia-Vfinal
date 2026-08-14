@@ -4,7 +4,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 
 const ROUTES = { datos_negocio: 'configuracion', logo: 'configuracion', servicios: 'operacion', empleados: 'operacion', horarios: 'operacion', pagina_publica: 'configuracion', reserva: 'agenda', colaboradores: 'configuracion', whatsapp: null, plan: 'facturacion' }
 
-export default function OnboardingChecklist({ barberiaId, onNavigate }) {
+export default function OnboardingChecklist({ barberiaId, onNavigate, demoMode = false }) {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [guideOpen, setGuideOpen] = useState(false)
@@ -16,7 +16,7 @@ export default function OnboardingChecklist({ barberiaId, onNavigate }) {
     let active = true
     const loadPreference = async () => {
       let userId = 'anonymous'
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured && !demoMode) {
         const { data } = await supabase.auth.getUser()
         userId = data?.user?.id || userId
       }
@@ -28,7 +28,7 @@ export default function OnboardingChecklist({ barberiaId, onNavigate }) {
     }
     loadPreference()
     return () => { active = false }
-  }, [barberiaId])
+  }, [barberiaId, demoMode])
 
   const persistPreference = (kind, value) => {
     if (!preferenceKey) return
@@ -38,17 +38,17 @@ export default function OnboardingChecklist({ barberiaId, onNavigate }) {
 
   useEffect(() => {
     let active = true
-    if (!isSupabaseConfigured) { setLoading(false); return undefined }
+    if (!isSupabaseConfigured || demoMode) { setLoading(false); return undefined }
     supabase.rpc('get_onboarding_status', { p_barberia_id: barberiaId }).then(({ data, error }) => {
       if (!active) return
       if (!error) setStatus(data)
       setLoading(false)
     })
     return () => { active = false }
-  }, [barberiaId])
+  }, [barberiaId, demoMode])
 
   if (loading) return <div className="onboarding-checklist panel"><LoaderCircle className="spin" size={16} /> Cargando recomendaciones…</div>
-  if (!status?.items?.length) return null
+  if (demoMode || !status?.items?.length) return null
   if (dismissed) return null
 
   const openItem = (item) => {
