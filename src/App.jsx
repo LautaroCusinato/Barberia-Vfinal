@@ -1216,7 +1216,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       <main className="main">
         {demoMode ? (
           <div className="demo-mode-banner" role="status">
-            <div className="demo-mode-banner__message"><Info size={15} /><span><strong>Modo demostración</strong><small>Los cambios son temporales y sólo viven en este navegador.</small></span></div>
+            <div className="demo-mode-banner__message"><Info size={15} /><span><strong>Modo demostración</strong><small>Los cambios son temporales y sólo viven en este navegador. WhatsApp está en validación y esta demo no envía mensajes.</small></span></div>
             <div className="demo-mode-banner__actions"><button type="button" className="btn btn-primary" onClick={() => window.location.assign('/registro?source=demo')}>Crear mi cuenta</button><button type="button" className="btn" onClick={() => { if (!window.confirm('¿Reiniciar la demo y borrar los cambios temporales?')) return; resetDemoSession(demoSessionId); localStorage.removeItem(`austral-demo-settings:${barberiaId}`); window.location.reload() }}>Reiniciar demo</button><button type="button" className="btn btn-ghost" onClick={() => window.location.assign('/')}>Salir</button></div>
           </div>
         ) : !isSupabaseConfigured && (

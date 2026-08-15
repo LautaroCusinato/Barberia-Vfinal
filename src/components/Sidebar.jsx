@@ -36,7 +36,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
   const requiresPlan = whatsappStatus.entitlement === 'blocked'
   const billingUnavailable = whatsappStatus.entitlement === 'unavailable'
   const whatsappLabel = demoMode
-    ? 'WhatsApp disponible al crear tu cuenta'
+    ? 'WhatsApp en validación'
     : requiresPlan
     ? 'WhatsApp requiere un plan'
     : billingUnavailable
@@ -49,7 +49,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             ? 'WhatsApp desconectado'
             : 'Conectar WhatsApp'
   const whatsappStatusLabel = demoMode
-    ? 'Activación disponible al crear tu cuenta'
+    ? 'Disponible próximamente · sin mensajes reales'
     : requiresPlan
     ? 'Plan no habilitado para esta función'
     : billingUnavailable

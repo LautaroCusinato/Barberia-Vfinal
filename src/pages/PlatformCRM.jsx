@@ -6,6 +6,7 @@ import { supabase, supabaseUrl } from '../lib/supabaseClient'
 import CommercialAgent from './CommercialAgent.jsx'
 import CRMLeadsWorkspace from '../components/CRMLeadsWorkspace.jsx'
 import CRMActionInbox from '../components/CRMActionInbox.jsx'
+import CRMOutreachQueue from '../components/CRMOutreachQueue.jsx'
 import CommercialPilot from './CommercialPilot.jsx'
 
 const STAGES = ['discovered', 'qualified', 'contacted', 'replied', 'interested', 'demo', 'trial', 'negotiating', 'won', 'lost', 'do_not_contact']
@@ -408,6 +409,7 @@ export default function PlatformCRM({ role = 'owner' }) {
             <button type="button" className={`nav-item ${view === 'leads' ? 'active' : ''}`} onClick={() => setView('leads')}><UsersRound size={17} /><span>Negocios y leads</span></button>
             <button type="button" className={`nav-item ${view === 'agent' ? 'active' : ''}`} onClick={() => setView('agent')}><Bot size={17} /><span>Agente comercial</span></button>
             <button type="button" className={`nav-item ${view === 'pilot' ? 'active' : ''}`} onClick={() => setView('pilot')}><CheckSquare size={17} /><span>Piloto comercial</span></button>
+            <button type="button" className={`nav-item ${view === 'queue' ? 'active' : ''}`} onClick={() => setView('queue')}><Search size={17} /><span>Listos para contactar</span></button>
             <button type="button" className={`nav-item ${view === 'actions' ? 'active' : ''}`} onClick={() => setView('actions')}><Bell size={17} /><span>Seguimientos</span></button>
             {['owner', 'admin'].includes(role) && <button type="button" className={`nav-item ${view === 'billing' ? 'active' : ''}`} onClick={() => setView('billing')}><CreditCard size={17} /><span>Facturacion SaaS</span></button>}
           </div>
@@ -424,8 +426,8 @@ export default function PlatformCRM({ role = 'owner' }) {
         <div className="page-header platform-page-header">
           <div>
             <p className="page-kicker">Workspace interno</p>
-            <h1 className="page-title">{view === 'billing' ? 'Facturacion SaaS' : view === 'agent' ? 'Agente comercial' : view === 'pilot' ? 'Piloto comercial' : view === 'actions' ? 'Seguimientos' : 'CRM comercial'}</h1>
-            <p className="page-date">{view === 'billing' ? 'Estado de suscripciones, trials y eventos del billing.' : view === 'agent' ? 'Borradores comerciales con aprobación humana.' : view === 'pilot' ? 'Preparación local para cinco leads, sin contacto externo.' : view === 'actions' ? 'Próximas acciones y alertas internas del equipo.' : 'Prospectos, pruebas y negocios convertidos en un solo lugar.'}</p>
+            <h1 className="page-title">{view === 'billing' ? 'Facturacion SaaS' : view === 'agent' ? 'Agente comercial' : view === 'pilot' ? 'Piloto comercial' : view === 'actions' ? 'Seguimientos' : view === 'queue' ? 'Listos para contactar' : 'CRM comercial'}</h1>
+            <p className="page-date">{view === 'billing' ? 'Estado de suscripciones, trials y eventos del billing.' : view === 'agent' ? 'Borradores comerciales con aprobación humana.' : view === 'pilot' ? 'Preparación local para cinco leads, sin contacto externo.' : view === 'actions' ? 'Próximas acciones y alertas internas del equipo.' : view === 'queue' ? 'Leads verificados y preparados para una revisión humana.' : 'Prospectos, pruebas y negocios convertidos en un solo lugar.'}</p>
           </div>
           <div className="page-actions">
             <button className="btn" onClick={load} disabled={loading}><RefreshCw size={15} /> Actualizar</button>
@@ -442,7 +444,7 @@ export default function PlatformCRM({ role = 'owner' }) {
           <div className="stat-card platform-kpi"><span className="stat-label">Acciones vencidas</span><strong>{stats.nextActions}</strong><small className="platform-kpi-caption">Requieren atención</small></div>
         </section>
 
-        {view === 'pilot' ? <CommercialPilot /> : view === 'agent' ? <CommercialAgent /> : view === 'actions' ? <section className="panel platform-crm-panel platform-actions-panel"><CRMActionInbox role={role} /></section> : view === 'billing' ? <>
+        {view === 'pilot' ? <CommercialPilot /> : view === 'agent' ? <CommercialAgent /> : view === 'queue' ? <section className="panel platform-crm-panel platform-actions-panel"><CRMOutreachQueue role={role} /></section> : view === 'actions' ? <section className="panel platform-crm-panel platform-actions-panel"><CRMActionInbox role={role} /></section> : view === 'billing' ? <>
           <section className="panel platform-crm-panel platform-billing-panel">
             <div className="panel-header"><div><h2 className="panel-title">Salud de las cuentas</h2><p className="panel-subtitle">Sólo lectura. Las transiciones se ejecutan por RPC y webhook verificado.</p></div></div>
             {!billingOverview ? <div className="empty-state">No se pudo cargar el resumen de billing.</div> : <>

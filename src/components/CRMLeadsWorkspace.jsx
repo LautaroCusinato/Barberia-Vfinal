@@ -8,12 +8,21 @@ const PRIORITIES = ['low', 'normal', 'high', 'urgent']
 const PAGE_SIZE = 25
 const stageLabel = (value) => String(value || 'discovered').replaceAll('_', ' ')
 const dateLabel = (value) => value ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(value)) : 'Sin fecha'
+const batchKey = (name, environment, rows) => {
+  const value = `${name || 'crm-import' }|${environment}|${JSON.stringify(rows)}`
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `crm-${(hash >>> 0).toString(16)}`
+}
 
 export default function CRMLeadsWorkspace({ role = 'owner' }) {
   const [leads, setLeads] = useState([]); const [metrics, setMetrics] = useState(null); const [total, setTotal] = useState(0); const [members, setMembers] = useState([])
   const [page, setPage] = useState(0); const [search, setSearch] = useState(''); const [stage, setStage] = useState(''); const [priority, setPriority] = useState(''); const [environment, setEnvironment] = useState('production'); const [sort, setSort] = useState('updated_at')
   const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [notice, setNotice] = useState('')
-  const [importOpen, setImportOpen] = useState(false); const [preview, setPreview] = useState(null); const [importing, setImporting] = useState(false)
+  const [importOpen, setImportOpen] = useState(false); const [preview, setPreview] = useState(null); const [serverPreview, setServerPreview] = useState(null); const [importing, setImporting] = useState(false)
   const [expanded, setExpanded] = useState(null); const fileRef = useRef(null)
   const canWrite = ['owner', 'admin', 'sales', 'automation'].includes(role); const canExport = ['owner', 'admin', 'sales'].includes(role)
 
@@ -82,12 +91,20 @@ export default function CRMLeadsWorkspace({ role = 'owner' }) {
   const handleFile = (event) => {
     const file = event.target.files?.[0]; if (!file) return
     if (file.size > 2 * 1024 * 1024) return setError('El CSV no puede superar 2 MB.')
-    const reader = new FileReader(); reader.onload = () => setPreview({ ...parseLeadsCsv(reader.result), name: file.name }); reader.readAsText(file, 'utf-8')
+    const reader = new FileReader(); reader.onload = async () => {
+      const parsed = { ...parseLeadsCsv(reader.result), name: file.name }
+      setPreview(parsed)
+      setServerPreview(null)
+      if (parsed.errors.length || !parsed.rows.length) return
+      const { data, error: previewError } = await supabase.rpc('crm_preview_import', { p_rows: parsed.rows.slice(0, 500), p_environment: environment })
+      if (previewError) setError(previewError.message || 'No se pudo validar el preview en el servidor.')
+      else setServerPreview(data)
+    }; reader.readAsText(file, 'utf-8')
   }
   const importRows = async () => {
     if (!preview || preview.errors.length || !preview.rows.length) return
     setImporting(true); setError('')
-    const { data, error: importError } = await supabase.rpc('import_crm_leads', { p_rows: preview.rows.slice(0, 500), p_filename: preview.name, p_environment: environment })
+    const { data, error: importError } = await supabase.rpc('crm_import_leads_batch', { p_rows: preview.rows.slice(0, 500), p_filename: preview.name, p_environment: environment, p_idempotency_key: batchKey(preview.name, environment, preview.rows.slice(0, 500)) })
     if (importError) setError(importError.message); else { setNotice(`Importación completada: ${data?.ok || 0} nuevos, ${data?.duplicates || 0} duplicados, ${data?.errors || 0} errores.`); setImportOpen(false); setPreview(null); load() }
     setImporting(false)
   }
@@ -120,6 +137,6 @@ export default function CRMLeadsWorkspace({ role = 'owner' }) {
       <td><div className="crm-row-actions"><label className="crm-dnc-check"><input type="checkbox" checked={Boolean(lead.do_not_contact)} disabled={!canWrite} onChange={(event) => updateDnc(lead, event.target.checked)} /> <ShieldCheck size={13} /> DNC</label>{canWrite && <><select className="crm-responsible" value={lead.responsable_id || ''} onChange={(event) => updateAttributes(lead, { responsable_id: event.target.value || null })} aria-label={`Responsable de ${lead.nombre_contacto || 'lead'}`}><option value="">Sin responsable</option>{members.map((member) => <option key={member.user_id} value={member.user_id}>{member.user_id.slice(0, 8)} · {member.role}</option>)}</select><button className="btn-icon-plain" onClick={() => { const group = groupedDuplicates.find((items) => items.some((item) => item.id === lead.id)); if (group) mergeDuplicates(group); else setNotice('No se detectó un duplicado por email/teléfono en esta página.') }} title="Combinar duplicado" aria-label="Combinar duplicado"><GitMerge size={14} /></button></>}</div></td>
     </tr>)}</tbody></table></div>
     <div className="crm-pagination"><span>{total ? `${page * PAGE_SIZE + 1}-${Math.min((page + 1) * PAGE_SIZE, total)} de ${total}` : '0 leads'}</span><div><button className="btn" disabled={page === 0 || loading} onClick={() => setPage((current) => current - 1)}>Anterior</button><button className="btn" disabled={(page + 1) * PAGE_SIZE >= total || loading} onClick={() => setPage((current) => current + 1)}>Siguiente</button></div></div>
-    {importOpen && <div className="modal-overlay" onClick={() => { setImportOpen(false); setPreview(null) }}><div className="modal-box crm-import-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><h2 className="panel-title"><Upload size={17} /> Importar leads CSV</h2><p className="panel-subtitle">Sólo roles de plataforma autorizados · máximo 500 filas y 2 MB.</p></div><button className="btn-icon-plain" onClick={() => { setImportOpen(false); setPreview(null) }} aria-label="Cerrar"><X size={18} /></button></div><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFile} className="sr-only" /><button className="btn" onClick={() => fileRef.current?.click()}>Elegir CSV</button>{preview && <><p className="panel-subtitle">Columnas detectadas: {preview.headers.join(', ') || 'ninguna'}</p>{preview.errors.length > 0 && <div className="error-banner"><strong>{preview.errors.length} error(es):</strong> {preview.errors.slice(0, 4).map((item) => `Fila ${item.row}: ${item.message}`).join(' · ')}{preview.errors.length > 4 ? ' · ...' : ''}<button className="btn" onClick={downloadImportErrors}>Descargar errores</button></div>}{preview.warnings?.length > 0 && <div className="settings-notice"><strong>{preview.warnings.length} advertencia(s):</strong> {preview.warnings.slice(0, 3).map((item) => `Fila ${item.row}: ${item.message}`).join(' · ')}{preview.warnings.length > 3 ? ' · ...' : ''}</div>}<div className="table-scroll crm-preview"><table className="table"><thead><tr><th>Nombre</th><th>Negocio</th><th>Email</th><th>Teléfono</th><th>Rubro</th></tr></thead><tbody>{preview.rows.slice(0, 8).map((row, index) => <tr key={index}><td>{row.nombre}</td><td>{row.negocio}</td><td>{row.email}</td><td>{row.telefono}</td><td>{row.rubro}</td></tr>)}</tbody></table></div><div className="modal-actions"><button className="btn" onClick={() => { setPreview(null); if (fileRef.current) fileRef.current.value = '' }}>Limpiar</button><button className="btn btn-primary" disabled={importing || preview.errors.length > 0 || !preview.rows.length} onClick={importRows}>{importing ? 'Importando...' : `Importar ${Math.min(preview.rows.length, 500)} filas`}</button></div></>}</div></div>}
+    {importOpen && <div className="modal-overlay" onClick={() => { setImportOpen(false); setPreview(null); setServerPreview(null) }}><div className="modal-box crm-import-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><h2 className="panel-title"><Upload size={17} /> Importar leads CSV</h2><p className="panel-subtitle">Sólo roles de plataforma autorizados · máximo 500 filas y 2 MB. El preview server-side no escribe datos.</p></div><button className="btn-icon-plain" onClick={() => { setImportOpen(false); setPreview(null); setServerPreview(null) }} aria-label="Cerrar"><X size={18} /></button></div><input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFile} className="sr-only" /><button className="btn" onClick={() => fileRef.current?.click()}>Elegir CSV</button>{preview && <><p className="panel-subtitle">Columnas detectadas: {preview.headers.join(', ') || 'ninguna'}</p>{preview.errors.length > 0 && <div className="error-banner"><strong>{preview.errors.length} error(es):</strong> {preview.errors.slice(0, 4).map((item) => `Fila ${item.row}: ${item.message}`).join(' · ')}{preview.errors.length > 4 ? ' · ...' : ''}<button className="btn" onClick={downloadImportErrors}>Descargar errores</button></div>}{preview.warnings?.length > 0 && <div className="settings-notice"><strong>{preview.warnings.length} advertencia(s):</strong> {preview.warnings.slice(0, 3).map((item) => `Fila ${item.row}: ${item.message}`).join(' · ')}{preview.warnings.length > 3 ? ' · ...' : ''}</div>}{serverPreview?.counts && <div className="crm-import-summary" role="status"><strong>Preview seguro</strong><span>Nuevos: {serverPreview.counts.new || 0}</span><span>Duplicados exactos: {serverPreview.counts.exact_duplicate || 0}</span><span>Requieren revisión: {serverPreview.counts.likely_duplicate || 0}</span><span>DNC: {serverPreview.counts.dnc || 0}</span><span>Inválidos: {serverPreview.counts.invalid || 0}</span></div>}<div className="table-scroll crm-preview"><table className="table"><thead><tr><th>Nombre</th><th>Negocio</th><th>Email</th><th>Teléfono</th><th>Rubro</th></tr></thead><tbody>{preview.rows.slice(0, 8).map((row, index) => <tr key={index}><td>{row.nombre}</td><td>{row.negocio}</td><td>{row.email}</td><td>{row.telefono}</td><td>{row.rubro}</td></tr>)}</tbody></table></div><div className="modal-actions"><button className="btn" onClick={() => { setPreview(null); setServerPreview(null); if (fileRef.current) fileRef.current.value = '' }}>Limpiar</button><button className="btn btn-primary" disabled={importing || preview.errors.length > 0 || !preview.rows.length || !serverPreview} onClick={importRows}>{importing ? 'Importando...' : `Importar ${Math.min(preview.rows.length, 500)} filas`}</button></div></>}</div></div>}
   </div>
 }
