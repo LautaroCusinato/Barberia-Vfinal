@@ -1,6 +1,6 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
-import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, normalizeStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, normalizeStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 const SANDBOX_BILLING = Object.freeze({
@@ -589,6 +589,49 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
   })
 }
 
+async function verifyProductionProviderIdentity(admin: ReturnType<typeof adminClient>, userId: string) {
+  const role = await platformRole(admin, userId)
+  if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
+  try {
+    const identity = await mercadoPagoProductionIdentity()
+    const configuredApplicationId = Number(Deno.env.get('MERCADOPAGO_PRODUCTION_APPLICATION_ID'))
+    const applicationConfigured = Number.isSafeInteger(configuredApplicationId) && configuredApplicationId > 0
+    return json({
+      ok: true,
+      provider: 'mercadopago',
+      environment: 'production',
+      token_valid: true,
+      seller_id: identity.sellerId,
+      collector_id: identity.collectorId,
+      site_id: identity.siteId,
+      country_id: identity.countryId,
+      seller_verified: identity.sellerVerified,
+      application_id: applicationConfigured ? configuredApplicationId : null,
+      application_verified: false,
+      application_verification: applicationConfigured ? 'configured_not_verified' : 'APPLICATION_ID_UNVERIFIED',
+      production_checkout_ready: false,
+      production_enabled: false,
+      financial_writes: 0,
+    })
+  } catch (error) {
+    return json({
+      ok: false,
+      provider: 'mercadopago',
+      environment: 'production',
+      token_valid: false,
+      seller_id: null,
+      collector_id: null,
+      application_id: null,
+      application_verified: false,
+      application_verification: 'APPLICATION_ID_UNVERIFIED',
+      production_checkout_ready: false,
+      production_enabled: false,
+      financial_writes: 0,
+      error_code: error?.code || 'production_identity_check_failed',
+    }, error?.status || 502)
+  }
+}
+
 Deno.serve(async (request) => {
   const correlationId = requestId(request)
   try {
@@ -609,6 +652,7 @@ Deno.serve(async (request) => {
       return json(data)
     }
     if (request.method === 'GET' && route === 'config-status') return await configurationStatus(admin, user.id)
+    if (request.method === 'GET' && route === 'verify-production-provider-identity') return await verifyProductionProviderIdentity(admin, user.id)
     const body = await readJson(request)
     if (request.method === 'POST' && route === 'checkout') return await checkout(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'subscription') return await productionSubscription(request, admin, user.id, body)

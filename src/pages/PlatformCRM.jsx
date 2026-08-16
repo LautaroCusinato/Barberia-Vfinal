@@ -45,6 +45,9 @@ const SANDBOX_BILLING_MESSAGES = {
   sandbox_price_inconsistent: 'El precio sandbox actual no coincide con el plan autorizado.',
   sandbox_tenant_inconsistent: 'El tenant técnico sandbox no cumple el contrato de billing.',
   sandbox_audit_failed: 'La reconciliación terminó sin auditoría completa.',
+  production_environment_not_configured: 'El entorno productivo de Mercado Pago no está configurado.',
+  production_api_base_not_configured: 'La API productiva de Mercado Pago no está configurada.',
+  production_identity_check_failed: 'No se pudo verificar la identidad productiva de Mercado Pago.',
   network_error: 'No se pudo conectar con billing sandbox. Reintentá en unos segundos.',
 }
 
@@ -128,6 +131,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
   const price = snapshot?.price
   const checkout = snapshot?.checkout
   const external = snapshot?.externalStatus
+  const productionIdentity = snapshot?.productionIdentity
   const tenantReady = snapshot?.tenant?.metadata?.environment === SANDBOX_BILLING.environment
     && snapshot?.tenant?.metadata?.technical === true
 
@@ -160,6 +164,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
 
       <div className="sandbox-billing-actions">
         <button type="button" className="btn" onClick={() => onAction('config-status')} disabled={busy || Boolean(confirmAction)}>Consultar config-status</button>
+        <button type="button" className="btn" onClick={() => onAction('verify-production-provider-identity')} disabled={busy || Boolean(confirmAction)}>Verificar identidad productiva</button>
         <button type="button" className="btn btn-primary" onClick={() => onAction('sync-plans')} disabled={busy || Boolean(confirmAction)}>Sincronizar starter</button>
         <button type="button" className="btn btn-primary" onClick={() => onAction('checkout')} disabled={busy || Boolean(confirmAction)}>Generar checkout sandbox</button>
         <button type="button" className="btn" onClick={() => onAction('reconcile-sandbox')} disabled={busy || Boolean(confirmAction)}>Reconciliar suscripción existente</button>
@@ -179,6 +184,13 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <div><span>Preapproval a reconciliar</span><strong>{SANDBOX_BILLING.preapprovalId}</strong></div>
         <div><span>Estado externo</span><strong>{external?.status || 'Sin consultar'}</strong></div>
         <div><span>Suscripción</span><strong>No se activa por URL de retorno</strong></div>
+      </div>
+
+      <div className="sandbox-billing-details" aria-live="polite">
+        <div><span>Identidad productiva</span><strong>{productionIdentity ? (productionIdentity.token_valid ? 'Token válido' : 'No validado') : 'Sin consultar'}</strong></div>
+        <div><span>Seller / collector</span><strong>{productionIdentity?.seller_id ? `${productionIdentity.seller_id} / ${productionIdentity.collector_id}` : 'No informado'}</strong></div>
+        <div><span>Application ID</span><strong>{productionIdentity?.application_verified ? productionIdentity.application_id : productionIdentity?.application_verification || 'APPLICATION_ID_UNVERIFIED'}</strong></div>
+        <div><span>Operaciones financieras</span><strong>0 · Sólo lectura</strong></div>
       </div>
 
       {config?.external_plan_check?.reachable && <div className="sandbox-billing-details">
@@ -211,7 +223,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [form, setForm] = useState(emptyBusiness)
   const [view, setView] = useState('businesses')
   const [billingOverview, setBillingOverview] = useState(null)
-  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null })
+  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null, productionIdentity: null })
   const [sandboxBusy, setSandboxBusy] = useState(false)
   const [sandboxError, setSandboxError] = useState('')
   const [sandboxNotice, setSandboxNotice] = useState('')
@@ -286,6 +298,14 @@ export default function PlatformCRM({ role = 'owner' }) {
         auditMetadata.sandbox_token_valid = Boolean(data?.sandbox_token_valid)
         auditMetadata.production_enabled = Boolean(data?.production_enabled)
         setSandboxNotice('Config-status consultado sin exponer secretos.')
+      } else if (action === 'verify-production-provider-identity') {
+        const data = await sandboxBillingApi('verify-production-provider-identity')
+        setSandboxSnapshot((current) => ({ ...current, productionIdentity: data }))
+        auditMetadata.token_valid = Boolean(data?.token_valid)
+        auditMetadata.seller_id = data?.seller_id || null
+        auditMetadata.application_verified = Boolean(data?.application_verified)
+        auditMetadata.production_enabled = Boolean(data?.production_enabled)
+        setSandboxNotice(data?.token_valid ? 'Identidad productiva verificada. Checkout continúa bloqueado.' : 'La identidad productiva no pudo validarse; no se habilitó billing.')
       } else if (action === 'sync-plans') {
         const data = await sandboxBillingApi('sync-plans', { method: 'POST', body: { tenant_id: SANDBOX_BILLING.tenantId, proveedor_codigo: SANDBOX_BILLING.provider, plan_codigo: SANDBOX_BILLING.planCode } })
         auditMetadata.result = data?.results?.[0]?.status || 'unknown'
@@ -319,10 +339,12 @@ export default function PlatformCRM({ role = 'owner' }) {
       auditMetadata.error_code = actionError?.code || 'sandbox_action_failed'
       setSandboxError(sanitizeSandboxError(actionError))
     } finally {
-      try {
-        await auditSandboxAction(action, status, auditMetadata)
-      } catch {
-        setSandboxAuditWarning('La operación terminó, pero no se pudo registrar su auditoría.')
+      if (action !== 'verify-production-provider-identity') {
+        try {
+          await auditSandboxAction(action, status, auditMetadata)
+        } catch {
+          setSandboxAuditWarning('La operación terminó, pero no se pudo registrar su auditoría.')
+        }
       }
       setSandboxBusy(false)
     }

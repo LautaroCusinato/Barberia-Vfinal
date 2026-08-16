@@ -256,6 +256,29 @@ export async function mercadoPagoCurrentUser(options: { allowProduction?: boolea
   }
 }
 
+/**
+ * Read-only production identity diagnostic. This deliberately validates only
+ * the provider configuration and /users/me; it never evaluates checkout
+ * readiness and never creates or updates a billing resource.
+ */
+export async function mercadoPagoProductionIdentity() {
+  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
+  const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || '').replace(/\/$/, '')
+  if (environment !== 'production') throw new ProviderError('El entorno productivo no está configurado.', 409, 'production_environment_not_configured')
+  if (base !== PRODUCTION_API_BASE_URL) throw new ProviderError('La API productiva de Mercado Pago no está configurada.', 409, 'production_api_base_not_configured')
+  const currentUser = await mercadoPagoCurrentUser({ allowProduction: true })
+  if (!currentUser.id) throw new ProviderError('Mercado Pago no devolvió una identidad de vendedor.', 502, 'production_identity_missing')
+  const expectedSellerId = Number(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID'))
+  return {
+    sellerId: currentUser.id,
+    collectorId: currentUser.id,
+    siteId: currentUser.siteId,
+    countryId: currentUser.countryId,
+    sellerVerified: Number.isSafeInteger(expectedSellerId) && expectedSellerId > 0 && expectedSellerId === currentUser.id,
+    expectedSellerConfigured: Number.isSafeInteger(expectedSellerId) && expectedSellerId > 0,
+  }
+}
+
 /** Read-only search used by the isolated sandbox diagnostic. */
 export async function mercadoPagoPreapprovalSearch(planId?: string | null) {
   // The caller performs /users/me immediately before the plan lookup and
