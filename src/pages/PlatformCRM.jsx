@@ -132,6 +132,8 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
   const checkout = snapshot?.checkout
   const external = snapshot?.externalStatus
   const productionIdentity = snapshot?.productionIdentity
+  const productionPlanSearch = snapshot?.productionPlanSearch
+  const productionPilot = snapshot?.productionPilot
   const tenantReady = snapshot?.tenant?.metadata?.environment === SANDBOX_BILLING.environment
     && snapshot?.tenant?.metadata?.technical === true
 
@@ -150,12 +152,14 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       {notice && <div className="billing-notice" role="status">{notice}</div>}
 
       {confirmAction && <div className="sandbox-confirmation" role="alert">
-        <strong>{confirmAction === 'sync-plans' ? 'Confirmar sincronización' : confirmAction === 'reconcile-sandbox' ? 'Confirmar reconciliación' : 'Confirmar checkout sandbox'}</strong>
+        <strong>{confirmAction === 'sync-plans' ? 'Confirmar sincronización' : confirmAction === 'reconcile-sandbox' ? 'Confirmar reconciliación' : confirmAction === 'prepare-production-pilot' ? 'Confirmar preparación técnica' : 'Confirmar checkout sandbox'}</strong>
         <span>{confirmAction === 'sync-plans'
           ? 'Se actualizará únicamente el plan starter de Mercado Pago sandbox.'
           : confirmAction === 'reconcile-sandbox'
             ? `Se consultará la suscripción existente ${SANDBOX_BILLING.preapprovalId} y se vinculará únicamente al tenant técnico #6. No se crea ningún pago.`
-            : 'Se generará un checkout para el tenant técnico #6. No se cobrará dinero real.'}</span>
+            : confirmAction === 'prepare-production-pilot'
+              ? 'Se buscará o preparará un único plan y tenant técnico productivos. No se crea checkout, suscripción externa, tarjeta ni pago.'
+              : 'Se generará un checkout para el tenant técnico #6. No se cobrará dinero real.'}</span>
         <div className="sandbox-confirmation-actions">
           <button type="button" className="btn btn-primary" onClick={() => onAction(confirmAction)} disabled={busy}>Confirmar</button>
           <button type="button" className="btn" onClick={() => onAction('cancel-confirmation')} disabled={busy}>Cancelar</button>
@@ -165,6 +169,8 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       <div className="sandbox-billing-actions">
         <button type="button" className="btn" onClick={() => onAction('config-status')} disabled={busy || Boolean(confirmAction)}>Consultar config-status</button>
         <button type="button" className="btn" onClick={() => onAction('verify-production-provider-identity')} disabled={busy || Boolean(confirmAction)}>Verificar identidad productiva</button>
+        <button type="button" className="btn" onClick={() => onAction('production-plan-search')} disabled={busy || Boolean(confirmAction)}>Buscar plan productivo</button>
+        <button type="button" className="btn" onClick={() => onAction('prepare-production-pilot')} disabled={busy || Boolean(confirmAction)}>Preparar piloto productivo (sin checkout)</button>
         <button type="button" className="btn btn-primary" onClick={() => onAction('sync-plans')} disabled={busy || Boolean(confirmAction)}>Sincronizar starter</button>
         <button type="button" className="btn btn-primary" onClick={() => onAction('checkout')} disabled={busy || Boolean(confirmAction)}>Generar checkout sandbox</button>
         <button type="button" className="btn" onClick={() => onAction('reconcile-sandbox')} disabled={busy || Boolean(confirmAction)}>Reconciliar suscripción existente</button>
@@ -192,6 +198,21 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <div><span>Application ID</span><strong>{productionIdentity?.application_verified ? productionIdentity.application_id : productionIdentity?.application_verification || 'APPLICATION_ID_UNVERIFIED'}</strong></div>
         <div><span>Operaciones financieras</span><strong>0 · Sólo lectura</strong></div>
       </div>
+
+      {productionPlanSearch && <div className="sandbox-billing-details" aria-live="polite">
+        <div><span>Planes productivos compatibles</span><strong>{productionPlanSearch.compatible_candidates?.length ?? 0}</strong></div>
+        <div><span>Planes encontrados</span><strong>{productionPlanSearch.candidates?.length ?? 0}</strong></div>
+        <div><span>Contrato</span><strong>Starter · ARS 30.000 / mes</strong></div>
+        <div><span>Escrituras financieras</span><strong>0</strong></div>
+      </div>}
+
+      {productionPilot && <div className="sandbox-billing-details" aria-live="polite">
+        <div><span>Piloto técnico productivo</span><strong>tenant #{productionPilot.pilot_tenant?.id} · checkout bloqueado</strong></div>
+        <div><span>Plan externo</span><strong>{productionPilot.plan?.external_plan_id || 'No verificado'}</strong></div>
+        <div><span>Precio productivo</span><strong>{productionPilot.price?.moneda} {formatMoney(productionPilot.price?.importe, productionPilot.price?.moneda)} / mes</strong><small>{productionPilot.price?.habilitado ? 'Habilitado' : 'Deshabilitado (correcto)'}</small></div>
+        <div><span>Allowlist</span><strong>{productionPilot.allowlist?.configured ? 'Configurada' : 'Pendiente de secrets'}</strong></div>
+        <div><span>Escrituras financieras</span><strong>{productionPilot.financial_writes ?? 0}</strong></div>
+      </div>}
 
       {config?.external_plan_check?.reachable && <div className="sandbox-billing-details">
         <div><span>Plan externo verificado</span><strong>{config.external_plan_check.matches_internal_price ? 'Coincide con ARS 15.000' : 'Difiere del precio interno'}</strong></div>
@@ -223,7 +244,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [form, setForm] = useState(emptyBusiness)
   const [view, setView] = useState('businesses')
   const [billingOverview, setBillingOverview] = useState(null)
-  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null, productionIdentity: null })
+  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null, productionIdentity: null, productionPlanSearch: null, productionPilot: null })
   const [sandboxBusy, setSandboxBusy] = useState(false)
   const [sandboxError, setSandboxError] = useState('')
   const [sandboxNotice, setSandboxNotice] = useState('')
@@ -276,7 +297,7 @@ export default function PlatformCRM({ role = 'owner' }) {
       setSandboxConfirmAction('')
       return
     }
-    if (['sync-plans', 'checkout', 'reconcile-sandbox'].includes(action) && sandboxConfirmAction !== action) {
+    if (['sync-plans', 'checkout', 'reconcile-sandbox', 'prepare-production-pilot'].includes(action) && sandboxConfirmAction !== action) {
       setSandboxConfirmAction(action)
       setSandboxError('')
       setSandboxNotice('')
@@ -306,6 +327,14 @@ export default function PlatformCRM({ role = 'owner' }) {
         auditMetadata.application_verified = Boolean(data?.application_verified)
         auditMetadata.production_enabled = Boolean(data?.production_enabled)
         setSandboxNotice(data?.token_valid ? 'Identidad productiva verificada. Checkout continúa bloqueado.' : 'La identidad productiva no pudo validarse; no se habilitó billing.')
+      } else if (action === 'production-plan-search') {
+        const data = await sandboxBillingApi('production-plan-search')
+        setSandboxSnapshot((current) => ({ ...current, productionPlanSearch: data }))
+        setSandboxNotice('Búsqueda productiva completada sin crear ni modificar planes.')
+      } else if (action === 'prepare-production-pilot') {
+        const data = await sandboxBillingApi('prepare-production-pilot', { method: 'POST', body: { confirm: 'PREPARE_PRODUCTION_PILOT_ONLY' } })
+        setSandboxSnapshot((current) => ({ ...current, productionPilot: data }))
+        setSandboxNotice('Piloto productivo preparado. Checkout y cobros continúan bloqueados.')
       } else if (action === 'sync-plans') {
         const data = await sandboxBillingApi('sync-plans', { method: 'POST', body: { tenant_id: SANDBOX_BILLING.tenantId, proveedor_codigo: SANDBOX_BILLING.provider, plan_codigo: SANDBOX_BILLING.planCode } })
         auditMetadata.result = data?.results?.[0]?.status || 'unknown'
@@ -339,7 +368,7 @@ export default function PlatformCRM({ role = 'owner' }) {
       auditMetadata.error_code = actionError?.code || 'sandbox_action_failed'
       setSandboxError(sanitizeSandboxError(actionError))
     } finally {
-      if (action !== 'verify-production-provider-identity') {
+      if (!['verify-production-provider-identity', 'production-plan-search', 'prepare-production-pilot'].includes(action)) {
         try {
           await auditSandboxAction(action, status, auditMetadata)
         } catch {

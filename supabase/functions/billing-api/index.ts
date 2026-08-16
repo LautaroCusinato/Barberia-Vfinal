@@ -1,6 +1,6 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
-import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, normalizeStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCreateProductionPlan, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionPlanDetails, mercadoPagoProductionPlanSearch, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, normalizeStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 const SANDBOX_BILLING = Object.freeze({
@@ -9,6 +9,17 @@ const SANDBOX_BILLING = Object.freeze({
   provider: 'mercadopago',
   environment: 'sandbox',
   externalPlanId: '63a35af17150492f92dbc459c686a775',
+})
+const PRODUCTION_PILOT = Object.freeze({
+  planCode: 'starter',
+  provider: 'mercadopago',
+  country: 'AR',
+  currency: 'ARS',
+  amount: 30000,
+  periodicity: 'monthly',
+  environment: 'production',
+  slug: 'austral-billing-pilot',
+  name: 'Austral Billing Pilot',
 })
 
 function normalizeCountryCode(value: unknown) {
@@ -632,6 +643,180 @@ async function verifyProductionProviderIdentity(admin: ReturnType<typeof adminCl
   }
 }
 
+function requirePlatformBillingAdmin(admin: ReturnType<typeof adminClient>, userId: string) {
+  return platformRole(admin, userId).then((role) => {
+    if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Owner/admin de plataforma requerido.'), { status: 403, code: 'platform_admin_required' })
+    return role
+  })
+}
+
+async function productionPlanSearch(admin: ReturnType<typeof adminClient>, userId: string) {
+  await requirePlatformBillingAdmin(admin, userId)
+  const result = await mercadoPagoProductionPlanSearch()
+  return json({
+    ok: true,
+    provider: PRODUCTION_PILOT.provider,
+    environment: PRODUCTION_PILOT.environment,
+    token_valid: true,
+    seller_id: result.identity.sellerId,
+    collector_id: result.identity.collectorId,
+    candidates: result.candidates,
+    compatible_candidates: result.compatible,
+    contract: {
+      reason: 'Austral Starter',
+      amount: PRODUCTION_PILOT.amount,
+      currency: PRODUCTION_PILOT.currency,
+      frequency: 1,
+      frequency_type: 'months',
+    },
+    financial_writes: 0,
+  })
+}
+
+function productionAllowlistStatus(tenantId: number) {
+  const configuredPilot = Number(Deno.env.get('BILLING_PRODUCTION_PILOT_TENANT_ID'))
+  const allowlisted = String(Deno.env.get('BILLING_PRODUCTION_ALLOWED_TENANT_IDS') || '')
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isSafeInteger(value) && value > 0)
+  return {
+    configured: Number.isSafeInteger(configuredPilot) && configuredPilot === tenantId && allowlisted.length === 1 && allowlisted[0] === tenantId,
+    required: ['BILLING_PRODUCTION_PILOT_TENANT_ID', 'BILLING_PRODUCTION_ALLOWED_TENANT_IDS'],
+  }
+}
+
+async function prepareProductionPilot(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  await requirePlatformBillingAdmin(admin, userId)
+  if (body.confirm !== 'PREPARE_PRODUCTION_PILOT_ONLY') throw Object.assign(new Error('Se requiere la confirmación técnica del piloto sin checkout.'), { status: 422, code: 'production_pilot_confirmation_required' })
+
+  const identity = await mercadoPagoProductionIdentity()
+  if (identity.sellerId !== 1334909095) throw Object.assign(new Error('La credencial no pertenece al vendedor productivo autorizado.'), { status: 409, code: 'production_seller_mismatch' })
+
+  // Search first. Multiple compatible plans are an explicit stop condition;
+  // never choose arbitrarily and never create a second plan in that case.
+  const searched = await mercadoPagoProductionPlanSearch()
+  if (searched.compatible.length > 1) throw Object.assign(new Error('Existen varios planes productivos compatibles; revisión manual requerida.'), { status: 409, code: 'production_plan_ambiguous' })
+  const plan = searched.compatible[0] || await mercadoPagoCreateProductionPlan()
+  if (!plan?.id) throw Object.assign(new Error('Mercado Pago no devolvió un plan productivo verificable.'), { status: 502, code: 'production_plan_missing' })
+  const verifiedPlan = await mercadoPagoProductionPlanDetails(plan.id)
+  if (!verifiedPlan.applicationId || verifiedPlan.collectorId !== 1334909095) throw Object.assign(new Error('El plan productivo no coincide con la identidad autorizada.'), { status: 409, code: 'production_plan_identity_mismatch' })
+
+  let createdTenantId: number | null = null
+  let createdPriceId: number | null = null
+  let createdSubscriptionId: number | null = null
+  try {
+    const { data: allTenants, error: tenantsError } = await admin.from('barberias').select('id, nombre, slug, metadata').order('id')
+    if (tenantsError) throw Object.assign(new Error('No se pudo revisar los tenants productivos.'), { status: 502, code: 'production_tenant_lookup_failed' })
+    const pilots = (allTenants || []).filter((tenant) => tenant?.metadata?.production_billing_pilot === true)
+    if (pilots.length > 1) throw Object.assign(new Error('Existen varios tenants piloto productivos; revisión manual requerida.'), { status: 409, code: 'production_pilot_ambiguous' })
+    const slugConflict = (allTenants || []).find((tenant) => tenant.slug === PRODUCTION_PILOT.slug && tenant?.metadata?.production_billing_pilot !== true)
+    if (slugConflict) throw Object.assign(new Error('El slug reservado del piloto ya está ocupado.'), { status: 409, code: 'production_pilot_slug_conflict' })
+
+    let pilot = pilots[0] || null
+    if (pilot && [1, 5, SANDBOX_BILLING.tenantId].includes(Number(pilot.id))) throw Object.assign(new Error('El tenant piloto coincide con un tenant protegido.'), { status: 409, code: 'protected_tenant' })
+    if (pilot) {
+      const metadata = pilot.metadata && typeof pilot.metadata === 'object' ? pilot.metadata as Record<string, unknown> : {}
+      if (metadata.environment !== PRODUCTION_PILOT.environment || metadata.technical !== true) throw Object.assign(new Error('El tenant piloto existente no cumple el entorno productivo.'), { status: 409, code: 'production_pilot_metadata_mismatch' })
+    } else {
+      const trialEnds = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      const { data: insertedTenant, error: tenantInsertError } = await admin.from('barberias').insert({
+        nombre: PRODUCTION_PILOT.name,
+        slug: PRODUCTION_PILOT.slug,
+        vertical: 'custom',
+        estado_cuenta: 'trial',
+        plan_codigo: PRODUCTION_PILOT.planCode,
+        trial_ends_at: trialEnds,
+        locale: 'es-AR',
+        onboarding_completed: false,
+        pais: PRODUCTION_PILOT.country,
+        moneda: PRODUCTION_PILOT.currency,
+        descripcion: 'Tenant técnico interno para preparar el billing productivo.',
+        metadata: {
+          purpose: 'production_billing_pilot',
+          production_billing_pilot: true,
+          technical: true,
+          environment: PRODUCTION_PILOT.environment,
+          billing_provider: PRODUCTION_PILOT.provider,
+          billing_plan: PRODUCTION_PILOT.planCode,
+          billing_enabled: false,
+          external_plan_id: verifiedPlan.id,
+          collector_id: verifiedPlan.collectorId,
+          application_id: verifiedPlan.applicationId,
+        },
+      }).select('id, nombre, slug, metadata').single()
+      if (tenantInsertError || !insertedTenant) throw Object.assign(new Error('No se pudo crear el tenant piloto productivo.'), { status: 502, code: 'production_pilot_create_failed' })
+      pilot = insertedTenant
+      createdTenantId = Number(insertedTenant.id)
+    }
+
+    const tenantId = Number(pilot.id)
+    const { data: prices, error: pricesError } = await admin.from('saas_plan_precios').select('id, plan_codigo, proveedor_codigo, pais_codigo, moneda, importe, periodicidad, entorno, external_plan_id, habilitado, activo').eq('plan_codigo', PRODUCTION_PILOT.planCode).eq('proveedor_codigo', PRODUCTION_PILOT.provider).eq('pais_codigo', PRODUCTION_PILOT.country).eq('entorno', PRODUCTION_PILOT.environment)
+    if (pricesError) throw Object.assign(new Error('No se pudo revisar el precio productivo.'), { status: 502, code: 'production_price_lookup_failed' })
+    if ((prices || []).length > 1) throw Object.assign(new Error('Existen varios precios productivos para Starter ARS; revisión manual requerida.'), { status: 409, code: 'production_price_ambiguous' })
+    let price = prices?.[0] || null
+    if (price && (String(price.external_plan_id || '') !== verifiedPlan.id || String(price.moneda).toUpperCase() !== PRODUCTION_PILOT.currency || Number(price.importe) !== PRODUCTION_PILOT.amount || price.periodicidad !== PRODUCTION_PILOT.periodicity)) throw Object.assign(new Error('El precio productivo existente no coincide con el contrato.'), { status: 409, code: 'production_price_mismatch' })
+    if (!price) {
+      const { data: insertedPrice, error: priceInsertError } = await admin.from('saas_plan_precios').insert({
+        plan_codigo: PRODUCTION_PILOT.planCode,
+        proveedor_codigo: PRODUCTION_PILOT.provider,
+        pais_codigo: PRODUCTION_PILOT.country,
+        moneda: PRODUCTION_PILOT.currency,
+        importe: PRODUCTION_PILOT.amount,
+        periodicidad: PRODUCTION_PILOT.periodicity,
+        entorno: PRODUCTION_PILOT.environment,
+        external_plan_id: verifiedPlan.id,
+        habilitado: false,
+        activo: true,
+        metadata: { environment: PRODUCTION_PILOT.environment, technical_pilot: true, collector_id: verifiedPlan.collectorId, application_id: verifiedPlan.applicationId, checkout_enabled: false },
+      }).select('id, plan_codigo, proveedor_codigo, pais_codigo, moneda, importe, periodicidad, entorno, external_plan_id, habilitado, activo').single()
+      if (priceInsertError || !insertedPrice) throw Object.assign(new Error('No se pudo crear el precio productivo.'), { status: 502, code: 'production_price_create_failed' })
+      price = insertedPrice
+      createdPriceId = Number(insertedPrice.id)
+    }
+
+    const { data: subscriptions, error: subscriptionsError } = await admin.from('saas_suscripciones').select('id, barberia_id, plan_codigo, estado, provider_subscription_id').eq('barberia_id', tenantId)
+    if (subscriptionsError) throw Object.assign(new Error('No se pudo revisar la suscripción interna del piloto.'), { status: 502, code: 'production_subscription_lookup_failed' })
+    if ((subscriptions || []).length > 1) throw Object.assign(new Error('El tenant piloto tiene varias suscripciones internas; revisión manual requerida.'), { status: 409, code: 'production_subscription_ambiguous' })
+    let subscription = subscriptions?.[0] || null
+    if (subscription && (subscription.plan_codigo !== PRODUCTION_PILOT.planCode || subscription.provider_subscription_id)) throw Object.assign(new Error('La suscripción interna del piloto no está en estado de preparación.'), { status: 409, code: 'production_subscription_mismatch' })
+    if (!subscription) {
+      const trialStarted = new Date().toISOString()
+      const trialEnds = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      const { data: insertedSubscription, error: subscriptionInsertError } = await admin.from('saas_suscripciones').insert({ barberia_id: tenantId, plan_codigo: PRODUCTION_PILOT.planCode, estado: 'trialing', trial_started_at: trialStarted, trial_ends_at: trialEnds, provider: null, precio: PRODUCTION_PILOT.amount, moneda: PRODUCTION_PILOT.currency, periodicidad: PRODUCTION_PILOT.periodicity, metadata: { environment: PRODUCTION_PILOT.environment, technical_pilot: true, price_id: price.id, external_plan_id: verifiedPlan.id, billing_enabled: false } }).select('id, barberia_id, plan_codigo, estado, provider_subscription_id').single()
+      if (subscriptionInsertError || !insertedSubscription) throw Object.assign(new Error('No se pudo crear la suscripción interna de trial del piloto.'), { status: 502, code: 'production_subscription_create_failed' })
+      subscription = insertedSubscription
+      createdSubscriptionId = Number(insertedSubscription.id)
+    }
+
+    const existingMetadata = pilot.metadata && typeof pilot.metadata === 'object' ? pilot.metadata as Record<string, unknown> : {}
+    const { error: tenantUpdateError } = await admin.from('barberias').update({ metadata: { ...existingMetadata, production_billing_pilot: true, technical: true, environment: PRODUCTION_PILOT.environment, billing_provider: PRODUCTION_PILOT.provider, billing_plan: PRODUCTION_PILOT.planCode, billing_enabled: false, price_id: price.id, external_plan_id: verifiedPlan.id, collector_id: verifiedPlan.collectorId, application_id: verifiedPlan.applicationId } }).eq('id', tenantId)
+    if (tenantUpdateError) throw Object.assign(new Error('No se pudo completar la metadata del tenant piloto.'), { status: 502, code: 'production_pilot_update_failed' })
+
+    return json({
+      ok: true,
+      provider: PRODUCTION_PILOT.provider,
+      environment: PRODUCTION_PILOT.environment,
+      production_enabled: false,
+      checkout_enabled: false,
+      plan: { external_plan_id: verifiedPlan.id, collector_id: verifiedPlan.collectorId, application_id: verifiedPlan.applicationId, status: verifiedPlan.status, amount: verifiedPlan.amount, currency: verifiedPlan.currency, frequency: verifiedPlan.frequency, frequency_type: verifiedPlan.frequencyType },
+      pilot_tenant: { id: tenantId, name: pilot.nombre, slug: pilot.slug },
+      price: { id: price.id, plan_codigo: price.plan_codigo, proveedor_codigo: price.proveedor_codigo, pais_codigo: price.pais_codigo, moneda: price.moneda, importe: price.importe, periodicidad: price.periodicidad, entorno: price.entorno, external_plan_id: price.external_plan_id, habilitado: price.habilitado, activo: price.activo },
+      subscription: { id: subscription.id, estado: subscription.estado, provider_subscription_id: subscription.provider_subscription_id || null },
+      allowlist: productionAllowlistStatus(tenantId),
+      financial_writes: 0,
+      external_financial_writes: 0,
+      manual_configuration_required: ['MERCADOPAGO_PRODUCTION_APPLICATION_ID', 'BILLING_PRODUCTION_PILOT_TENANT_ID', 'BILLING_PRODUCTION_ALLOWED_TENANT_IDS'],
+    })
+  } catch (error) {
+    // Compensate only rows created by this invocation. The external plan is
+    // intentionally preserved for audit/reuse if a later database step fails.
+    if (createdSubscriptionId) await admin.from('saas_suscripciones').delete().eq('id', createdSubscriptionId)
+    if (createdPriceId) await admin.from('saas_plan_precios').delete().eq('id', createdPriceId)
+    if (createdTenantId) await admin.from('barberias').delete().eq('id', createdTenantId)
+    throw error
+  }
+}
+
 Deno.serve(async (request) => {
   const correlationId = requestId(request)
   try {
@@ -653,7 +838,9 @@ Deno.serve(async (request) => {
     }
     if (request.method === 'GET' && route === 'config-status') return await configurationStatus(admin, user.id)
     if (request.method === 'GET' && route === 'verify-production-provider-identity') return await verifyProductionProviderIdentity(admin, user.id)
+    if (request.method === 'GET' && route === 'production-plan-search') return await productionPlanSearch(admin, user.id)
     const body = await readJson(request)
+    if (request.method === 'POST' && route === 'prepare-production-pilot') return await prepareProductionPilot(admin, user.id, body)
     if (request.method === 'POST' && route === 'checkout') return await checkout(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'subscription') return await productionSubscription(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'external-status') return await externalStatus(admin, user.id, body)

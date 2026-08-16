@@ -279,6 +279,94 @@ export async function mercadoPagoProductionIdentity() {
   }
 }
 
+const PRODUCTION_STARTER_CONTRACT = Object.freeze({
+  reason: 'Austral Starter',
+  externalReference: 'austral:starter:production:AR:30000',
+  amount: 30000,
+  currency: 'ARS',
+  frequency: 1,
+  frequencyType: 'months',
+})
+
+function productionPlanFromProvider(body: Record<string, unknown>, fallbackId = '') {
+  const recurring = body.auto_recurring && typeof body.auto_recurring === 'object'
+    ? body.auto_recurring as Record<string, unknown>
+    : {}
+  return {
+    id: String(body.id || fallbackId).trim() || null,
+    reason: String(body.reason || body.name || '').trim() || null,
+    collectorId: Number(body.collector_id) || null,
+    applicationId: Number(body.application_id) || null,
+    status: String(body.status || '').trim().toLowerCase() || null,
+    externalReference: String(body.external_reference || '').trim() || null,
+    amount: Number(recurring.transaction_amount) || null,
+    currency: String(recurring.currency_id || '').trim().toUpperCase() || null,
+    frequency: Number(recurring.frequency) || null,
+    frequencyType: String(recurring.frequency_type || '').trim().toLowerCase() || null,
+  }
+}
+
+function productionPlanMatchesContract(plan: ReturnType<typeof productionPlanFromProvider>) {
+  return plan.collectorId === 1334909095
+    && plan.amount === PRODUCTION_STARTER_CONTRACT.amount
+    && plan.currency === PRODUCTION_STARTER_CONTRACT.currency
+    && plan.frequency === PRODUCTION_STARTER_CONTRACT.frequency
+    && plan.frequencyType === PRODUCTION_STARTER_CONTRACT.frequencyType
+    && plan.applicationId != null
+}
+
+/** Read-only production plan search. No plan or database writes occur here. */
+export async function mercadoPagoProductionPlanSearch() {
+  const identity = await mercadoPagoProductionIdentity()
+  const token = configuredMercadoPagoAccessToken({ allowProduction: true })
+  const base = PRODUCTION_API_BASE_URL
+  const params = new URLSearchParams({ q: PRODUCTION_STARTER_CONTRACT.reason, limit: '50' })
+  const body = await responseJson(await fetch(`${base}/preapproval_plan/search?${params.toString()}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
+  const results = Array.isArray(body.results) ? body.results : []
+  const candidates = results.slice(0, 50).map((item: Record<string, unknown>) => productionPlanFromProvider(item)).filter((item) => item.id)
+  return {
+    identity,
+    candidates,
+    compatible: candidates.filter(productionPlanMatchesContract),
+    contract: PRODUCTION_STARTER_CONTRACT,
+  }
+}
+
+/** Verify one production plan through the provider's authoritative GET. */
+export async function mercadoPagoProductionPlanDetails(externalPlanId: string) {
+  const token = configuredMercadoPagoAccessToken({ allowProduction: true })
+  const base = PRODUCTION_API_BASE_URL
+  const body = await responseJson(await fetch(`${base}/preapproval_plan/${encodeURIComponent(externalPlanId)}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
+  const plan = productionPlanFromProvider(body, externalPlanId)
+  if (!productionPlanMatchesContract(plan)) throw new ProviderError('El plan productivo no coincide con el contrato Starter autorizado.', 409, 'production_plan_mismatch')
+  return plan
+}
+
+/** Create exactly one production plan after the caller has exhausted search. */
+export async function mercadoPagoCreateProductionPlan() {
+  const token = configuredMercadoPagoAccessToken({ allowProduction: true })
+  const body = await responseJson(await fetch(`${PRODUCTION_API_BASE_URL}/preapproval_plan`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-Idempotency-Key': PRODUCTION_STARTER_CONTRACT.externalReference,
+    },
+    body: JSON.stringify({
+      reason: PRODUCTION_STARTER_CONTRACT.reason,
+      external_reference: PRODUCTION_STARTER_CONTRACT.externalReference,
+      back_url: 'https://barberia.cuchitron.lat/facturacion?billing=pending',
+      auto_recurring: {
+        frequency: PRODUCTION_STARTER_CONTRACT.frequency,
+        frequency_type: PRODUCTION_STARTER_CONTRACT.frequencyType,
+        transaction_amount: PRODUCTION_STARTER_CONTRACT.amount,
+        currency_id: PRODUCTION_STARTER_CONTRACT.currency,
+      },
+    }),
+  }), 'Mercado Pago')
+  return mercadoPagoProductionPlanDetails(String(body.id || ''))
+}
+
 /** Read-only search used by the isolated sandbox diagnostic. */
 export async function mercadoPagoPreapprovalSearch(planId?: string | null) {
   // The caller performs /users/me immediately before the plan lookup and
