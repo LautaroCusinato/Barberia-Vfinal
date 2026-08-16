@@ -607,6 +607,22 @@ async function verifyProductionProviderIdentity(admin: ReturnType<typeof adminCl
     const identity = await mercadoPagoProductionIdentity()
     const configuredApplicationId = Number(Deno.env.get('MERCADOPAGO_PRODUCTION_APPLICATION_ID'))
     const applicationConfigured = Number.isSafeInteger(configuredApplicationId) && configuredApplicationId > 0
+    const configuredPlanId = String(Deno.env.get('MERCADOPAGO_PRODUCTION_PLAN_ID') || '').trim()
+    let verifiedPlan: Awaited<ReturnType<typeof mercadoPagoProductionPlanDetails>> | null = null
+    let planVerificationError: string | null = null
+    if (configuredPlanId) {
+      try {
+        verifiedPlan = await mercadoPagoProductionPlanDetails(configuredPlanId)
+      } catch (error) {
+        planVerificationError = error?.code || 'production_plan_verification_failed'
+      }
+    }
+    const applicationVerified = Boolean(
+      applicationConfigured
+      && verifiedPlan
+      && verifiedPlan.applicationId === configuredApplicationId
+      && verifiedPlan.collectorId === identity.sellerId,
+    )
     return json({
       ok: true,
       provider: 'mercadopago',
@@ -617,9 +633,13 @@ async function verifyProductionProviderIdentity(admin: ReturnType<typeof adminCl
       site_id: identity.siteId,
       country_id: identity.countryId,
       seller_verified: identity.sellerVerified,
-      application_id: applicationConfigured ? configuredApplicationId : null,
-      application_verified: false,
-      application_verification: applicationConfigured ? 'configured_not_verified' : 'APPLICATION_ID_UNVERIFIED',
+      application_id: verifiedPlan?.applicationId || (applicationConfigured ? configuredApplicationId : null),
+      application_verified: applicationVerified,
+      application_verification: applicationVerified ? 'verified_from_authoritative_plan' : applicationConfigured ? 'configured_not_verified' : 'APPLICATION_ID_UNVERIFIED',
+      plan_id: verifiedPlan?.id || configuredPlanId || null,
+      plan_verified: Boolean(verifiedPlan),
+      plan_status: verifiedPlan?.status || null,
+      plan_verification_error: planVerificationError,
       production_checkout_ready: false,
       production_enabled: false,
       financial_writes: 0,

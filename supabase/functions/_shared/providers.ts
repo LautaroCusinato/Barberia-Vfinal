@@ -307,12 +307,15 @@ function productionPlanFromProvider(body: Record<string, unknown>, fallbackId = 
 }
 
 function productionPlanMatchesContract(plan: ReturnType<typeof productionPlanFromProvider>) {
+  const expectedApplicationId = Number(Deno.env.get('MERCADOPAGO_PRODUCTION_APPLICATION_ID'))
   return plan.collectorId === 1334909095
     && plan.amount === PRODUCTION_STARTER_CONTRACT.amount
     && plan.currency === PRODUCTION_STARTER_CONTRACT.currency
     && plan.frequency === PRODUCTION_STARTER_CONTRACT.frequency
     && plan.frequencyType === PRODUCTION_STARTER_CONTRACT.frequencyType
-    && plan.applicationId != null
+    && Number.isSafeInteger(expectedApplicationId)
+    && expectedApplicationId > 0
+    && plan.applicationId === expectedApplicationId
 }
 
 /** Read-only production plan search. No plan or database writes occur here. */
