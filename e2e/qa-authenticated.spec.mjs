@@ -16,6 +16,10 @@ const qaUrl = process.env.E2E_SUPABASE_URL?.replace(/\/$/, '')
 const anonKey = process.env.E2E_SUPABASE_ANON_KEY
 const password = process.env.E2E_QA_PASSWORD
 const prefix = 'E2E_QA_'
+// QA billing assertions use the isolated deterministic mock. The production
+// billing-api remains available for explicit read-only checks and is never
+// selected implicitly by these E2E scenarios.
+const billingFunctionSlug = process.env.E2E_BILLING_API_FUNCTION || (qaRequested ? 'billing-api-qa' : 'billing-api')
 
 const USERS = {
   ownerA: 'e2e_qa_owner_a@e2e-qa.invalid',
@@ -84,7 +88,7 @@ async function openPlatform(page, key = 'platformOwner') {
 }
 
 async function billingApi(token, path, options = {}) {
-  const response = await fetch(`${qaUrl}/functions/v1/billing-api/${path}`, {
+  const response = await fetch(`${qaUrl}/functions/v1/${billingFunctionSlug}/${path}`, {
     ...options,
     headers: { Authorization: `Bearer ${token}`, apikey: anonKey, 'Content-Type': 'application/json', ...(options.headers || {}) },
   })
