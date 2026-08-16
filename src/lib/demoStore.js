@@ -25,9 +25,11 @@ function makeSeed() {
     { id: 1006, nombre: 'Corte infantil', descripcion: 'Una experiencia tranquila para los más chicos.', precio: 7500, duracion: 30, activo: true },
   ]
   const barbers = [
-    { id: 1101, nombre: 'Mateo', rol: 'Barbero senior', especialidad: 'Barbero senior', color: '#9B6A2F', horario: 'Lun, Mar, Mié, Jue, Vie y Sáb 09:00-18:00 break 13:00-14:00', horario_texto: 'Lun, Mar, Mié, Jue, Vie y Sáb 09:00-18:00 break 13:00-14:00', activo: true, habilidades: ['corte_clasico', 'degrade', 'corte_barba', 'barba', 'perfilado', 'corte_infantil'] },
-    { id: 1102, nombre: 'Lucas', rol: 'Especialista en fades', especialidad: 'Especialista en fades', color: '#3E6F87', horario: 'Mar, Mié, Jue, Vie y Sáb 10:00-19:00 break 14:00-15:00', horario_texto: 'Mar, Mié, Jue, Vie y Sáb 10:00-19:00 break 14:00-15:00', activo: true, habilidades: ['corte_clasico', 'degrade', 'corte_barba', 'perfilado'] },
-    { id: 1103, nombre: 'Tomás', rol: 'Barbero y barba', especialidad: 'Barbero y barba', color: '#756080', horario: 'Lun, Mar, Mié, Jue y Vie 12:00-20:00 break 16:00-16:30', horario_texto: 'Lun, Mar, Mié, Jue y Vie 12:00-20:00 break 16:00-16:30', activo: true, habilidades: ['degrade', 'corte_barba', 'barba', 'perfilado'] },
+    // Demo fixtures cover every weekday so the relative-to-today appointments
+    // remain valid when the suite runs on a Sunday as well.
+    { id: 1101, nombre: 'Mateo', rol: 'Barbero senior', especialidad: 'Barbero senior', color: '#9B6A2F', horario: 'Lun, Mar, Mié, Jue, Vie, Sáb y Dom 09:00-18:00 break 13:00-14:00', horario_texto: 'Lun, Mar, Mié, Jue, Vie, Sáb y Dom 09:00-18:00 break 13:00-14:00', activo: true, habilidades: ['corte_clasico', 'degrade', 'corte_barba', 'barba', 'perfilado', 'corte_infantil'] },
+    { id: 1102, nombre: 'Lucas', rol: 'Especialista en fades', especialidad: 'Especialista en fades', color: '#3E6F87', horario: 'Mar, Mié, Jue, Vie, Sáb y Dom 10:00-19:00 break 14:00-15:00', horario_texto: 'Mar, Mié, Jue, Vie, Sáb y Dom 10:00-19:00 break 14:00-15:00', activo: true, habilidades: ['corte_clasico', 'degrade', 'corte_barba', 'perfilado'] },
+    { id: 1103, nombre: 'Tomás', rol: 'Barbero y barba', especialidad: 'Barbero y barba', color: '#756080', horario: 'Lun, Mar, Mié, Jue, Vie y Dom 12:00-20:00 break 16:00-16:30', horario_texto: 'Lun, Mar, Mié, Jue, Vie y Dom 12:00-20:00 break 16:00-16:30', activo: true, habilidades: ['degrade', 'corte_barba', 'barba', 'perfilado'] },
   ]
   const names = ['Agustín Molina', 'Bruno Acosta', 'Carla Benítez', 'Damián Ríos', 'Elena Sosa', 'Facundo Vera', 'Gabriela Núñez', 'Hernán Luna', 'Ivana Costa', 'Joaquín Paz', 'Karen Silva', 'Leandro Ortiz', 'Malena Duarte', 'Nicolás Gil', 'Olivia Suárez', 'Pablo Arias', 'Rocío Méndez', 'Santiago Vidal', 'Tamara Funes', 'Ulises Ferreyra', 'Valeria Castro', 'Walter Peralta', 'Ximena Lagos', 'Yamil Gómez', 'Zoe Navarro']
   const pacientes = names.map((nombre, index) => ({
