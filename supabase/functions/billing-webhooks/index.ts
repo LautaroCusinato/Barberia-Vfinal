@@ -1,5 +1,6 @@
 import { adminClient } from '../_shared/supabase.ts'
 import { errorJson, json, requestId } from '../_shared/http.ts'
+import { resolveBindingByExternalPlan } from '../_shared/billing-context.ts'
 import { EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID, EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPagoResource, normalizeStatus, paypalResource, verifyMercadoPago, verifyPayPal } from '../_shared/providers.ts'
 
 function minimized(payload: Record<string, unknown>) {
@@ -11,6 +12,35 @@ async function body(request: Request) {
   const raw = await request.text()
   if (new TextEncoder().encode(raw).byteLength > 1024 * 1024) throw Object.assign(new Error('Payload demasiado grande.'), { status: 413, code: 'payload_too_large' })
   try { return JSON.parse(raw) as Record<string, unknown> } catch { throw Object.assign(new Error('JSON inválido.'), { status: 400, code: 'invalid_json' }) }
+}
+
+async function resolveWebhookEnvironment(admin: ReturnType<typeof adminClient>, payload: Record<string, unknown>, dataIdFromUrl: string, request: Request) {
+  const explicit = new URL(request.url).searchParams.get('environment')?.trim().toLowerCase()
+  if (explicit === 'sandbox' || explicit === 'production') return explicit as 'sandbox' | 'production'
+  const candidates = [
+    dataIdFromUrl,
+    String((payload.data as Record<string, unknown> | undefined)?.id || ''),
+    String(payload.id || ''),
+  ].filter(Boolean)
+  for (const externalId of candidates) {
+    const linked = (await admin.from('saas_suscripciones_externas').select('metadata').eq('external_subscription_id', externalId).maybeSingle()).data
+    const linkedEnvironment = String(linked?.metadata?.environment || '').trim().toLowerCase()
+    if (linkedEnvironment === 'sandbox' || linkedEnvironment === 'production') return linkedEnvironment
+    const attempt = (await admin.from('saas_billing_checkout_attempts').select('metadata').eq('external_checkout_id', externalId).maybeSingle()).data
+    const attemptEnvironment = String(attempt?.metadata?.environment || '').trim().toLowerCase()
+    if (attemptEnvironment === 'sandbox' || attemptEnvironment === 'production') return attemptEnvironment
+  }
+  const planId = String(payload.preapproval_plan_id || (payload.resource as Record<string, unknown> | undefined)?.preapproval_plan_id || '')
+  if (planId) {
+    const binding = await resolveBindingByExternalPlan(admin, 'mercadopago', planId)
+    if (binding?.entorno === 'sandbox' || binding?.entorno === 'production') return binding.entorno
+  }
+  // Legacy URLs without an explicit environment remain safe only while the
+  // project is explicitly sandbox. A production project must opt in via the
+  // environment query parameter or a pre-linked binding.
+  const configured = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
+  if (configured === 'sandbox') return 'sandbox'
+  throw Object.assign(new Error('El webhook no incluye un entorno de billing resoluble.'), { status: 409, code: 'webhook_environment_unresolved' })
 }
 
 Deno.serve(async (request) => {
@@ -26,9 +56,10 @@ Deno.serve(async (request) => {
     const payload = await body(request)
     const admin = adminClient()
     const dataIdFromUrl = webhookUrl.searchParams.get('data.id') || webhookUrl.searchParams.get('data_id') || ''
-    const signatureValid = provider === 'mercadopago' ? await verifyMercadoPago(payload, request.headers, dataIdFromUrl) : await verifyPayPal(payload, request.headers)
+    const webhookEnvironment = provider === 'mercadopago' ? await resolveWebhookEnvironment(admin, payload, dataIdFromUrl, request) : null
+    const signatureValid = provider === 'mercadopago' ? await verifyMercadoPago(payload, request.headers, dataIdFromUrl, webhookEnvironment || undefined) : await verifyPayPal(payload, request.headers)
     if (!signatureValid) return errorJson('Firma inválida.', 401, 'invalid_signature')
-    const resource = provider === 'mercadopago' ? await mercadoPagoResource(payload, dataIdFromUrl) : await paypalResource(payload)
+    const resource = provider === 'mercadopago' ? await mercadoPagoResource(payload, dataIdFromUrl, webhookEnvironment || undefined) : await paypalResource(payload)
     const minimal = minimized(payload)
     const externalEventId = String(minimal.id || `${provider}-${crypto.randomUUID()}`)
     recordedProvider = provider
@@ -43,6 +74,11 @@ Deno.serve(async (request) => {
 
     const resourceId = resource.id
     const resourceType = String((resource as Record<string, unknown>).resourceType || (provider === 'paypal' ? 'payment' : 'preapproval'))
+    const verifiedResourceForBinding = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
+    const verifiedPlanIdForBinding = String(verifiedResourceForBinding?.preapproval_plan_id || payload.preapproval_plan_id || '')
+    const billingBinding = provider === 'mercadopago' && verifiedPlanIdForBinding
+      ? await resolveBindingByExternalPlan(admin, provider, verifiedPlanIdForBinding)
+      : null
     // Plan notifications describe the plan template, not a payer's
     // subscription. They are auditable but can never select a tenant or
     // transition billing state.
@@ -67,20 +103,12 @@ Deno.serve(async (request) => {
     // billing reference. In the isolated sandbox we can safely resolve the
     // plan back to the single technical tenant without trusting webhook input
     // as a tenant selector. Production tenants never use this fallback.
-    if (!checkoutAttempt && provider === 'mercadopago') {
-      const verifiedResource = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
-      const planId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
-      if (planId) {
-        const { data: price } = await admin.from('saas_plan_precios').select('id, plan_codigo, external_plan_id').eq('external_plan_id', planId).eq('proveedor_codigo', 'mercadopago').eq('entorno', 'sandbox').eq('activo', true).maybeSingle()
-        if (price) {
-          const candidate = (await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('barberia_id', 6).eq('plan_codigo', price.plan_codigo).eq('proveedor_codigo', provider).in('estado', ['ready', 'pending_provider', 'created']).order('created_at', { ascending: false }).limit(1).maybeSingle()).data
-          const candidatePlanId = String(candidate?.metadata?.external_plan_id || '')
-          // Never let a historical checkout from an obsolete plan become the
-          // context for a current subscription event. Amount/currency alone
-          // are insufficient because the old and new sandbox plans share them.
-          if (candidate && candidatePlanId === String(price.external_plan_id)) checkoutAttempt = candidate
-        }
-      }
+    if (!checkoutAttempt && provider === 'mercadopago' && billingBinding) {
+      const candidate = (await admin.from('saas_billing_checkout_attempts').select('id, barberia_id, suscripcion_id, amount, currency, metadata').eq('barberia_id', billingBinding.barberia_id).eq('plan_codigo', billingBinding.plan_codigo).eq('proveedor_codigo', provider).in('estado', ['ready', 'pending_provider', 'created']).order('created_at', { ascending: false }).limit(1).maybeSingle()).data
+      const candidatePlanId = String(candidate?.metadata?.external_plan_id || '')
+      // A provider plan is mapped to one tenant/environment binding. Historical
+      // attempts from another plan can never become the current context.
+      if (candidate && candidatePlanId === String(billingBinding.external_plan_id)) checkoutAttempt = candidate
     }
     if (checkoutAttempt && provider === 'mercadopago' && (resource as Record<string, unknown>).resourceType === 'preapproval') {
       const verifiedResource = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
@@ -89,6 +117,10 @@ Deno.serve(async (request) => {
       if (!verifiedPlanId || !attemptPlanId || verifiedPlanId !== attemptPlanId) checkoutAttempt = null
     }
     const context = externalSubscription || checkoutAttempt
+    if (billingBinding && context && context.barberia_id !== billingBinding.barberia_id) {
+      await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'tenant_environment_binding_mismatch', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
+      return json({ received: true, processed: false, reason: 'tenant_environment_binding_mismatch' }, 202)
+    }
     if (!context?.suscripcion_id || !context?.barberia_id) {
       await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'external_subscription_unlinked', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
       return json({ received: true, processed: false, reason: 'external_subscription_unlinked' }, 202)
@@ -107,7 +139,7 @@ Deno.serve(async (request) => {
       const verifiedPlanId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
       const expectedReference = String(checkoutAttempt?.metadata?.tenant_reference || checkoutAttempt?.metadata?.reference || '')
       const verifiedReference = String(verifiedResource?.external_reference || '')
-      const productionEnvironment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || 'sandbox').trim().toLowerCase() === 'production'
+      const productionEnvironment = webhookEnvironment === 'production'
       const expectedCollectorId = productionEnvironment
         ? Number(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID')) || null
         : EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID

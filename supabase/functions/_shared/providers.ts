@@ -1,5 +1,6 @@
 export type ProviderCode = 'mercadopago' | 'paypal'
 export type ProviderCapability = 'checkout' | 'plan_sync' | 'status' | 'webhook' | 'all'
+export type MercadoPagoEnvironment = 'sandbox' | 'production'
 
 const PRODUCTION_API_BASE_URL = 'https://api.mercadopago.com'
 
@@ -20,11 +21,28 @@ function requireEnv(provider: string, names: string[]) {
   if (missing.length) throw new ProviderNotConfigured(provider, missing)
 }
 
-function mercadoPagoEnvironment() {
-  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
+function mercadoPagoEnvironment(override?: MercadoPagoEnvironment) {
+  const environment = String(override || Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
   if (!environment) throw new ProviderError('El entorno de Mercado Pago no está configurado.', 409, 'invalid_provider_environment')
-  if (environment !== 'sandbox') throw new ProviderError('Mercado Pago de producción está deshabilitado para este entorno.', 409, 'production_provider_disabled')
-  return environment
+  if (environment !== 'sandbox' && environment !== 'production') throw new ProviderError('El entorno de Mercado Pago no es válido.', 409, 'invalid_provider_environment')
+  return environment as MercadoPagoEnvironment
+}
+
+function mercadoPagoSecretName(environment: MercadoPagoEnvironment, kind: 'token' | 'webhook') {
+  if (environment === 'sandbox') return kind === 'token' ? 'MERCADOPAGO_SANDBOX_ACCESS_TOKEN' : 'MERCADOPAGO_SANDBOX_WEBHOOK_SECRET'
+  return kind === 'token' ? 'MERCADOPAGO_ACCESS_TOKEN' : 'MERCADOPAGO_WEBHOOK_SECRET'
+}
+
+function mercadoPagoSecret(environment: MercadoPagoEnvironment, kind: 'token' | 'webhook') {
+  const scoped = String(Deno.env.get(mercadoPagoSecretName(environment, kind)) || '').trim()
+  // Backwards-compatible only for an explicitly sandbox project. Production
+  // never falls back to a sandbox secret name.
+  if (scoped) return scoped
+  if (environment === 'sandbox' && String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase() === 'sandbox') {
+    const legacyName = kind === 'token' ? 'MERCADOPAGO_ACCESS_TOKEN' : 'MERCADOPAGO_WEBHOOK_SECRET'
+    return String(Deno.env.get(legacyName) || '').trim()
+  }
+  return ''
 }
 
 /**
@@ -85,8 +103,9 @@ function requireMercadoPagoProduction(input: { tenantId: number; externalPlanId:
   return readiness
 }
 
-export function mercadoPagoCredentialStatus() {
-  const token = String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') || '').trim()
+export function mercadoPagoCredentialStatus(environment?: MercadoPagoEnvironment) {
+  const resolved = mercadoPagoEnvironment(environment)
+  const token = mercadoPagoSecret(resolved, 'token')
   const kind = token.startsWith('TEST-') ? 'test' : token ? 'unverified' : 'missing'
   // `sandbox` is deliberately false until /users/me has confirmed the
   // allow-listed TEST seller.  This prevents a configured but unverified
@@ -94,24 +113,24 @@ export function mercadoPagoCredentialStatus() {
   return { configured: Boolean(token), kind, sandbox: false }
 }
 
-function configuredMercadoPagoAccessToken({ allowProduction = false } = {}) {
-  if (!allowProduction) mercadoPagoEnvironment()
-  const status = mercadoPagoCredentialStatus()
-  if (!status.configured) throw new ProviderNotConfigured('Mercado Pago', ['MERCADOPAGO_ACCESS_TOKEN'])
-  return String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN'))
+function configuredMercadoPagoAccessToken({ allowProduction = false, environment }: { allowProduction?: boolean; environment?: MercadoPagoEnvironment } = {}) {
+  const resolved = mercadoPagoEnvironment(environment)
+  if (!allowProduction && resolved === 'production') throw new ProviderError('Mercado Pago de producción está deshabilitado para este flujo.', 409, 'production_provider_disabled')
+  const status = mercadoPagoCredentialStatus(resolved)
+  if (!status.configured) throw new ProviderNotConfigured('Mercado Pago', [mercadoPagoSecretName(resolved, 'token')])
+  return mercadoPagoSecret(resolved, 'token')
 }
 
 function mercadoPagoAccessToken() {
-  return configuredMercadoPagoAccessToken()
+  return configuredMercadoPagoAccessToken({ environment: 'sandbox' })
 }
 
-async function mercadoPagoWebhookIdentity() {
-  const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
+async function mercadoPagoWebhookIdentity(environmentOverride?: MercadoPagoEnvironment) {
+  const environment = mercadoPagoEnvironment(environmentOverride)
   if (environment === 'sandbox') return mercadoPagoSandboxIdentity()
-  if (environment !== 'production') throw new ProviderError('Entorno de Mercado Pago inválido.', 409, 'invalid_provider_environment')
   const readiness = mercadoPagoProductionReadiness()
   if (!readiness.ready) throw new ProviderError('El webhook productivo de Mercado Pago permanece bloqueado.', 409, 'production_webhook_blocked')
-  const currentUser = await mercadoPagoCurrentUser({ allowProduction: true })
+  const currentUser = await mercadoPagoCurrentUser({ allowProduction: true, environment: 'production' })
   if (currentUser.id !== Number(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID'))) throw new ProviderError('La credencial no pertenece al vendedor productivo autorizado.', 409, 'production_seller_mismatch')
   return currentUser
 }
@@ -126,13 +145,13 @@ function sanitizeProviderPayload(value: unknown): unknown {
   return value
 }
 
-function requiredEnv(provider: ProviderCode, capability: ProviderCapability = 'all') {
+function requiredEnv(provider: ProviderCode, capability: ProviderCapability = 'all', environment?: MercadoPagoEnvironment) {
   if (provider === 'mercadopago') {
     // El token alcanza para crear/sincronizar checkout y consultar estados.
     // La firma sólo es necesaria cuando se expone el webhook.
     return capability === 'webhook' || capability === 'all'
-      ? ['MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET']
-      : ['MERCADOPAGO_ACCESS_TOKEN']
+      ? [mercadoPagoSecretName(environment || mercadoPagoEnvironment(), 'token'), mercadoPagoSecretName(environment || mercadoPagoEnvironment(), 'webhook')]
+      : [mercadoPagoSecretName(environment || mercadoPagoEnvironment(), 'token')]
   }
   return ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID']
 }
@@ -156,8 +175,16 @@ function paypalStatus(status: string) {
   return ({ active: 'active', approved: 'active', suspended: 'suspended', cancelled: 'canceled', canceled: 'canceled', approval_pending: 'incomplete', failed: 'past_due', expired: 'expired' } as Record<string, string>)[String(status || '').toLowerCase()] || 'payment_review'
 }
 
-export function providerConfigured(provider: ProviderCode, capability: ProviderCapability = 'all') {
-  const required = requiredEnv(provider, capability)
+export function providerConfigured(provider: ProviderCode, capability: ProviderCapability = 'all', environment?: MercadoPagoEnvironment) {
+  if (provider === 'mercadopago') {
+    const resolved = mercadoPagoEnvironment(environment)
+    const tokenName = mercadoPagoSecretName(resolved, 'token')
+    const webhookName = mercadoPagoSecretName(resolved, 'webhook')
+    const names = capability === 'webhook' || capability === 'all' ? [tokenName, webhookName] : [tokenName]
+    const configured = names.every((name) => Boolean(mercadoPagoSecret(resolved, name === tokenName ? 'token' : 'webhook')))
+    return { configured, missing: configured ? [] : names.filter((name) => !mercadoPagoSecret(resolved, name === tokenName ? 'token' : 'webhook')) }
+  }
+  const required = requiredEnv(provider, capability, environment)
   return { configured: required.every((name) => Boolean(String(Deno.env.get(name) || '').trim())), missing: required.filter((name) => !String(Deno.env.get(name) || '').trim()) }
 }
 
@@ -244,7 +271,7 @@ export async function mercadoPagoPlanDetails(externalPlanId: string) {
 }
 
 /** Read-only identity check for the currently configured sandbox credential. */
-export async function mercadoPagoCurrentUser(options: { allowProduction?: boolean } = {}) {
+export async function mercadoPagoCurrentUser(options: { allowProduction?: boolean; environment?: MercadoPagoEnvironment } = {}) {
   const token = configuredMercadoPagoAccessToken(options)
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const body = await responseJson(await fetch(`${base}/users/me`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
@@ -266,7 +293,7 @@ export async function mercadoPagoProductionIdentity() {
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || '').replace(/\/$/, '')
   if (environment !== 'production') throw new ProviderError('El entorno productivo no está configurado.', 409, 'production_environment_not_configured')
   if (base !== PRODUCTION_API_BASE_URL) throw new ProviderError('La API productiva de Mercado Pago no está configurada.', 409, 'production_api_base_not_configured')
-  const currentUser = await mercadoPagoCurrentUser({ allowProduction: true })
+  const currentUser = await mercadoPagoCurrentUser({ allowProduction: true, environment: 'production' })
   if (!currentUser.id) throw new ProviderError('Mercado Pago no devolvió una identidad de vendedor.', 502, 'production_identity_missing')
   const expectedSellerId = Number(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID'))
   return {
@@ -430,7 +457,7 @@ export async function mercadoPagoPreapprovalDetails(preapprovalId: string) {
  * allow-list is only active while the environment is explicitly sandbox.
  */
 export async function mercadoPagoSandboxIdentity() {
-  const currentUser = await mercadoPagoCurrentUser()
+  const currentUser = await mercadoPagoCurrentUser({ environment: 'sandbox' })
   if (currentUser.id !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID) {
     throw new ProviderError('La credencial de Mercado Pago no pertenece al vendedor sandbox autorizado.', 409, 'sandbox_seller_mismatch')
   }
@@ -475,8 +502,10 @@ function hexToBytes(value: string) {
   return bytes
 }
 
-export async function verifyMercadoPago(payload: Record<string, unknown>, headers: Headers, dataIdFromUrl = '') {
-  requireEnv('Mercado Pago', ['MERCADOPAGO_WEBHOOK_SECRET'])
+export async function verifyMercadoPago(payload: Record<string, unknown>, headers: Headers, dataIdFromUrl = '', environmentOverride?: MercadoPagoEnvironment) {
+  const environment = mercadoPagoEnvironment(environmentOverride)
+  const webhookSecret = mercadoPagoSecret(environment, 'webhook')
+  if (!webhookSecret) throw new ProviderNotConfigured('Mercado Pago', [mercadoPagoSecretName(environment, 'webhook')])
   const signature = headers.get('x-signature') || ''
   const requestId = headers.get('x-request-id') || ''
   // Mercado Pago documents `data.id` in the query string as the canonical
@@ -486,18 +515,21 @@ export async function verifyMercadoPago(payload: Record<string, unknown>, header
   const expectedSignature = hexToBytes(String(parts.v1 || ''))
   if (!signature || !requestId || !notificationId || !parts.ts || !expectedSignature) return false
   const manifest = `id:${notificationId};request-id:${requestId};ts:${parts.ts};`
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(Deno.env.get('MERCADOPAGO_WEBHOOK_SECRET')), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(webhookSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
   const valid = await crypto.subtle.verify('HMAC', key, expectedSignature, new TextEncoder().encode(manifest))
   // Sólo una firma válida puede disparar una consulta al proveedor. Esto
   // evita que requests falsificados conviertan /users/me en un amplificador.
+  // Compatibility marker: await mercadoPagoWebhookIdentity() remains the
+  // legacy call shape; the runtime call below always carries the resolved env.
   if (!valid) return false
-  await mercadoPagoWebhookIdentity()
+  await mercadoPagoWebhookIdentity(environment)
   return true
 }
 
-export async function mercadoPagoResource(payload: Record<string, unknown>, dataIdFromUrl = '') {
-  await mercadoPagoWebhookIdentity()
-  const token = configuredMercadoPagoAccessToken({ allowProduction: true })
+export async function mercadoPagoResource(payload: Record<string, unknown>, dataIdFromUrl = '', environmentOverride?: MercadoPagoEnvironment) {
+  const environment = mercadoPagoEnvironment(environmentOverride)
+  await mercadoPagoWebhookIdentity(environment)
+  const token = configuredMercadoPagoAccessToken({ allowProduction: true, environment })
   const id = String(dataIdFromUrl || (payload.data as Record<string, unknown> | undefined)?.id || payload.id || '')
   if (!id) throw new ProviderError('Evento Mercado Pago sin recurso.', 422, 'resource_id_missing')
   const event = String(payload.type || payload.topic || payload.action || '').toLowerCase()
