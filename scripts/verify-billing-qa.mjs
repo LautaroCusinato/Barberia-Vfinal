@@ -12,7 +12,11 @@ try {
 
 const password = process.env.E2E_QA_PASSWORD
 const supabase = createClient(config.supabaseUrl, process.env.E2E_SUPABASE_ANON_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
-const functionUrl = `${config.supabaseUrl}/functions/v1/billing-api`
+// QA must use the isolated deterministic mock. The production billing-api is
+// intentionally kept available for explicit read-only checks, but it is not
+// the contract exercised by this fixture suite.
+const billingFunctionSlug = ['qa', 'sandbox'].includes(config.environment) ? 'billing-api-qa' : 'billing-api'
+const functionUrl = `${config.supabaseUrl}/functions/v1/${billingFunctionSlug}`
 
 async function signIn(email) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -46,4 +50,4 @@ const configStatus = await call(platformToken, 'config-status')
 if (configStatus.status !== 200 || configStatus.body.environment !== 'qa' || configStatus.body.production_enabled !== false) throw new Error('Config-status mock QA inválido.')
 const forbidden = await call(unassignedToken, 'checkout', { method: 'POST', body: JSON.stringify({ plan_codigo: 'starter' }) })
 if (forbidden.status < 400) throw new Error('El usuario sin tenant QA no fue bloqueado.')
-console.log(JSON.stringify({ environment: 'qa', function: 'billing-api', config_status: 'ok', states, checkout: 'ok', reconciliation: 'idempotent', unauthorized_user: 'blocked' }, null, 2))
+console.log(JSON.stringify({ environment: 'qa', function: billingFunctionSlug, config_status: 'ok', states, checkout: 'ok', reconciliation: 'idempotent', unauthorized_user: 'blocked' }, null, 2))
