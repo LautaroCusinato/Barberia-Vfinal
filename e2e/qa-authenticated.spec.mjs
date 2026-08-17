@@ -258,7 +258,7 @@ test.describe('QA autenticado aislado', () => {
   test('reserva pública y solapamiento', async ({ page }) => {
     await page.goto('/reservar/e2e-qa-barberia-a', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { name: /elegí tu próximo turno/i })).toBeVisible({ timeout: 15_000 })
-    await page.getByRole('button', { name: /E2E_QA_A_SERVICIO/i }).click()
+    await page.getByRole('button', { name: /^E2E_QA_A_SERVICIO\b/i }).click()
     await page.getByLabel('Fecha elegida').fill(nextMondayKey())
     await expect(page.getByRole('button', { name: /E2E_QA_A_EMPLEADO/i })).toBeVisible({ timeout: 15_000 })
     await page.getByRole('button', { name: /E2E_QA_A_EMPLEADO/i }).click()

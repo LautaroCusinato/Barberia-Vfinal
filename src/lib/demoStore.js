@@ -42,7 +42,10 @@ function makeSeed() {
   }))
   const serviceAt = (serviceId) => services.find((item) => item.id === serviceId)
   const turnsSeed = [
-    [0, '09:00', 1200, 1001, 1101, 'atendido'], [0, '10:00', 1201, 1002, 1102, 'confirmado'], [0, '11:15', 1202, 1004, 1101, 'confirmado'], [0, '14:30', 1203, 1003, 1103, 'confirmado'], [0, '17:00', 1204, 1001, 1102, 'pendiente'],
+    [0, '09:00', 1200, 1001, 1101, 'atendido'], [0, '10:00', 1201, 1002, 1102, 'confirmado'], [0, '11:15', 1202, 1004, 1101, 'confirmado'], [0, '14:30', 1203, 1003, 1103, 'confirmado'],
+    // The relative-to-today edit fixture must remain valid on every weekday.
+    // Mateo works all seven days; Lucas starts on Tuesday.
+    [0, '17:00', 1204, 1001, 1101, 'pendiente'],
     [1, '09:30', 1205, 1006, 1101, 'confirmado'], [1, '11:00', 1206, 1005, 1101, 'confirmado'], [1, '15:00', 1207, 1004, 1103, 'confirmado'],
     [2, '10:30', 1208, 1003, 1102, 'confirmado'], [3, '09:00', 1209, 1001, 1101, 'confirmado'], [3, '16:00', 1210, 1002, 1103, 'confirmado'],
     [5, '10:00', 1211, 1004, 1102, 'confirmado'], [7, '14:00', 1212, 1003, 1101, 'confirmado'], [-2, '10:00', 1213, 1001, 1101, 'atendido'], [-1, '17:00', 1214, 1002, 1102, 'no_asistio'],

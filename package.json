@@ -37,7 +37,10 @@
     "whatsapp:webhook:dry-run": "node scripts/whatsapp-webhook-config.mjs --dry-run",
     "whatsapp:webhook:apply": "node scripts/whatsapp-webhook-config.mjs --apply",
     "whatsapp:webhook:rollback": "node scripts/whatsapp-webhook-config.mjs --rollback",
-    "check": "npm run lint && npm test && npm run build"
+    "check": "npm run lint && npm test && npm run build",
+    "test:e2e:public": "playwright test e2e/public.spec.mjs",
+    "test:e2e:demo": "playwright test e2e/demo.spec.mjs",
+    "test:e2e:qa": "playwright test e2e/qa-authenticated.spec.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

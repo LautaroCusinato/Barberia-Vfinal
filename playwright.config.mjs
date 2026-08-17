@@ -27,7 +27,9 @@ export default defineConfig({
   // QA fixtures intentionally mutate and restore the same isolated users and
   // tenants. Keep that suite deterministic; public tests remain parallel.
   fullyParallel: !qaRequested,
-  workers: qaRequested ? 1 : undefined,
+  // Keep the serial QA fixture suite deterministic; CI splits public/demo
+  // into independent jobs so each runner has a bounded workload.
+  workers: qaRequested ? 1 : process.env.CI ? 2 : undefined,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['dot'], ['html', { open: 'never' }]] : 'list',
