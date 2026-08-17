@@ -9,12 +9,20 @@ const REQUIRED_SECRET_NAMES = ['MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_
 const REQUIRED_READINESS_FLAGS = {
   MERCADOPAGO_TOKEN_IDENTITY_VERIFIED: 'seller identity verified with /users/me',
   BILLING_PLAN_VERIFIED: 'external plan verified against provider and price',
-  BILLING_WEBHOOK_VERIFIED: 'production webhook configured and signature tested',
-  BILLING_JOBS_CONFIGURED: 'billing jobs configured with private cron secret',
-  BILLING_ALERTING_CONFIGURED: 'billing alerts connected to an approved destination',
-  BILLING_BACKUP_VERIFIED: 'recent backup and restore evidence verified',
-  BILLING_ROLLBACK_VERIFIED: 'rollback procedure reviewed and available',
+  BILLING_PRODUCTION_WEBHOOK_VERIFIED: 'production webhook configured and E2E signature tested',
+  BILLING_PRODUCTION_JOBS_VERIFIED: 'billing jobs configured with private cron secret',
+  BILLING_PRODUCTION_ALERTING_VERIFIED: 'billing alerts connected to an approved destination',
+  BILLING_PRODUCTION_BACKUP_VERIFIED: 'recent backup and restore evidence verified',
+  BILLING_PRODUCTION_ROLLBACK_VERIFIED: 'rollback procedure reviewed and available',
   BILLING_PILOT_TENANT_VERIFIED: 'pilot tenant verified in production environment',
+}
+
+const READINESS_FLAG_ALIASES = {
+  BILLING_PRODUCTION_WEBHOOK_VERIFIED: ['BILLING_WEBHOOK_VERIFIED'],
+  BILLING_PRODUCTION_JOBS_VERIFIED: ['BILLING_JOBS_CONFIGURED'],
+  BILLING_PRODUCTION_ALERTING_VERIFIED: ['BILLING_ALERTING_CONFIGURED'],
+  BILLING_PRODUCTION_BACKUP_VERIFIED: ['BILLING_BACKUP_VERIFIED'],
+  BILLING_PRODUCTION_ROLLBACK_VERIFIED: ['BILLING_ROLLBACK_VERIFIED'],
 }
 
 function present(value) {
@@ -23,6 +31,17 @@ function present(value) {
 
 function exactFlag(env, name) {
   return env[name] === '1'
+}
+
+export function resolveReadinessFlag(env, canonical, aliases = READINESS_FLAG_ALIASES[canonical] || []) {
+  const entries = [canonical, ...aliases]
+    .map((name) => ({ name, value: String(env[name] ?? '').trim() }))
+    .filter((entry) => entry.value !== '')
+  if (!entries.length) return { value: false, configured: false, conflict: false, source: null }
+  const parsed = entries.map((entry) => ({ ...entry, parsed: entry.value === '1' ? true : entry.value === '0' ? false : null }))
+  const conflict = parsed.some((entry) => entry.parsed === null) || new Set(parsed.map((entry) => entry.parsed)).size > 1
+  const selected = parsed.find((entry) => entry.name === canonical) || parsed[0]
+  return { value: !conflict && selected.parsed === true, configured: true, conflict, source: selected.name }
 }
 
 function safeInteger(value) {
@@ -68,8 +87,8 @@ export function evaluateProductionDryRun(env = process.env) {
   addCheck(checks, blockers, 'public_key_configured', exactFlag(env, 'MERCADOPAGO_PUBLIC_KEY_CONFIGURED'), 'the frontend Public Key must be configured separately; never use an Access Token in the browser')
   addCheck(checks, blockers, 'production_readiness_flag', env.BILLING_PRODUCTION_READINESS === 'ready', 'production readiness must be explicitly marked ready before activation')
   addCheck(checks, blockers, 'explicit_checkout_confirmation', env.BILLING_PRODUCTION_CHECKOUT_CONFIRMATION === 'I_UNDERSTAND_REAL_CHARGES', 'production checkout requires an explicit human confirmation')
-  addCheck(checks, blockers, 'backup_for_checkout', exactFlag(env, 'BILLING_PRODUCTION_BACKUP_VERIFIED'), 'a recent backup/restore check is required before a productive checkout')
-  addCheck(checks, blockers, 'alerting_for_checkout', exactFlag(env, 'BILLING_PRODUCTION_ALERTING_VERIFIED'), 'billing alerting must be verified before a productive checkout')
+  addCheck(checks, blockers, 'backup_for_checkout', resolveReadinessFlag(env, 'BILLING_PRODUCTION_BACKUP_VERIFIED').value, 'a recent backup/restore check is required before a productive checkout')
+  addCheck(checks, blockers, 'alerting_for_checkout', resolveReadinessFlag(env, 'BILLING_PRODUCTION_ALERTING_VERIFIED').value, 'billing alerting must be verified before a productive checkout')
 
   for (const name of REQUIRED_SECRET_NAMES) addCheck(checks, blockers, `secret:${name}`, present(env[name]), `${name} must exist only in server-side secrets`)
   addCheck(checks, blockers, 'token_identity_verified', exactFlag(env, 'MERCADOPAGO_TOKEN_IDENTITY_VERIFIED'), REQUIRED_READINESS_FLAGS.MERCADOPAGO_TOKEN_IDENTITY_VERIFIED)
@@ -92,10 +111,11 @@ export function evaluateProductionDryRun(env = process.env) {
   addCheck(checks, blockers, 'external_plan_id', /^[A-Za-z0-9_-]{8,120}$/.test(String(productionPlanId || '').trim()), 'external plan ID must be present and verified')
 
   addCheck(checks, blockers, 'webhook_url', String(env.BILLING_WEBHOOK_URL || '').replace(/\/$/, '') === PRODUCTION_WEBHOOK_URL, 'production webhook URL must match the production project')
-  addCheck(checks, blockers, 'webhook_verified', exactFlag(env, 'BILLING_WEBHOOK_VERIFIED'), REQUIRED_READINESS_FLAGS.BILLING_WEBHOOK_VERIFIED)
+  addCheck(checks, blockers, 'webhook_verified', resolveReadinessFlag(env, 'BILLING_PRODUCTION_WEBHOOK_VERIFIED').value, REQUIRED_READINESS_FLAGS.BILLING_PRODUCTION_WEBHOOK_VERIFIED)
   for (const [name, detail] of Object.entries(REQUIRED_READINESS_FLAGS)) {
-    if (name === 'MERCADOPAGO_TOKEN_IDENTITY_VERIFIED' || name === 'BILLING_PLAN_VERIFIED' || name === 'BILLING_WEBHOOK_VERIFIED' || name === 'BILLING_PILOT_TENANT_VERIFIED') continue
-    addCheck(checks, blockers, name.toLowerCase(), exactFlag(env, name), detail)
+    if (name === 'MERCADOPAGO_TOKEN_IDENTITY_VERIFIED' || name === 'BILLING_PLAN_VERIFIED' || name === 'BILLING_PRODUCTION_WEBHOOK_VERIFIED' || name === 'BILLING_PILOT_TENANT_VERIFIED') continue
+    const result = READINESS_FLAG_ALIASES[name] ? resolveReadinessFlag(env, name) : { value: exactFlag(env, name), conflict: false }
+    addCheck(checks, blockers, name.toLowerCase(), result.value && !result.conflict, result.conflict ? `${name} conflicts with a legacy alias` : detail)
   }
   addCheck(checks, blockers, 'paypal_disabled', env.BILLING_PAYPAL_ENABLED !== '1', 'PayPal must remain disabled')
   addCheck(checks, blockers, 'no_global_activation', env.BILLING_GLOBAL_PROVIDER_ENABLED !== '1', 'global provider activation is forbidden')

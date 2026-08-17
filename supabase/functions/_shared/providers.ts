@@ -3,6 +3,7 @@ export type ProviderCapability = 'checkout' | 'plan_sync' | 'status' | 'webhook'
 export type MercadoPagoEnvironment = 'sandbox' | 'production'
 
 const PRODUCTION_API_BASE_URL = 'https://api.mercadopago.com'
+const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
 
 export class ProviderNotConfigured extends Error {
   status = 503
@@ -59,33 +60,127 @@ export const EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID = 3172086171935346
  * blocked. The returned object contains only booleans and configuration
  * names; it never exposes a secret or a token.
  */
-export function mercadoPagoProductionReadiness(input: { tenantId?: number | null; externalPlanId?: string | null } = {}) {
+type ProductionReadinessInput = { tenantId?: number | null; externalPlanId?: string | null; multiEnvironmentVerified?: boolean }
+type FlagResolution = { value: boolean; configured: boolean; conflict: boolean; source: string | null }
+
+const CANONICAL_PRODUCTION_FLAGS = Object.freeze({
+  backup: 'BILLING_PRODUCTION_BACKUP_VERIFIED',
+  alerting: 'BILLING_PRODUCTION_ALERTING_VERIFIED',
+  webhook: 'BILLING_PRODUCTION_WEBHOOK_VERIFIED',
+  jobs: 'BILLING_PRODUCTION_JOBS_VERIFIED',
+  rollback: 'BILLING_PRODUCTION_ROLLBACK_VERIFIED',
+})
+
+const LEGACY_PRODUCTION_FLAG_ALIASES = Object.freeze({
+  backup: ['BILLING_BACKUP_VERIFIED'],
+  alerting: ['BILLING_ALERTING_CONFIGURED'],
+  webhook: ['BILLING_WEBHOOK_VERIFIED'],
+  jobs: ['BILLING_JOBS_CONFIGURED'],
+  rollback: ['BILLING_ROLLBACK_VERIFIED'],
+})
+
+function resolveProductionFlag(canonical: string, aliases: string[] = []): FlagResolution {
+  const names = [canonical, ...aliases]
+  const entries = names
+    .map((name) => ({ name, value: String(Deno.env.get(name) || '').trim() }))
+    .filter((entry) => entry.value !== '')
+  if (!entries.length) return { value: false, configured: false, conflict: false, source: null }
+  const parsed = entries.map((entry) => ({ ...entry, parsed: entry.value === '1' ? true : entry.value === '0' ? false : null }))
+  const conflict = parsed.some((entry) => entry.parsed == null) || new Set(parsed.map((entry) => entry.parsed)).size > 1
+  const selected = parsed.find((entry) => entry.name === canonical) || parsed[0]
+  return { value: !conflict && selected.parsed === true, configured: true, conflict, source: selected.name }
+}
+
+function productionFlag(key: keyof typeof CANONICAL_PRODUCTION_FLAGS): FlagResolution {
+  return resolveProductionFlag(CANONICAL_PRODUCTION_FLAGS[key], LEGACY_PRODUCTION_FLAG_ALIASES[key])
+}
+
+function productionWebhookUrl() {
+  return `https://${PRODUCTION_PROJECT_REF}.supabase.co/functions/v1/billing-webhooks/mercadopago`
+}
+
+/**
+ * Technical production readiness is deliberately independent from financial
+ * activation. It verifies configuration and operational evidence, but never
+ * requires the production enable switch or a human charge confirmation.
+ * Canonical flags win only when they agree with legacy aliases; conflicts fail
+ * closed and are surfaced without exposing any secret values.
+ */
+export function productionTechnicalReadiness(input: ProductionReadinessInput = {}) {
   const environment = String(Deno.env.get('MERCADOPAGO_ENVIRONMENT') || '').trim().toLowerCase()
   const projectEnvironment = String(Deno.env.get('BILLING_ENVIRONMENT') || '').trim().toLowerCase()
+  const configuredProjectRef = String(Deno.env.get('BILLING_PROJECT_REF') || Deno.env.get('SUPABASE_PROJECT_REF') || '').trim()
+  const supabaseUrl = String(Deno.env.get('SUPABASE_URL') || '').trim()
+  const urlProjectRef = supabaseUrl.match(/^https:\/\/([a-z0-9]+)\.supabase\.co\/?$/i)?.[1] || ''
+  const projectRefs = [configuredProjectRef, urlProjectRef].filter(Boolean)
+  const projectRefValid = projectRefs.length > 0 && projectRefs.every((projectRef) => projectRef === PRODUCTION_PROJECT_REF)
   const apiBase = String(Deno.env.get('MERCADOPAGO_API_BASE_URL') || '').trim().replace(/\/$/, '')
   const pilotTenantId = Number(Deno.env.get('BILLING_PRODUCTION_PILOT_TENANT_ID'))
   const allowlisted = String(Deno.env.get('BILLING_PRODUCTION_ALLOWED_TENANT_IDS') || '').split(',').map((value) => Number(value.trim())).filter((value) => Number.isSafeInteger(value) && value > 0)
   const expectedPlan = String(Deno.env.get('MERCADOPAGO_PRODUCTION_PLAN_ID') || Deno.env.get('BILLING_EXTERNAL_PLAN_ID') || '').trim()
   const requestedPlan = String(input.externalPlanId || '').trim()
-  const missing: string[] = []
-  for (const name of ['MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET', 'MERCADOPAGO_PRODUCTION_SELLER_ID', 'MERCADOPAGO_PRODUCTION_APPLICATION_ID', 'MERCADOPAGO_PRODUCTION_PLAN_ID']) {
-    if (!String(Deno.env.get(name) || '').trim()) missing.push(name)
+  const sellerConfigured = Boolean(String(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID') || '').trim())
+  const applicationConfigured = Boolean(String(Deno.env.get('MERCADOPAGO_PRODUCTION_APPLICATION_ID') || '').trim())
+  const tokenIdentityVerified = Deno.env.get('MERCADOPAGO_TOKEN_IDENTITY_VERIFIED') === '1'
+  const planVerified = Deno.env.get('BILLING_PLAN_VERIFIED') === '1'
+  const pilotVerified = Deno.env.get('BILLING_PILOT_TENANT_VERIFIED') === '1'
+  const backup = productionFlag('backup')
+  const alerting = productionFlag('alerting')
+  const webhook = productionFlag('webhook')
+  const jobs = productionFlag('jobs')
+  const rollback = productionFlag('rollback')
+  const webhookConfigured = Boolean(String(Deno.env.get('MERCADOPAGO_WEBHOOK_SECRET') || '').trim())
+    && String(Deno.env.get('BILLING_WEBHOOK_URL') || '').trim().replace(/\/$/, '') === productionWebhookUrl()
+  const multiEnvironmentVerified = input.multiEnvironmentVerified === true || Deno.env.get('BILLING_MULTI_ENVIRONMENT_VERIFIED') === '1'
+  const checks = {
+    environment: environment === 'production' && projectEnvironment === 'production' && apiBase === PRODUCTION_API_BASE_URL && projectRefValid,
+    publicKey: Deno.env.get('MERCADOPAGO_PUBLIC_KEY_CONFIGURED') === '1',
+    accessToken: Boolean(String(Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') || '').trim()),
+    seller: sellerConfigured && tokenIdentityVerified,
+    application: applicationConfigured && planVerified,
+    plan: Boolean(expectedPlan) && planVerified,
+    price: planVerified && String(Deno.env.get('BILLING_PLAN_CODE') || 'starter').trim() === 'starter' && String(Deno.env.get('BILLING_PLAN_COUNTRY') || 'AR').trim().toUpperCase() === 'AR' && String(Deno.env.get('BILLING_PLAN_CURRENCY') || 'ARS').trim().toUpperCase() === 'ARS' && Number(Deno.env.get('BILLING_PLAN_AMOUNT')) === 30000 && String(Deno.env.get('BILLING_PLAN_PERIODICITY') || 'monthly').trim() === 'monthly',
+    pilot: Number.isSafeInteger(pilotTenantId) && pilotTenantId > 0 && pilotVerified && String(Deno.env.get('BILLING_PILOT_TENANT_ENVIRONMENT') || '').trim() === 'production' && String(Deno.env.get('BILLING_PILOT_PROVIDER') || '').trim() === 'mercadopago',
+    allowlist: Number.isSafeInteger(pilotTenantId) && pilotTenantId > 0 && allowlisted.length === 1 && allowlisted[0] === pilotTenantId,
+    multiEnvironment: multiEnvironmentVerified,
+    backup: backup.value,
+    alerting: alerting.value,
+    webhook: webhookConfigured,
+    jobs: jobs.value,
+    rollback: rollback.value,
   }
-  if (environment !== 'production') missing.push('MERCADOPAGO_ENVIRONMENT=production')
-  if (projectEnvironment !== 'production') missing.push('BILLING_ENVIRONMENT=production')
-  if (apiBase !== PRODUCTION_API_BASE_URL) missing.push('MERCADOPAGO_API_BASE_URL')
-  if (Deno.env.get('BILLING_PRODUCTION_ENABLED') !== '1') missing.push('BILLING_PRODUCTION_ENABLED=1')
-  if (Deno.env.get('BILLING_PRODUCTION_READINESS') !== 'ready') missing.push('BILLING_PRODUCTION_READINESS=ready')
-  if (Deno.env.get('BILLING_PRODUCTION_CHECKOUT_CONFIRMATION') !== 'I_UNDERSTAND_REAL_CHARGES') missing.push('BILLING_PRODUCTION_CHECKOUT_CONFIRMATION')
-  if (Deno.env.get('MERCADOPAGO_PUBLIC_KEY_CONFIGURED') !== '1') missing.push('MERCADOPAGO_PUBLIC_KEY_CONFIGURED=1')
-  if (Deno.env.get('BILLING_PRODUCTION_BACKUP_VERIFIED') !== '1') missing.push('BILLING_PRODUCTION_BACKUP_VERIFIED=1')
-  if (Deno.env.get('BILLING_PRODUCTION_ALERTING_VERIFIED') !== '1') missing.push('BILLING_PRODUCTION_ALERTING_VERIFIED=1')
-  if (!Number.isSafeInteger(pilotTenantId) || pilotTenantId <= 0) missing.push('BILLING_PRODUCTION_PILOT_TENANT_ID')
-  if (allowlisted.length !== 1 || allowlisted[0] !== pilotTenantId) missing.push('BILLING_PRODUCTION_ALLOWED_TENANT_IDS')
+  const conflicts = Object.entries({ backup, alerting, webhook, jobs, rollback }).filter(([, flag]) => flag.conflict).map(([key]) => `${CANONICAL_PRODUCTION_FLAGS[key as keyof typeof CANONICAL_PRODUCTION_FLAGS]}_CONFLICT`)
+  const missing: string[] = []
+  if (!checks.environment) missing.push('production_environment_configuration')
+  if (!checks.publicKey) missing.push('MERCADOPAGO_PUBLIC_KEY_CONFIGURED=1')
+  if (!checks.accessToken) missing.push('MERCADOPAGO_ACCESS_TOKEN')
+  if (!checks.seller) missing.push('MERCADOPAGO_TOKEN_IDENTITY_VERIFIED=1')
+  if (!checks.application) missing.push('MERCADOPAGO_PRODUCTION_APPLICATION_ID_OR_BILLING_PLAN_VERIFIED')
+  if (!checks.plan) missing.push('MERCADOPAGO_PRODUCTION_PLAN_ID_AND_BILLING_PLAN_VERIFIED=1')
+  if (!checks.price) missing.push('productive_price_contract')
+  if (!checks.pilot) missing.push('BILLING_PILOT_TENANT_VERIFIED=1')
+  if (!checks.allowlist) missing.push('BILLING_PRODUCTION_ALLOWED_TENANT_IDS')
+  if (!checks.multiEnvironment) missing.push('BILLING_MULTI_ENVIRONMENT_VERIFIED=1')
+  if (!checks.backup) missing.push(`${CANONICAL_PRODUCTION_FLAGS.backup}=1`)
+  if (!checks.alerting) missing.push(`${CANONICAL_PRODUCTION_FLAGS.alerting}=1`)
+  if (!checks.webhook) missing.push('BILLING_WEBHOOK_URL_AND_MERCADOPAGO_WEBHOOK_SECRET')
+  if (!checks.jobs) missing.push(`${CANONICAL_PRODUCTION_FLAGS.jobs}=1`)
+  if (!checks.rollback) missing.push(`${CANONICAL_PRODUCTION_FLAGS.rollback}=1`)
+  if (conflicts.length) missing.push(...conflicts)
+  if (webhookConfigured && !webhook.value) missing.push(`${CANONICAL_PRODUCTION_FLAGS.webhook}=1`)
   if (input.tenantId != null && input.tenantId !== pilotTenantId) missing.push('tenant_not_in_production_allowlist')
   if (input.externalPlanId != null && (!requestedPlan || !expectedPlan || requestedPlan !== expectedPlan)) missing.push('production_plan_mapping')
+  const technicalConfigurationReady = missing.filter((name) => name !== `${CANONICAL_PRODUCTION_FLAGS.webhook}=1`).length === 0
+  const webhookE2ePending = !webhook.value
   return {
-    ready: missing.length === 0,
+    ready: technicalConfigurationReady && !webhookE2ePending,
+    technicalConfigurationReady,
+    webhookConfigured,
+    webhookE2eVerified: webhook.value,
+    webhookE2ePending,
+    checks,
+    conflicts,
+    missing,
     environment,
     projectEnvironment,
     apiBaseConfigured: apiBase === PRODUCTION_API_BASE_URL,
@@ -93,13 +188,29 @@ export function mercadoPagoProductionReadiness(input: { tenantId?: number | null
     allowlistedTenantCount: allowlisted.length,
     planConfigured: Boolean(expectedPlan),
     requestedPlanMatches: input.externalPlanId == null ? Boolean(expectedPlan) : Boolean(requestedPlan && expectedPlan && requestedPlan === expectedPlan),
-    missing,
+    canonicalFlags: { backup: backup.value, alerting: alerting.value, webhook: webhook.value, jobs: jobs.value, rollback: rollback.value },
   }
 }
 
-function requireMercadoPagoProduction(input: { tenantId: number; externalPlanId: string }) {
-  const readiness = mercadoPagoProductionReadiness(input)
-  if (!readiness.ready) throw new ProviderError('El checkout productivo de Mercado Pago está bloqueado hasta completar el readiness.', 409, 'production_checkout_blocked', null, null, { missing: readiness.missing })
+/** Financial activation adds explicit human and server-side enablement gates. */
+export function productionFinancialActivation(input: ProductionReadinessInput = {}) {
+  const technical = productionTechnicalReadiness(input)
+  const missing = [...technical.missing]
+  if (Deno.env.get('BILLING_PRODUCTION_READINESS') !== 'ready') missing.push('BILLING_PRODUCTION_READINESS=ready')
+  if (Deno.env.get('BILLING_PRODUCTION_CHECKOUT_CONFIRMATION') !== 'I_UNDERSTAND_REAL_CHARGES') missing.push('BILLING_PRODUCTION_CHECKOUT_CONFIRMATION')
+  if (Deno.env.get('BILLING_PRODUCTION_ENABLED') !== '1') missing.push('BILLING_PRODUCTION_ENABLED=1')
+  return { ...technical, financiallyEnabled: missing.length === 0, ready: missing.length === 0, financialMissing: missing.filter((value, index) => missing.indexOf(value) === index) }
+}
+
+/** @deprecated Use productionTechnicalReadiness or productionFinancialActivation explicitly. */
+export function mercadoPagoProductionReadiness(input: ProductionReadinessInput = {}) {
+  const financial = productionFinancialActivation(input)
+  return { ...financial, missing: financial.financialMissing }
+}
+
+function requireMercadoPagoProduction(input: { tenantId: number; externalPlanId: string; multiEnvironmentVerified?: boolean }) {
+  const readiness = productionFinancialActivation(input)
+  if (!readiness.ready) throw new ProviderError('El checkout productivo de Mercado Pago está bloqueado hasta completar readiness y autorización financiera.', 409, 'production_checkout_blocked', null, null, { missing: readiness.financialMissing })
   return readiness
 }
 
@@ -128,8 +239,8 @@ function mercadoPagoAccessToken() {
 async function mercadoPagoWebhookIdentity(environmentOverride?: MercadoPagoEnvironment) {
   const environment = mercadoPagoEnvironment(environmentOverride)
   if (environment === 'sandbox') return mercadoPagoSandboxIdentity()
-  const readiness = mercadoPagoProductionReadiness()
-  if (!readiness.ready) throw new ProviderError('El webhook productivo de Mercado Pago permanece bloqueado.', 409, 'production_webhook_blocked')
+  const readiness = productionTechnicalReadiness()
+  if (!readiness.ready) throw new ProviderError('El webhook productivo de Mercado Pago permanece bloqueado hasta completar la validación E2E.', 409, 'production_webhook_blocked', null, null, { missing: readiness.missing })
   const currentUser = await mercadoPagoCurrentUser({ allowProduction: true, environment: 'production' })
   if (currentUser.id !== Number(Deno.env.get('MERCADOPAGO_PRODUCTION_SELLER_ID'))) throw new ProviderError('La credencial no pertenece al vendedor productivo autorizado.', 409, 'production_seller_mismatch')
   return currentUser
@@ -214,7 +325,7 @@ export async function mercadoPago(input: { externalPlanId?: string | null; email
  * unreachable until mercadoPagoProductionReadiness() is fully satisfied.
  */
 export async function mercadoPagoProductionSubscription(input: { tenantId: number; externalPlanId: string; cardTokenId: string; payerEmail: string; externalReference: string; backUrl: string; idempotencyKey: string }) {
-  requireMercadoPagoProduction({ tenantId: input.tenantId, externalPlanId: input.externalPlanId })
+  requireMercadoPagoProduction({ tenantId: input.tenantId, externalPlanId: input.externalPlanId, multiEnvironmentVerified: true })
   if (!/^[A-Za-z0-9_-]{8,256}$/.test(input.cardTokenId)) throw new ProviderError('El token de tarjeta no es válido.', 422, 'invalid_card_token')
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.payerEmail)) throw new ProviderError('No se pudo resolver el email de facturación.', 422, 'billing_email_invalid')
   if (!/^[A-Za-z0-9._:-]{8,120}$/.test(input.idempotencyKey)) throw new ProviderError('Clave de idempotencia inválida.', 422, 'invalid_idempotency_key')

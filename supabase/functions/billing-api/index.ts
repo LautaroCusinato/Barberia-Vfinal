@@ -1,7 +1,7 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
 import { resolveTenantBillingBinding } from '../_shared/billing-context.ts'
-import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCreateProductionPlan, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionPlanDetails, mercadoPagoProductionPlanSearch, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, normalizeStatus, paypal, paypalExternalStatus, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCreateProductionPlan, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionPlanDetails, mercadoPagoProductionPlanSearch, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, normalizeStatus, paypal, paypalExternalStatus, productionFinancialActivation, productionTechnicalReadiness, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 const SANDBOX_BILLING = Object.freeze({
@@ -170,7 +170,7 @@ async function productionSubscription(request: Request, admin: ReturnType<typeof
   if (binding.barberia_id !== tenantId || binding.plan_codigo !== planCode || !binding.checkout_habilitado) throw Object.assign(new Error('Mercado Pago productivo permanece deshabilitado.'), { status: 409, code: 'production_provider_disabled' })
   const externalPrice = await resolveExternalPrice(admin, tenantId, planCode, 'mercadopago', 'production')
   if (externalPrice.pais_codigo !== 'AR' || String(externalPrice.moneda).toUpperCase() !== 'ARS' || Number(externalPrice.importe) !== 30000 || externalPrice.periodicidad !== 'monthly' || !externalPrice.external_plan_id || !externalPrice.habilitado) throw Object.assign(new Error('El precio Starter productivo no coincide con el contrato aprobado.'), { status: 409, code: 'production_price_mismatch' })
-  const readiness = mercadoPagoProductionReadiness({ tenantId, externalPlanId: externalPrice.external_plan_id })
+  const readiness = mercadoPagoProductionReadiness({ tenantId, externalPlanId: externalPrice.external_plan_id, multiEnvironmentVerified: true })
   if (!readiness.ready) throw Object.assign(new Error('El checkout productivo continúa bloqueado hasta completar readiness.'), { status: 409, code: 'production_checkout_blocked' })
   const payerEmail = String(tenant.billing_email || '').trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) throw Object.assign(new Error('El email de facturación del tenant no es válido.'), { status: 422, code: 'billing_email_invalid' })
@@ -569,7 +569,12 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
       externalPlanCheck = { configured: true, reachable: false, error_code: error?.code || 'sandbox_identity_check_failed' }
     }
   }
-  const productionReadiness = mercadoPagoProductionReadiness()
+  const multiEnvironmentVerified = [
+    { tenant: 6, provider: 'mercadopago', environment: 'sandbox' },
+    { tenant: 8, provider: 'mercadopago', environment: 'production' },
+  ].every((expected) => (tenantBindings || []).some((binding) => Number(binding.barberia_id) === expected.tenant && binding.proveedor_codigo === expected.provider && binding.entorno === expected.environment && binding.activo === true))
+  const productionTechnical = productionTechnicalReadiness({ multiEnvironmentVerified })
+  const productionFinancial = productionFinancialActivation({ multiEnvironmentVerified })
   return json({
     provider: 'mercadopago',
     environment: 'sandbox',
@@ -592,16 +597,48 @@ async function configurationStatus(admin: ReturnType<typeof adminClient>, userId
       active: binding.activo,
       checkout_enabled: binding.checkout_habilitado,
     })),
-    production_checkout_ready: productionReadiness.ready,
+    production_checkout_ready: productionFinancial.ready,
+    technical_ready: productionTechnical.ready,
+    financially_enabled: productionFinancial.financiallyEnabled,
+    technical_readiness: {
+      seller: productionTechnical.checks.seller,
+      application: productionTechnical.checks.application,
+      plan: productionTechnical.checks.plan,
+      price: productionTechnical.checks.price,
+      pilot: productionTechnical.checks.pilot,
+      allowlist: productionTechnical.checks.allowlist,
+      multi_environment: productionTechnical.checks.multiEnvironment,
+      backup: productionTechnical.checks.backup,
+      alerting: productionTechnical.checks.alerting,
+      webhook: {
+        configured: productionTechnical.webhookConfigured,
+        e2e_verified: productionTechnical.webhookE2eVerified,
+        pending: productionTechnical.webhookE2ePending,
+      },
+      jobs: productionTechnical.checks.jobs,
+      rollback: productionTechnical.checks.rollback,
+      technical_configuration_ready: productionTechnical.technicalConfigurationReady,
+      ready: productionTechnical.ready,
+      missing: productionTechnical.missing,
+      conflicts: productionTechnical.conflicts,
+      canonical_flags: productionTechnical.canonicalFlags,
+    },
+    financial_activation: {
+      readiness: Deno.env.get('BILLING_PRODUCTION_READINESS') === 'ready',
+      checkout_confirmation: Deno.env.get('BILLING_PRODUCTION_CHECKOUT_CONFIRMATION') === 'I_UNDERSTAND_REAL_CHARGES',
+      production_enabled: Deno.env.get('BILLING_PRODUCTION_ENABLED') === '1',
+      financially_enabled: productionFinancial.financiallyEnabled,
+      missing: productionFinancial.financialMissing,
+    },
     production_readiness: {
-      ready: productionReadiness.ready,
-      environment: productionReadiness.environment || 'missing',
-      project_environment: productionReadiness.projectEnvironment || 'missing',
-      api_base_configured: productionReadiness.apiBaseConfigured,
-      pilot_tenant_id: productionReadiness.pilotTenantId,
-      allowlisted_tenant_count: productionReadiness.allowlistedTenantCount,
-      plan_configured: productionReadiness.planConfigured,
-      missing: productionReadiness.missing,
+      ready: productionFinancial.ready,
+      environment: productionTechnical.environment || 'missing',
+      project_environment: productionTechnical.projectEnvironment || 'missing',
+      api_base_configured: productionTechnical.apiBaseConfigured,
+      pilot_tenant_id: productionTechnical.pilotTenantId,
+      allowlisted_tenant_count: productionTechnical.allowlistedTenantCount,
+      plan_configured: productionTechnical.planConfigured,
+      missing: productionFinancial.financialMissing,
     },
     external_plan_check: externalPlanCheck,
   })
