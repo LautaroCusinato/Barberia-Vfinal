@@ -16,17 +16,16 @@ async function body(request: Request) {
 
 async function resolveWebhookEnvironment(admin: ReturnType<typeof adminClient>, payload: Record<string, unknown>, dataIdFromUrl: string, request: Request) {
   const explicit = new URL(request.url).searchParams.get('environment')?.trim().toLowerCase()
-  if (explicit === 'sandbox' || explicit === 'production') return explicit as 'sandbox' | 'production'
   const candidates = [
     dataIdFromUrl,
     String((payload.data as Record<string, unknown> | undefined)?.id || ''),
     String(payload.id || ''),
   ].filter(Boolean)
   for (const externalId of candidates) {
-    const linked = (await admin.from('saas_suscripciones_externas').select('metadata').eq('external_subscription_id', externalId).maybeSingle()).data
+    const linked = (await admin.from('saas_suscripciones_externas').select('metadata').eq('proveedor_codigo', 'mercadopago').eq('external_subscription_id', externalId).maybeSingle()).data
     const linkedEnvironment = String(linked?.metadata?.environment || '').trim().toLowerCase()
     if (linkedEnvironment === 'sandbox' || linkedEnvironment === 'production') return linkedEnvironment
-    const attempt = (await admin.from('saas_billing_checkout_attempts').select('metadata').eq('external_checkout_id', externalId).maybeSingle()).data
+    const attempt = (await admin.from('saas_billing_checkout_attempts').select('metadata').eq('proveedor_codigo', 'mercadopago').eq('external_checkout_id', externalId).maybeSingle()).data
     const attemptEnvironment = String(attempt?.metadata?.environment || '').trim().toLowerCase()
     if (attemptEnvironment === 'sandbox' || attemptEnvironment === 'production') return attemptEnvironment
   }
@@ -35,6 +34,10 @@ async function resolveWebhookEnvironment(admin: ReturnType<typeof adminClient>, 
     const binding = await resolveBindingByExternalPlan(admin, 'mercadopago', planId)
     if (binding?.entorno === 'sandbox' || binding?.entorno === 'production') return binding.entorno
   }
+  // The query parameter is only a compatibility hint for an unlinked event.
+  // Once a resource, attempt, or plan binding identifies an environment, that
+  // server-side mapping always wins and cannot be overridden by the request.
+  if (explicit === 'sandbox' || explicit === 'production') return explicit as 'sandbox' | 'production'
   // Legacy URLs without an explicit environment remain safe only while the
   // project is explicitly sandbox. A production project must opt in via the
   // environment query parameter or a pre-linked binding.
@@ -117,6 +120,10 @@ Deno.serve(async (request) => {
       if (!verifiedPlanId || !attemptPlanId || verifiedPlanId !== attemptPlanId) checkoutAttempt = null
     }
     const context = externalSubscription || checkoutAttempt
+    if (billingBinding && webhookEnvironment && billingBinding.entorno !== webhookEnvironment) {
+      await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'environment_binding_mismatch', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
+      return json({ received: true, processed: false, reason: 'environment_binding_mismatch' }, 202)
+    }
     if (billingBinding && context && context.barberia_id !== billingBinding.barberia_id) {
       await admin.from('saas_billing_webhook_events').update({ estado: 'ignored', error_code: 'tenant_environment_binding_mismatch', processed_at: new Date().toISOString() }).eq('proveedor_codigo', provider).eq('external_event_id', externalEventId)
       return json({ received: true, processed: false, reason: 'tenant_environment_binding_mismatch' }, 202)

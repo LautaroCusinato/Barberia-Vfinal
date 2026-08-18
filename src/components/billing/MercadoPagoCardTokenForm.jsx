@@ -26,7 +26,7 @@ function loadMercadoPagoSdk() {
  * Card fields are rendered and tokenized by Mercado Pago.js. PAN/CVV never
  * enter React state, application logs, Supabase, or the API request body.
  */
-export default function MercadoPagoCardTokenForm({ publicKey, amount, currency = 'ARS', email = '', onToken, onCancel, disabled = false }) {
+export default function MercadoPagoCardTokenForm({ publicKey, amount, currency = 'ARS', email = '', onToken, onCancel, disabled = false, environment = 'production' }) {
   const id = useId().replace(/:/g, '')
   const formId = `mp-card-form-${id}`
   const [status, setStatus] = useState('loading')
@@ -97,7 +97,7 @@ export default function MercadoPagoCardTokenForm({ publicKey, amount, currency =
     }
   }, [amount, disabled, formId, onToken, publicKey])
 
-  if (disabled || !publicKey) return <div className="billing-card-disabled" role="status">El checkout productivo todavía no está habilitado.</div>
+  if (disabled || !publicKey) return <div className="billing-card-disabled" role="status">El checkout {environment === 'sandbox' ? 'sandbox' : 'productivo'} todavía no está habilitado.</div>
 
   return (
     <form id={formId} className="billing-card-form" onSubmit={(event) => event.preventDefault()} aria-describedby={`${formId}-help`}>

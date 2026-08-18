@@ -2,8 +2,8 @@ import { adminClient } from '../_shared/supabase.ts'
 import { errorJson, json, requestId } from '../_shared/http.ts'
 import { mercadoPagoExternalStatus, paypalExternalStatus, providerConfigured } from '../_shared/providers.ts'
 
-function providerStatus(provider: string, externalId: string) {
-  if (provider === 'mercadopago') return mercadoPagoExternalStatus({ externalId, kind: 'subscription' })
+function providerStatus(provider: string, externalId: string, environment: 'sandbox' | 'production' = 'sandbox') {
+  if (provider === 'mercadopago') return mercadoPagoExternalStatus({ externalId, kind: 'subscription', environment })
   if (provider === 'paypal') return paypalExternalStatus({ externalId, kind: 'subscription' })
   throw Object.assign(new Error('Proveedor no soportado.'), { status: 422, code: 'unsupported_provider' })
 }
@@ -39,14 +39,20 @@ Deno.serve(async (request) => {
       }
     }
     const { data: failedWebhooks } = await admin.from('saas_billing_webhook_events').select('id').eq('estado', 'failed').lt('retry_count', 5).limit(100)
-    const { data: externalLinks } = await admin.from('saas_suscripciones_externas').select('id, suscripcion_id, proveedor_codigo, external_subscription_id').limit(100)
+    const { data: externalLinks } = await admin.from('saas_suscripciones_externas').select('id, suscripcion_id, proveedor_codigo, external_subscription_id, metadata').limit(100)
     const reconciliation = { checked: 0, transitioned: 0, unchanged: 0, skipped: 0, failed: 0 }
     for (const link of externalLinks || []) {
       const provider = String(link.proveedor_codigo) as 'mercadopago' | 'paypal'
+      const environment = provider === 'mercadopago' ? String(link.metadata?.environment || '').trim().toLowerCase() : null
+      if (provider === 'mercadopago' && !['sandbox', 'production'].includes(environment || '')) { reconciliation.skipped += 1; continue }
       const { data: providerRow } = await admin.from('saas_proveedores_pago').select('activo').eq('codigo', provider).maybeSingle()
-      if (!providerRow?.activo || !providerConfigured(provider, provider === 'mercadopago' ? 'status' : 'all').configured) { reconciliation.skipped += 1; continue }
+      const config = providerConfigured(provider, provider === 'mercadopago' ? 'status' : 'all', environment === 'sandbox' || environment === 'production' ? environment : undefined)
+      // Production remains globally disabled until the explicit financial
+      // activation; sandbox links can still be reconciled with their scoped
+      // credential without changing that global provider row.
+      if ((!providerRow?.activo && environment !== 'sandbox') || !config.configured) { reconciliation.skipped += 1; continue }
       try {
-        const result = await providerStatus(provider, String(link.external_subscription_id))
+        const result = await providerStatus(provider, String(link.external_subscription_id), environment === 'sandbox' || environment === 'production' ? environment : 'sandbox')
         await admin.from('saas_suscripciones_externas').update({ estado_externo: result.normalizedStatus, current_period_start: result.currentPeriodStart, current_period_end: result.currentPeriodEnd, cancel_at_period_end: result.cancelAtPeriodEnd, last_synced_at: new Date().toISOString(), metadata: { last_reconciliation_status: result.status, correlation_id: correlationId } }).eq('id', link.id)
         const eventId = `reconcile:${provider}:${link.external_subscription_id}:${result.normalizedStatus}`
         const { data: transition, error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: link.suscripcion_id, p_to_state: result.normalizedStatus, p_reason: 'scheduled_reconciliation', p_source: 'reconciliation', p_provider_event_id: eventId, p_provider_event_at: result.updatedAt || null })

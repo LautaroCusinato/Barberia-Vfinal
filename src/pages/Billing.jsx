@@ -128,6 +128,11 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
   const displayProviders = providers.length ? providers : (subscriptionMissing ? [{ codigo: provider, nombre: PROVIDER_LABELS[provider] || provider, activo: false, unavailable: true }] : [])
   const selectedProvider = displayProviders.find((item) => item.codigo === provider)
   const productionCheckoutReady = selectedProvider?.codigo === 'mercadopago' && selectedProvider?.entorno === 'production' && portal?.production_checkout_ready === true
+  const sandboxPublicKey = import.meta.env.VITE_MERCADOPAGO_SANDBOX_PUBLIC_KEY || ''
+  const sandboxCheckoutReady = selectedProvider?.codigo === 'mercadopago'
+    && selectedProvider?.entorno === 'sandbox'
+    && portal?.sandbox_checkout_ready === true
+    && Boolean(sandboxPublicKey)
   const currentAmount = subscription?.precio ?? plan?.precio_mensual
   const currentIsTrial = !subscriptionMissing && subscription?.estado === 'trialing' && Number(currentAmount) === 0
   const currentPrice = currentIsTrial ? 'Sin cargo durante el trial' : formatMoney(currentAmount, subscription?.moneda || plan?.moneda)
@@ -169,15 +174,18 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
     setSaving(false)
   }
 
-  const submitProductionSubscription = async (planCode, cardTokenId) => {
-    if (!cardTokenId || !portal?.production_checkout_ready) return
+  const submitSubscription = async (planCode, cardTokenId, environment) => {
+    const ready = environment === 'sandbox' ? sandboxCheckoutReady : productionCheckoutReady
+    if (!cardTokenId || !ready) return
     productionAttemptKey.current ||= `ui-${crypto.randomUUID()}`
     setSaving(true)
     setError('')
     setNotice('Verificando la suscripción con Mercado Pago…')
     try {
       const data = await billingApi('subscription', { method: 'POST', headers: { 'Idempotency-Key': productionAttemptKey.current }, body: { plan_codigo: planCode, card_token_id: cardTokenId } })
-      setNotice(data?.status === 'verifying' ? 'Tarjeta recibida. La activación queda pendiente de verificación del webhook.' : 'Solicitud recibida. La activación se confirmará por webhook.')
+      setNotice(environment === 'sandbox'
+        ? 'Tarjeta TEST recibida. La suscripción sandbox queda pendiente de verificación del webhook.'
+        : (data?.status === 'verifying' ? 'Tarjeta recibida. La activación queda pendiente de verificación del webhook.' : 'Solicitud recibida. La activación se confirmará por webhook.'))
     } catch (apiError) {
       const failure = classifyBillingFailure(apiError)
       setError(failure.kind === 'subscription_missing' ? 'La cuenta todavía no tiene una suscripción habilitada.' : 'No se pudo procesar la tarjeta. No se activó ningún plan.')
@@ -224,7 +232,8 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
           {displayProviders.length > 0 && <div className="billing-provider-options">
             {displayProviders.map((item) => <label className={`billing-provider-option ${provider === item.codigo ? 'selected' : ''}`} key={item.codigo}><input type="radio" name="billing-provider" value={item.codigo} checked={provider === item.codigo} onChange={(event) => setProvider(event.target.value)} /><span><strong>{PROVIDER_LABELS[item.codigo] || item.nombre}</strong><small>{item.activo ? 'Configurado' : 'Pagos todavía no habilitados'}</small></span></label>)}
           </div>}
-          {selectedProvider && !selectedProvider.activo && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><CreditCard size={17} /></div><div><strong>{PROVIDER_LABELS[selectedProvider.codigo] || selectedProvider.nombre} todavía no está disponible</strong><p>La cuenta puede consultar sus planes, pero el checkout permanece bloqueado hasta completar la configuración del proveedor.</p><span className="status-pill">Sin cobros habilitados</span></div></div>}
+          {selectedProvider && !selectedProvider.activo && !sandboxCheckoutReady && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><CreditCard size={17} /></div><div><strong>{PROVIDER_LABELS[selectedProvider.codigo] || selectedProvider.nombre} todavía no está disponible</strong><p>La cuenta puede consultar sus planes, pero el checkout permanece bloqueado hasta completar la configuración del proveedor.</p><span className="status-pill">Sin cobros habilitados</span></div></div>}
+          {sandboxCheckoutReady && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Prueba sandbox disponible para tenant técnico. Usá únicamente comprador y tarjeta TEST; no genera cobros reales.</div>}
           {!selectedProvider && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><ShieldCheck size={17} /></div><div><strong>Proveedor pendiente de configuración</strong><p>Cuando se habilite un medio de pago, aparecerá acá sin modificar tu plan actual.</p><span className="status-pill">Configuración pendiente</span></div></div>}
         </div>
       </section>
@@ -233,7 +242,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
         <div className="panel-header"><div><h2 className="panel-title">Cambiar de plan</h2><p className="panel-subtitle">El precio se toma de Supabase; no se acepta desde el cliente.</p><p className="billing-currency-note">Cuando el proveedor no tiene un precio configurado, mostramos sólo la referencia base del catálogo y el checkout permanece bloqueado.</p></div></div>
         <div className="billing-plans-grid">{catalog.map((item) => {
           const externalPrice = findExternalPrice(item)
-          const providerUnavailable = !selectedProvider?.activo
+          const providerUnavailable = !selectedProvider?.activo && !sandboxCheckoutReady && !productionCheckoutReady
           const basePrice = formatMoney(item.precio_mensual, item.moneda)
           const displayPrice = externalPrice ? formatMoney(externalPrice.importe, externalPrice.moneda) : basePrice
           const priceMeta = externalPrice
@@ -245,8 +254,8 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
             <p className={`billing-plan-price ${externalPrice ? '' : 'billing-plan-price--reference'}`}>{displayPrice} <small>{priceMeta}</small></p>
             {!externalPrice && <p className="billing-plan-unavailable">Referencia informativa: no hay un precio externo habilitado para {PROVIDER_LABELS[provider] || provider}.</p>}
             <ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul>
-            <button className="btn btn-primary billing-plan-action" disabled={saving || (item.codigo === subscription?.plan_codigo && !demoMode) || (!demoMode && (!externalPrice || providerUnavailable))} onClick={() => { if (demoMode) startCheckout(item.codigo); else if (productionCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{demoMode ? 'Empezar prueba gratuita' : item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
-            {productionCheckoutReady && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitProductionSubscription(item.codigo, token)} /></Suspense>}
+            <button className="btn btn-primary billing-plan-action" disabled={saving || (item.codigo === subscription?.plan_codigo && !demoMode) || (!demoMode && (!externalPrice || providerUnavailable))} onClick={() => { if (demoMode) startCheckout(item.codigo); else if (productionCheckoutReady || sandboxCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{demoMode ? 'Empezar prueba gratuita' : item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : sandboxCheckoutReady ? 'Continuar con tarjeta TEST' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
+            {(productionCheckoutReady || sandboxCheckoutReady) && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={sandboxCheckoutReady ? sandboxPublicKey : import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} environment={sandboxCheckoutReady ? 'sandbox' : 'production'} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitSubscription(item.codigo, token, sandboxCheckoutReady ? 'sandbox' : 'production')} /></Suspense>}
           </article>
         })}</div>
       </section>

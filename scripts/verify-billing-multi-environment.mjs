@@ -6,6 +6,9 @@ const context = readFileSync('supabase/functions/_shared/billing-context.ts', 'u
 const api = readFileSync('supabase/functions/billing-api/index.ts', 'utf8')
 const hooks = readFileSync('supabase/functions/billing-webhooks/index.ts', 'utf8')
 const providers = readFileSync('supabase/functions/_shared/providers.ts', 'utf8')
+const billingPage = readFileSync('src/pages/Billing.jsx', 'utf8')
+const cardForm = readFileSync('src/components/billing/MercadoPagoCardTokenForm.jsx', 'utf8')
+const bindingAwareMigration = readFileSync('supabase/migrations/20260817090000_billing_binding_aware_checkout.sql', 'utf8')
 
 for (const phrase of [
   'saas_billing_provider_bindings',
@@ -26,10 +29,30 @@ assert.match(api, /resolveTenantBillingBinding\(admin, tenantId, provider, envir
 assert.match(api, /resolveTenantBillingBinding\(admin, tenantId, 'mercadopago', 'production'\)/)
 assert.match(hooks, /resolveWebhookEnvironment/)
 assert.match(hooks, /tenant_environment_binding_mismatch/)
+assert.match(hooks, /environment_binding_mismatch/)
+assert.match(hooks, /compatibility hint for an unlinked event/)
 assert.match(providers, /MERCADOPAGO_SANDBOX_ACCESS_TOKEN/)
 assert.match(providers, /MERCADOPAGO_SANDBOX_WEBHOOK_SECRET/)
 assert.match(providers, /environmentOverride/)
 assert.match(providers, /production_provider_disabled/)
+assert.match(providers, /export async function mercadoPagoSubscription/)
+assert.match(providers, /environment: MercadoPagoEnvironment/)
+assert.match(providers, /mercadoPagoExternalStatus\(input: \{ externalId: string; kind: 'checkout' \| 'subscription'; environment: MercadoPagoEnvironment \}/)
+assert.match(api, /resolveMercadoPagoEnvironment/)
+assert.match(api, /sandboxSubscription/)
+assert.match(api, /external_subscription_already_linked/)
+assert.match(api, /billing_binding_not_configured/)
+assert.match(api, /metadata\.environment/)
+assert.match(api, /MERCADOPAGO_SANDBOX_PAYER_EMAIL/)
+assert.doesNotMatch(api, /sandboxSubscription[\s\S]*tenant\.billing_email/)
+assert.match(api, /sandbox_checkout_ready/)
+assert.match(bindingAwareMigration, /saas_billing_provider_bindings/)
+assert.match(bindingAwareMigration, /v_environment/)
+assert.match(bindingAwareMigration, /v_binding_count/)
+assert.match(billingPage, /VITE_MERCADOPAGO_SANDBOX_PUBLIC_KEY/)
+assert.match(billingPage, /sandboxCheckoutReady/)
+assert.match(billingPage, /Continuar con tarjeta TEST/)
+assert.match(cardForm, /environment = 'production'/)
 
 const contracts = {
   sandbox: { tenant: 6, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 },

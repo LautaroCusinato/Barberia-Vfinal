@@ -1,7 +1,7 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
 import { resolveTenantBillingBinding } from '../_shared/billing-context.ts'
-import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCreateProductionPlan, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionPlanDetails, mercadoPagoProductionPlanSearch, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, normalizeStatus, paypal, paypalExternalStatus, productionFinancialActivation, productionTechnicalReadiness, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCreateProductionPlan, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionPlanDetails, mercadoPagoProductionPlanSearch, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, mercadoPagoSubscription, normalizeStatus, paypal, paypalExternalStatus, productionFinancialActivation, productionTechnicalReadiness, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 const SANDBOX_BILLING = Object.freeze({
@@ -45,6 +45,42 @@ async function resolveExternalPrice(
   const { data: tenant, error: tenantError } = await admin.from('barberias').select('pais').eq('id', tenantId).maybeSingle()
   if (tenantError || !tenant) throw Object.assign(new Error('No se pudo resolver el país del tenant.'), { status: 502, code: 'tenant_lookup_failed' })
   return { ...binding.price, country: normalizeCountryCode(tenant.pais), binding } as any
+}
+
+async function resolveMercadoPagoEnvironment(admin: ReturnType<typeof adminClient>, tenantId: number) {
+  const { data, error } = await admin
+    .from('saas_billing_provider_bindings')
+    .select('entorno')
+    .eq('barberia_id', tenantId)
+    .eq('proveedor_codigo', 'mercadopago')
+    .eq('activo', true)
+    .order('entorno')
+  if (error) throw Object.assign(new Error('No se pudo resolver el entorno de Mercado Pago.'), { status: 502, code: 'billing_environment_lookup_failed' })
+  const environments = [...new Set((data || []).map((row) => String(row.entorno || '').trim().toLowerCase()).filter((value) => ['sandbox', 'production'].includes(value)))]
+  if (environments.length > 1) throw Object.assign(new Error('El tenant tiene más de un entorno de Mercado Pago activo.'), { status: 409, code: 'billing_environment_ambiguous' })
+  return (environments[0] || null) as 'sandbox' | 'production' | null
+}
+
+async function resolveInternalSubscription(admin: ReturnType<typeof adminClient>, tenantId: number, environment: 'sandbox' | 'production') {
+  const { data: subscription, error: subscriptionError } = await admin
+    .from('saas_suscripciones')
+    .select('id, provider_subscription_id')
+    .eq('barberia_id', tenantId)
+    .maybeSingle()
+  if (subscriptionError || !subscription?.id) throw Object.assign(new Error('No se encontró la suscripción interna.'), { status: 502, code: 'subscription_registration_failed' })
+
+  const { data: external, error: externalError } = await admin
+    .from('saas_suscripciones_externas')
+    .select('id, external_subscription_id, external_plan_id, estado_externo, metadata')
+    .eq('suscripcion_id', subscription.id)
+    .eq('proveedor_codigo', 'mercadopago')
+    .maybeSingle()
+  if (externalError) throw Object.assign(new Error('No se pudo verificar la suscripción externa existente.'), { status: 502, code: 'subscription_link_lookup_failed' })
+  if (external) {
+    const linkedEnvironment = String(external.metadata?.environment || '').trim().toLowerCase()
+    throw Object.assign(new Error(`El tenant ya tiene una suscripción externa ${linkedEnvironment === environment ? environment : 'de otro entorno'} vinculada; se preserva el historial y no se sobrescribe.`), { status: 409, code: 'external_subscription_already_linked' })
+  }
+  return subscription
 }
 
 async function checkoutTenant(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>, { sandboxOnly = false } = {}) {
@@ -178,6 +214,8 @@ async function productionSubscription(request: Request, admin: ReturnType<typeof
   const { data: existing } = await admin.from('saas_billing_checkout_attempts').select('id, estado, external_checkout_id, checkout_url, metadata').eq('barberia_id', tenantId).eq('idempotency_key', idempotencyKey).maybeSingle()
   if (existing?.external_checkout_id) return json({ status: 'verifying', checkout_attempt_id: existing.id, external_subscription_id: existing.external_checkout_id, checkout_url: existing.checkout_url || null, activation: 'webhook_pending', idempotent: true })
 
+  const subscription = await resolveInternalSubscription(admin, tenantId, 'production')
+
   const { data: intent, error: intentError } = await requestClient(request).rpc('create_billing_checkout_intent_with_price', { p_barberia_id: tenantId, p_plan_codigo: planCode, p_proveedor_codigo: 'mercadopago', p_precio_id: externalPrice.id, p_idempotency_key: idempotencyKey })
   if (intentError || !intent?.checkout_attempt_id) throw Object.assign(new Error('No se pudo preparar el intento de suscripción.'), { status: 502, code: 'subscription_intent_failed' })
   const attemptId = Number(intent.checkout_attempt_id)
@@ -196,13 +234,74 @@ async function productionSubscription(request: Request, admin: ReturnType<typeof
   const now = new Date().toISOString()
   const { error: attemptError } = await admin.from('saas_billing_checkout_attempts').update({ estado: 'pending_provider', external_checkout_id: result.externalId, checkout_url: result.checkoutUrl, metadata: { environment: 'production', flow: 'associated_plan_card_token', reference, external_plan_id: externalPrice.external_plan_id, price_id: externalPrice.id, amount: externalPrice.importe, currency: externalPrice.moneda, periodicidad: externalPrice.periodicidad, activation: 'webhook_pending' } }).eq('id', attemptId)
   if (attemptError) throw Object.assign(new Error('No se pudo registrar el intento de suscripción.'), { status: 502, code: 'subscription_attempt_persist_failed' })
-  const { data: subscription } = await admin.from('saas_suscripciones').select('id').eq('barberia_id', tenantId).maybeSingle()
-  if (!subscription?.id) throw Object.assign(new Error('No se encontró la suscripción interna.'), { status: 502, code: 'subscription_registration_failed' })
   const { error: externalError } = await admin.from('saas_suscripciones_externas').upsert({ suscripcion_id: subscription.id, barberia_id: tenantId, proveedor_codigo: 'mercadopago', external_subscription_id: result.externalId, external_plan_id: externalPrice.external_plan_id, estado_externo: 'pending', last_synced_at: now, metadata: { environment: 'production', flow: 'associated_plan_card_token', external_reference: reference, price_id: externalPrice.id, amount: externalPrice.importe, currency: externalPrice.moneda, activation: 'webhook_pending' } }, { onConflict: 'suscripcion_id,proveedor_codigo' })
   if (externalError) throw Object.assign(new Error('No se pudo registrar la suscripción externa.'), { status: 502, code: 'subscription_registration_failed' })
   const { error: linkError } = await admin.from('saas_suscripciones').update({ provider: 'mercadopago', provider_subscription_id: result.externalId, updated_at: now }).eq('id', subscription.id)
   if (linkError) throw Object.assign(new Error('No se pudo vincular la suscripción interna.'), { status: 502, code: 'subscription_registration_failed' })
   return json({ status: 'verifying', checkout_attempt_id: attemptId, external_subscription_id: result.externalId, checkout_url: result.checkoutUrl, activation: 'webhook_pending', idempotent: Boolean(intent.idempotent) })
+}
+
+async function sandboxSubscription(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  const planCode = String(body.plan_codigo || '').trim().toLowerCase()
+  if (planCode !== SANDBOX_BILLING.planCode) throw Object.assign(new Error('El checkout sandbox sólo está preparado para Starter.'), { status: 422, code: 'sandbox_plan_restricted' })
+  if (['environment', 'tenant_id', 'importe', 'moneda', 'payer_email', 'external_reference', 'back_url', 'external_plan_id'].some((field) => Object.prototype.hasOwnProperty.call(body, field))) throw Object.assign(new Error('Tenant, entorno, email, referencia y precio se resuelven exclusivamente en backend.'), { status: 422, code: 'client_pricing_forbidden' })
+  const cardTokenId = String(body.card_token_id || '').trim()
+  if (!/^[A-Za-z0-9_-]{8,256}$/.test(cardTokenId)) throw Object.assign(new Error('Token de tarjeta inválido.'), { status: 422, code: 'invalid_card_token' })
+  const idempotencyKey = String(request.headers.get('Idempotency-Key') || '').trim()
+  if (!/^[A-Za-z0-9._:-]{8,120}$/.test(idempotencyKey)) throw Object.assign(new Error('Falta una clave de idempotencia válida.'), { status: 422, code: 'invalid_idempotency_key' })
+
+  const tenantId = await ownerTenant(admin, userId)
+  if (tenantId !== SANDBOX_BILLING.tenantId) throw Object.assign(new Error('Mercado Pago sandbox sólo permite el tenant técnico autorizado.'), { status: 403, code: 'sandbox_scope_required' })
+  const environment = await resolveMercadoPagoEnvironment(admin, tenantId)
+  if (environment !== 'sandbox') throw Object.assign(new Error('El tenant no tiene un binding sandbox activo.'), { status: 409, code: 'sandbox_environment_mismatch' })
+  const { data: tenant, error: tenantError } = await admin.from('barberias').select('id, billing_email, metadata').eq('id', tenantId).maybeSingle()
+  if (tenantError || !tenant) throw Object.assign(new Error('No se pudo resolver el tenant sandbox.'), { status: 502, code: 'tenant_lookup_failed' })
+  const tenantMetadata = tenant.metadata && typeof tenant.metadata === 'object' ? tenant.metadata as Record<string, unknown> : {}
+  if (tenantMetadata.environment !== 'sandbox' || tenantMetadata.technical !== true || tenantMetadata.billing_provider !== 'mercadopago' || tenantMetadata.billing_enabled !== true) throw Object.assign(new Error('El tenant no cumple el contrato sandbox.'), { status: 403, code: 'sandbox_tenant_required' })
+  const externalPrice = await resolveExternalPrice(admin, tenantId, planCode, 'mercadopago', 'sandbox')
+  if (externalPrice.pais_codigo !== 'AR' || String(externalPrice.moneda).toUpperCase() !== 'ARS' || Number(externalPrice.importe) !== 15000 || externalPrice.periodicidad !== 'monthly' || externalPrice.external_plan_id !== SANDBOX_BILLING.externalPlanId || !externalPrice.habilitado) throw Object.assign(new Error('El precio Starter sandbox no coincide con el contrato autorizado.'), { status: 409, code: 'sandbox_price_mismatch' })
+  const config = providerConfigured('mercadopago', 'webhook', 'sandbox')
+  if (!config.configured) throw Object.assign(new Error('Faltan credenciales sandbox de Mercado Pago.'), { status: 503, code: 'sandbox_provider_not_configured' })
+  // The sandbox buyer is an explicit server-side test identity. Never reuse
+  // the tenant billing email (which can belong to the TEST seller) and never
+  // accept payer_email from the browser.
+  const payerEmail = String(Deno.env.get('MERCADOPAGO_SANDBOX_PAYER_EMAIL') || '').trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) throw Object.assign(new Error('El email de facturación sandbox no es válido.'), { status: 422, code: 'billing_email_invalid' })
+
+  const { data: existing } = await admin.from('saas_billing_checkout_attempts').select('id, estado, external_checkout_id, checkout_url, metadata').eq('barberia_id', tenantId).eq('idempotency_key', idempotencyKey).maybeSingle()
+  if (existing?.external_checkout_id) return json({ status: 'verifying', environment: 'sandbox', checkout_attempt_id: existing.id, external_subscription_id: existing.external_checkout_id, checkout_url: existing.checkout_url || null, activation: 'webhook_pending', idempotent: true })
+
+  const subscription = await resolveInternalSubscription(admin, tenantId, 'sandbox')
+  const { data: intent, error: intentError } = await requestClient(request).rpc('create_billing_checkout_intent_with_price', { p_barberia_id: tenantId, p_plan_codigo: planCode, p_proveedor_codigo: 'mercadopago', p_precio_id: externalPrice.id, p_idempotency_key: idempotencyKey })
+  if (intentError || !intent?.checkout_attempt_id) throw Object.assign(new Error('No se pudo preparar el intento de suscripción sandbox.'), { status: 502, code: 'subscription_intent_failed' })
+  const attemptId = Number(intent.checkout_attempt_id)
+  const reference = `billing:${attemptId}`
+  const baseUrl = String(Deno.env.get('APP_BASE_URL') || '').trim().replace(/\/$/, '')
+  if (!/^https:\/\//i.test(baseUrl)) throw Object.assign(new Error('Falta APP_BASE_URL HTTPS para el retorno.'), { status: 503, code: 'app_base_url_not_configured' })
+  let result: { externalId: string | null; checkoutUrl: string | null; status: string }
+  try {
+    result = await mercadoPagoSubscription({ environment: 'sandbox', tenantId, externalPlanId: String(externalPrice.external_plan_id), cardTokenId, payerEmail, externalReference: reference, backUrl: `${baseUrl}/facturacion?billing=pending`, idempotencyKey: `mp-subscription:${attemptId}` })
+    if (!result.externalId) throw Object.assign(new Error('Mercado Pago no devolvió un identificador de suscripción sandbox.'), { status: 502, code: 'external_subscription_id_missing' })
+  } catch (error) {
+    await admin.from('saas_billing_checkout_attempts').update({ estado: 'pending_provider', metadata: { environment: 'sandbox', flow: 'associated_plan_card_token', reference, error_code: error?.code || 'provider_error', retryable: true } }).eq('id', attemptId)
+    throw error
+  }
+  const now = new Date().toISOString()
+  const { error: attemptError } = await admin.from('saas_billing_checkout_attempts').update({ estado: 'pending_provider', external_checkout_id: result.externalId, checkout_url: result.checkoutUrl, metadata: { environment: 'sandbox', flow: 'associated_plan_card_token', reference, external_plan_id: externalPrice.external_plan_id, price_id: externalPrice.id, amount: externalPrice.importe, currency: externalPrice.moneda, periodicidad: externalPrice.periodicidad, activation: 'webhook_pending' } }).eq('id', attemptId)
+  if (attemptError) throw Object.assign(new Error('No se pudo registrar el intento sandbox.'), { status: 502, code: 'subscription_attempt_persist_failed' })
+  const { error: externalError } = await admin.from('saas_suscripciones_externas').upsert({ suscripcion_id: subscription.id, barberia_id: tenantId, proveedor_codigo: 'mercadopago', external_subscription_id: result.externalId, external_plan_id: externalPrice.external_plan_id, estado_externo: 'pending', last_synced_at: now, metadata: { environment: 'sandbox', flow: 'associated_plan_card_token', external_reference: reference, price_id: externalPrice.id, amount: externalPrice.importe, currency: externalPrice.moneda, activation: 'webhook_pending' } }, { onConflict: 'suscripcion_id,proveedor_codigo' })
+  if (externalError) throw Object.assign(new Error('No se pudo registrar la suscripción externa sandbox.'), { status: 502, code: 'subscription_registration_failed' })
+  const { error: linkError } = await admin.from('saas_suscripciones').update({ provider: 'mercadopago', provider_subscription_id: result.externalId, updated_at: now }).eq('id', subscription.id)
+  if (linkError) throw Object.assign(new Error('No se pudo vincular la suscripción interna sandbox.'), { status: 502, code: 'subscription_registration_failed' })
+  return json({ status: 'verifying', environment: 'sandbox', checkout_attempt_id: attemptId, external_subscription_id: result.externalId, checkout_url: result.checkoutUrl, activation: 'webhook_pending', idempotent: Boolean(intent.idempotent) })
+}
+
+async function subscription(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  const tenantId = await ownerTenant(admin, userId)
+  const environment = await resolveMercadoPagoEnvironment(admin, tenantId)
+  if (!environment) throw Object.assign(new Error('El tenant no tiene un binding activo de Mercado Pago.'), { status: 409, code: 'billing_binding_not_configured' })
+  if (environment === 'sandbox') return await sandboxSubscription(request, admin, userId, body)
+  return await productionSubscription(request, admin, userId, body)
 }
 
 async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
@@ -256,8 +355,8 @@ async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>
   return json({ provider, environment: 'sandbox', results })
 }
 
-function providerStatus(provider: string, externalId: string, kind: 'checkout' | 'subscription') {
-  if (provider === 'mercadopago') return mercadoPagoExternalStatus({ externalId, kind })
+function providerStatus(provider: string, externalId: string, kind: 'checkout' | 'subscription', environment: 'sandbox' | 'production' = 'sandbox') {
+  if (provider === 'mercadopago') return mercadoPagoExternalStatus({ externalId, kind, environment })
   if (provider === 'paypal') return paypalExternalStatus({ externalId, kind })
   throw Object.assign(new Error('Proveedor no soportado.'), { status: 422, code: 'unsupported_provider' })
 }
@@ -272,18 +371,20 @@ async function externalStatus(admin: ReturnType<typeof adminClient>, userId: str
   if (provider && !PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
   const tenantId = await checkoutTenant(admin, userId, body, { sandboxOnly: provider === 'mercadopago' })
   const records = requestedAttempt
-    ? (await admin.from('saas_billing_checkout_attempts').select('id, proveedor_codigo, external_checkout_id').eq('id', requestedAttempt).eq('barberia_id', tenantId).maybeSingle()).data
-    : (await admin.from('saas_suscripciones_externas').select('proveedor_codigo, external_subscription_id').eq('barberia_id', tenantId).maybeSingle()).data
+    ? (await admin.from('saas_billing_checkout_attempts').select('id, proveedor_codigo, external_checkout_id, metadata').eq('id', requestedAttempt).eq('barberia_id', tenantId).maybeSingle()).data
+    : (await admin.from('saas_suscripciones_externas').select('proveedor_codigo, external_subscription_id, metadata').eq('barberia_id', tenantId).maybeSingle()).data
   if (!records) return json({ status: 'not_linked', checked_at: new Date().toISOString() })
   const row = records as Record<string, unknown>
   const currentProvider = String(row.proveedor_codigo)
   const externalId = String(row.external_checkout_id || row.external_subscription_id || '')
   if (!externalId || (provider && provider !== currentProvider)) return json({ status: 'not_linked', checked_at: new Date().toISOString() })
+  const environment = currentProvider === 'mercadopago' ? String(row.metadata?.environment || '').trim().toLowerCase() : null
+  if (currentProvider === 'mercadopago' && !['sandbox', 'production'].includes(environment || '')) throw Object.assign(new Error('La suscripción externa no tiene un entorno explícito.'), { status: 409, code: 'billing_environment_unresolved' })
   const kind = requestedAttempt ? 'checkout' : 'subscription'
-  const config = providerConfigured(currentProvider as 'mercadopago' | 'paypal', currentProvider === 'mercadopago' ? 'status' : 'all')
+  const config = providerConfigured(currentProvider as 'mercadopago' | 'paypal', currentProvider === 'mercadopago' ? 'status' : 'all', environment === 'sandbox' || environment === 'production' ? environment : undefined)
   if (!config.configured) throw Object.assign(new Error('Faltan variables privadas del proveedor sandbox.'), { status: 503, code: 'provider_not_configured' })
-  const result = await providerStatus(currentProvider, externalId, kind)
-  return json({ provider: currentProvider, kind, status: result.normalizedStatus, provider_status: result.status, amount: result.amount, currency: result.currency, checked_at: new Date().toISOString() })
+  const result = await providerStatus(currentProvider, externalId, kind, environment === 'sandbox' || environment === 'production' ? environment : 'sandbox')
+  return json({ provider: currentProvider, environment: environment || null, kind, status: result.normalizedStatus, provider_status: result.status, amount: result.amount, currency: result.currency, checked_at: new Date().toISOString() })
 }
 
 async function reconcile(admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
@@ -293,7 +394,7 @@ async function reconcile(admin: ReturnType<typeof adminClient>, userId: string, 
   if (provider && !PROVIDERS.has(provider)) throw Object.assign(new Error('Proveedor inválido.'), { status: 422, code: 'unsupported_provider' })
   const parsedLimit = body.limit == null ? 100 : Number(body.limit)
   const limit = Number.isSafeInteger(parsedLimit) ? Math.max(1, Math.min(100, parsedLimit)) : 100
-  let query = admin.from('saas_suscripciones_externas').select('id, suscripcion_id, proveedor_codigo, external_subscription_id, barberia_id').limit(limit)
+  let query = admin.from('saas_suscripciones_externas').select('id, suscripcion_id, proveedor_codigo, external_subscription_id, barberia_id, metadata').limit(limit)
   if (provider) query = query.eq('proveedor_codigo', provider)
   const { data: links, error } = await query
   if (error) throw Object.assign(new Error('No se pudieron leer suscripciones externas.'), { status: 502, code: 'reconciliation_read_failed' })
@@ -301,9 +402,11 @@ async function reconcile(admin: ReturnType<typeof adminClient>, userId: string, 
   for (const link of links || []) {
     const currentProvider = String(link.proveedor_codigo) as 'mercadopago' | 'paypal'
     try {
-      const config = providerConfigured(currentProvider)
+      const environment = currentProvider === 'mercadopago' ? String(link.metadata?.environment || '').trim().toLowerCase() : null
+      if (currentProvider === 'mercadopago' && !['sandbox', 'production'].includes(environment || '')) throw Object.assign(new Error('billing_environment_unresolved'), { code: 'billing_environment_unresolved' })
+      const config = providerConfigured(currentProvider, currentProvider === 'mercadopago' ? 'status' : 'all', environment === 'sandbox' || environment === 'production' ? environment : undefined)
       if (!config.configured) throw Object.assign(new Error('provider_not_configured'), { code: 'provider_not_configured' })
-      const result = await providerStatus(currentProvider, String(link.external_subscription_id), 'subscription')
+      const result = await providerStatus(currentProvider, String(link.external_subscription_id), 'subscription', environment === 'sandbox' || environment === 'production' ? environment : 'sandbox')
       const now = new Date().toISOString()
       await admin.from('saas_suscripciones_externas').update({ estado_externo: result.normalizedStatus, current_period_start: result.currentPeriodStart, current_period_end: result.currentPeriodEnd, cancel_at_period_end: result.cancelAtPeriodEnd, last_synced_at: now, metadata: { last_reconciliation_status: result.status } }).eq('id', link.id)
       const eventId = `reconcile:${currentProvider}:${link.external_subscription_id}:${result.normalizedStatus}`
@@ -902,7 +1005,30 @@ Deno.serve(async (request) => {
         if (error.code === 'P0002') throw Object.assign(new Error('La cuenta todavía no tiene una suscripción.'), { status: 409, code: 'subscription_missing' })
         throw Object.assign(new Error('No se pudo consultar facturación.'), { status: 502, code: 'billing_status_failed' })
       }
-      return json(data)
+      const resolvedEnvironment = await resolveMercadoPagoEnvironment(admin, tenantId)
+      if (resolvedEnvironment) {
+        const binding = await resolveTenantBillingBinding(admin, tenantId, 'mercadopago', resolvedEnvironment)
+        const sandboxConfig = providerConfigured('mercadopago', 'webhook', 'sandbox')
+        const sandboxCheckoutReady = resolvedEnvironment === 'sandbox'
+          && Number(tenantId) === SANDBOX_BILLING.tenantId
+          && binding.plan_codigo === SANDBOX_BILLING.planCode
+          && binding.external_plan_id === SANDBOX_BILLING.externalPlanId
+          && Number(binding.price?.importe) === 15000
+          && String(binding.price?.moneda || '').toUpperCase() === 'ARS'
+          && binding.price?.periodicidad === 'monthly'
+          && binding.price?.habilitado === true
+          && sandboxConfig.configured
+        const productionReadiness = resolvedEnvironment === 'production'
+          ? productionFinancialActivation({ tenantId, externalPlanId: binding.external_plan_id, multiEnvironmentVerified: true })
+          : null
+        const providers = Array.isArray(data?.providers)
+          ? data.providers.map((item: Record<string, unknown>) => item.codigo === 'mercadopago'
+            ? { ...item, entorno: resolvedEnvironment, sandbox_checkout_ready: sandboxCheckoutReady, production_checkout_ready: Boolean(productionReadiness?.ready) }
+            : item)
+          : data?.providers
+        return json({ ...data, providers, billing_environment: resolvedEnvironment, sandbox_checkout_ready: sandboxCheckoutReady, production_checkout_ready: Boolean(productionReadiness?.ready) })
+      }
+      return json({ ...data, sandbox_checkout_ready: false, production_checkout_ready: false })
     }
     if (request.method === 'GET' && route === 'config-status') return await configurationStatus(admin, user.id)
     if (request.method === 'GET' && route === 'verify-production-provider-identity') return await verifyProductionProviderIdentity(admin, user.id)
@@ -910,7 +1036,7 @@ Deno.serve(async (request) => {
     const body = await readJson(request)
     if (request.method === 'POST' && route === 'prepare-production-pilot') return await prepareProductionPilot(admin, user.id, body)
     if (request.method === 'POST' && route === 'checkout') return await checkout(request, admin, user.id, body)
-    if (request.method === 'POST' && route === 'subscription') return await productionSubscription(request, admin, user.id, body)
+    if (request.method === 'POST' && route === 'subscription') return await subscription(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'external-status') return await externalStatus(admin, user.id, body)
     if (request.method === 'POST' && route === 'sync-plans') return await syncPlans(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'reconcile-sandbox') return await reconcileSandboxPreapproval(request, admin, user.id, body)
