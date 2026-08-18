@@ -116,6 +116,7 @@ export default function PublicBooking({ slug }) {
   const [theme, setTheme] = useState(() => initialTheme(slug))
   const selectionRef = useRef({ barberoId: null, hora: null })
   const previousSlotsContextRef = useRef(null)
+  const slotsRequestRef = useRef(0)
 
   useEffect(() => { selectionRef.current = { barberoId, hora } }, [barberoId, hora])
   useEffect(() => {
@@ -135,10 +136,15 @@ export default function PublicBooking({ slug }) {
 
   const cargarSlots = useCallback(async () => {
     if (!servicio || !fecha || !isSupabaseConfigured) return
+    const requestId = ++slotsRequestRef.current
     setLoadingSlots(true)
     const { data, error: rpcError } = await supabase.rpc('horarios_disponibles_reserva_publica', {
       p_slug: slug, p_servicio_id: servicio.id, p_fecha: fecha,
     })
+    // A service/date change can leave an older RPC in flight. Only the latest
+    // response may update the visible availability; stale responses must not
+    // replace valid slots with an empty result.
+    if (requestId !== slotsRequestRef.current) return
     if (rpcError) {
       setError('No pudimos actualizar la disponibilidad. Intentá nuevamente.')
     } else {
