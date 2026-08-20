@@ -152,7 +152,7 @@ Deno.serve(async (request) => {
         : EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
       const expectedApplicationId = productionEnvironment
         ? Number(Deno.env.get('MERCADOPAGO_PRODUCTION_APPLICATION_ID')) || null
-        : Number(Deno.env.get('MERCADOPAGO_EXPECTED_APPLICATION_ID') || EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID) || null
+        : EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID
       const verifiedApplicationId = Number(verifiedResource?.application_id) || null
       const identityMismatch = verifiedCollectorId !== expectedCollectorId
         || !expectedPlanId

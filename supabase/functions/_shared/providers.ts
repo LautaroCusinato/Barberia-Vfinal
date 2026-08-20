@@ -48,7 +48,10 @@ function mercadoPagoSecret(environment: MercadoPagoEnvironment, kind: 'token' | 
  * Mercado Pago can issue APP_USR credentials for a TEST seller as well.
  */
 export const EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID = 3595396521
-export const EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID = 3172086171935346
+// Authoritative QA sandbox application for the TEST seller. This is kept
+// environment-scoped and deliberately cannot be overridden by a generic
+// production/shared variable.
+export const EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID = 254158644354755
 
 /**
  * Production is deliberately opt-in at several independent boundaries. The
@@ -368,12 +371,55 @@ export async function mercadoPagoProductionSubscription(input: { tenantId: numbe
 }
 
 export async function syncMercadoPagoPlan(input: { name: string; description?: string | null; amount: number; currency: string; periodicity: string; externalReference: string; backUrl: string; idempotencyKey: string }) {
-  await mercadoPagoSandboxIdentity()
+  const currentUser = await mercadoPagoSandboxIdentity()
   const token = mercadoPagoAccessToken()
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
-  const response = await fetch(`${base}/preapproval_plan`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': input.idempotencyKey }, body: JSON.stringify({ reason: input.name, external_reference: input.externalReference, back_url: input.backUrl, auto_recurring: { frequency: input.periodicity === 'yearly' ? 12 : 1, frequency_type: 'months', transaction_amount: input.amount, currency_id: input.currency } }) })
+  const expectedAmount = Number(input.amount)
+  const expectedCurrency = String(input.currency || '').toUpperCase()
+  const expectedFrequency = input.periodicity === 'yearly' ? 12 : 1
+  const expectedFrequencyType = 'months'
+
+  // Search first and re-fetch every candidate authoritatively.  This avoids
+  // creating a second sandbox plan when the seller already owns a compatible
+  // plan, while still refusing ambiguous matches instead of guessing.
+  const searchParams = new URLSearchParams({ q: input.name, limit: '50' })
+  const searchBody = await responseJson(await fetch(`${base}/preapproval_plan/search?${searchParams.toString()}`, {
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  }), 'Mercado Pago')
+  const candidateIds = [...new Set((Array.isArray(searchBody.results) ? searchBody.results : [])
+    .map((candidate: Record<string, unknown>) => String(candidate.id || '').trim())
+    .filter((id: string) => /^[A-Za-z0-9_-]{8,120}$/.test(id)))]
+  const compatible = []
+  for (const candidateId of candidateIds) {
+    try {
+      const details = await mercadoPagoPlanDetails(candidateId)
+      if (
+        details.collectorId === currentUser.id
+        && details.applicationId === EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID
+        && details.amount === expectedAmount
+        && details.currency === expectedCurrency
+        && details.frequency === expectedFrequency
+        && details.frequencyType === expectedFrequencyType
+        && details.status === 'active'
+      ) compatible.push(details)
+    } catch (error) {
+      // A stale search result may disappear between search and GET.  Ignore
+      // only an authoritative 404; fail closed for provider/network errors.
+      if (Number(error?.status) !== 404) throw error
+    }
+  }
+  if (compatible.length > 1) throw new ProviderError('Hay más de un plan sandbox compatible; se requiere resolución manual.', 409, 'sandbox_plan_ambiguous')
+  if (compatible.length === 1) {
+    return { externalPlanId: compatible[0].id, externalProductId: null, source: 'reused', searchedCandidates: candidateIds.length }
+  }
+
+  const response = await fetch(`${base}/preapproval_plan`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': input.idempotencyKey },
+    body: JSON.stringify({ reason: input.name, external_reference: input.externalReference, back_url: input.backUrl, auto_recurring: { frequency: expectedFrequency, frequency_type: expectedFrequencyType, transaction_amount: expectedAmount, currency_id: expectedCurrency } }),
+  })
   const body = await responseJson(response, 'Mercado Pago')
-  return { externalPlanId: body.id || null, externalProductId: null }
+  return { externalPlanId: body.id || null, externalProductId: null, source: 'created', searchedCandidates: candidateIds.length }
 }
 
 /** Read-only ownership/configuration check for the isolated sandbox plan. */

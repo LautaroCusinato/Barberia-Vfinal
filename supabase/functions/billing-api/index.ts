@@ -388,7 +388,7 @@ async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>
       if (mappingUpdateError) throw Object.assign(new Error('No se pudo guardar la sincronización del plan.'), { status: 502, code: 'plan_mapping_persist_failed' })
     }
     if (mappingUpdateError) throw Object.assign(new Error('No se pudo guardar la sincronización del plan.'), { status: 502, code: 'plan_mapping_persist_failed' })
-    results.push({ plan: plan.codigo, price_id: externalPrice.id, status: 'synced', external_plan_id: result.externalPlanId, amount: Number(externalPrice.importe), currency: externalPrice.moneda })
+    results.push({ plan: plan.codigo, price_id: externalPrice.id, status: 'synced', source: 'source' in result ? result.source : 'created', searched_candidates: 'searchedCandidates' in result ? result.searchedCandidates : null, external_plan_id: result.externalPlanId, amount: Number(externalPrice.importe), currency: externalPrice.moneda })
   }
   return json({ provider, environment: 'sandbox', results })
 }
