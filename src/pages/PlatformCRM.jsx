@@ -11,11 +11,10 @@ import CommercialPilot from './CommercialPilot.jsx'
 
 const STAGES = ['discovered', 'qualified', 'contacted', 'replied', 'interested', 'demo', 'trial', 'negotiating', 'won', 'lost', 'do_not_contact']
 
-// This console is deliberately fixed to the isolated technical tenant. Do
-// not turn these values into user-controlled inputs: the Edge Function also
-// validates the sandbox metadata and platform role on every request.
+// The sandbox tenant is resolved from the active QA binding returned by the
+// backend. These values describe the operation only; no tenant id is accepted
+// from the browser as an authorization decision.
 const SANDBOX_BILLING = Object.freeze({
-  tenantId: 6,
   planCode: 'starter',
   provider: 'mercadopago',
   environment: 'sandbox',
@@ -31,6 +30,9 @@ const SANDBOX_BILLING_MESSAGES = {
   sandbox_seller_mismatch: 'La credencial no pertenece al vendedor TEST autorizado.',
   production_provider_disabled: 'Mercado Pago de producción permanece bloqueado.',
   sandbox_scope_required: 'La operación sólo está permitida para el tenant sandbox técnico.',
+  sandbox_scope_ambiguous: 'Hay más de un binding sandbox activo; la operación quedó bloqueada.',
+  billing_binding_not_configured: 'No existe un binding sandbox QA activo.',
+  sandbox_plan_not_ready: 'El binding QA existe, pero todavía falta el plan externo sandbox.',
   plan_mapping_missing: 'Falta el mapeo del plan starter en Supabase.',
   external_price_not_configured: 'No hay un precio externo configurado para ese proveedor y país.',
   external_price_persist_failed: 'No se pudo guardar el precio externo sincronizado.',
@@ -79,7 +81,6 @@ async function sandboxBillingApi(path, options = {}) {
 
 async function auditSandboxAction(action, status, metadata = {}) {
   const safeMetadata = {
-    tenant_id: SANDBOX_BILLING.tenantId,
     plan_codigo: SANDBOX_BILLING.planCode,
     proveedor_codigo: SANDBOX_BILLING.provider,
     environment: SANDBOX_BILLING.environment,
@@ -134,8 +135,11 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
   const productionIdentity = snapshot?.productionIdentity
   const productionPlanSearch = snapshot?.productionPlanSearch
   const productionPilot = snapshot?.productionPilot
-  const tenantReady = snapshot?.tenant?.metadata?.environment === SANDBOX_BILLING.environment
-    && snapshot?.tenant?.metadata?.technical === true
+  const sandboxTenantId = snapshot?.binding?.barberia_id || config?.tenant_bindings?.find((binding) => binding.environment === SANDBOX_BILLING.environment && binding.active)?.tenant_id || null
+  const tenantReady = Number.isSafeInteger(Number(sandboxTenantId))
+    && snapshot?.binding?.provider === SANDBOX_BILLING.provider
+    && snapshot?.binding?.environment === SANDBOX_BILLING.environment
+    && snapshot?.binding?.active === true
 
   return (
     <section className="panel sandbox-billing-console" aria-labelledby="sandbox-billing-title">
@@ -143,7 +147,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <div>
           <p className="panel-kicker">Herramienta técnica</p>
           <h2 className="panel-title" id="sandbox-billing-title">Mercado Pago · Sandbox</h2>
-          <p className="panel-subtitle">Operación fija para tenant técnico #{SANDBOX_BILLING.tenantId}, plan {SANDBOX_BILLING.planCode}. No modifica negocios reales ni habilita producción.</p>
+          <p className="panel-subtitle">Operación limitada al único binding QA sandbox activo, plan {SANDBOX_BILLING.planCode}. No modifica negocios reales ni habilita producción.</p>
         </div>
         <span className="status-pill">Sólo owner/admin</span>
       </div>
@@ -156,10 +160,10 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
         <span>{confirmAction === 'sync-plans'
           ? 'Se actualizará únicamente el plan starter de Mercado Pago sandbox.'
           : confirmAction === 'reconcile-sandbox'
-            ? `Se consultará la suscripción existente ${SANDBOX_BILLING.preapprovalId} y se vinculará únicamente al tenant técnico #6. No se crea ningún pago.`
+            ? `Se consultará la suscripción histórica ${SANDBOX_BILLING.preapprovalId} sin cambiar el scope del binding QA. No se crea ningún pago.`
             : confirmAction === 'prepare-production-pilot'
               ? 'Se buscará o preparará un único plan y tenant técnico productivos. No se crea checkout, suscripción externa, tarjeta ni pago.'
-              : 'Se generará un checkout para el tenant técnico #6. No se cobrará dinero real.'}</span>
+              : 'Se generará un checkout sólo si el binding QA y el plan externo están habilitados. No se cobrará dinero real.'}</span>
         <div className="sandbox-confirmation-actions">
           <button type="button" className="btn btn-primary" onClick={() => onAction(confirmAction)} disabled={busy}>Confirmar</button>
           <button type="button" className="btn" onClick={() => onAction('cancel-confirmation')} disabled={busy}>Cancelar</button>
@@ -178,7 +182,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       </div>
 
       <div className="sandbox-billing-grid">
-        <div><span className="stat-label">Tenant técnico</span><strong>{tenantReady ? 'id=6 · válido' : snapshot?.tenant === null ? 'id=6 · backend valida' : 'No validado'}</strong></div>
+        <div><span className="stat-label">Tenant QA sandbox</span><strong>{tenantReady ? `id=${sandboxTenantId} · binding válido` : 'Binding no validado'}</strong></div>
         <div><span className="stat-label">Proveedor</span><strong>{provider ? `${provider.codigo} · ${provider.entorno}` : 'Sin consultar'}</strong><small>{provider?.activo ? 'Activo global' : 'Global deshabilitado (correcto)'}</small></div>
         <div><span className="stat-label">Precio externo</span><strong>{price ? `${price.moneda} ${formatMoney(price.importe, price.moneda)} / ${price.periodicidad === 'yearly' ? 'año' : 'mes'}` : SANDBOX_PRICE_LABEL}</strong><small>{price?.habilitado && price.external_plan_id ? `Habilitado · ${price.external_plan_id}` : 'Pendiente de sincronizar'}</small></div>
         <div><span className="stat-label">Producción</span><strong>{config?.production_enabled === false ? 'Bloqueada' : 'No validada'}</strong><small>{config?.sandbox_token_valid ? 'Vendedor TEST validado (token oculto)' : 'Token no validado'}</small></div>
@@ -187,7 +191,7 @@ function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarni
       <div className="sandbox-billing-details">
         <div><span>Secretos configurados</span><strong>{config ? (config.token_configured && config.webhook_secret_configured ? 'Sí' : 'Incompletos') : 'Sin consultar'}</strong></div>
         <div><span>Último checkout</span><strong>{checkout?.id ? `#${checkout.id} · ${checkout.estado}` : 'Todavía no existe'}</strong></div>
-        <div><span>Preapproval a reconciliar</span><strong>{SANDBOX_BILLING.preapprovalId}</strong></div>
+        <div><span>Preapproval histórico</span><strong>{SANDBOX_BILLING.preapprovalId}</strong></div>
         <div><span>Estado externo</span><strong>{external?.status || 'Sin consultar'}</strong></div>
         <div><span>Suscripción</span><strong>No se activa por URL de retorno</strong></div>
       </div>
@@ -244,7 +248,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [form, setForm] = useState(emptyBusiness)
   const [view, setView] = useState('businesses')
   const [billingOverview, setBillingOverview] = useState(null)
-  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null, productionIdentity: null, productionPlanSearch: null, productionPilot: null })
+  const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, binding: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null, productionIdentity: null, productionPlanSearch: null, productionPilot: null })
   const [sandboxBusy, setSandboxBusy] = useState(false)
   const [sandboxError, setSandboxError] = useState('')
   const [sandboxNotice, setSandboxNotice] = useState('')
@@ -254,16 +258,32 @@ export default function PlatformCRM({ role = 'owner' }) {
 
   const loadSandboxSnapshot = useCallback(async () => {
     if (!['owner', 'admin'].includes(role)) return
-    const [tenantResult, providerResult, planResult, priceResult, checkoutResult] = await Promise.all([
-      supabase.from('barberias').select('id, metadata').eq('id', SANDBOX_BILLING.tenantId).maybeSingle(),
+    const [bindingResult, providerResult, planResult, priceResult] = await Promise.all([
+      supabase.from('saas_billing_provider_bindings').select('barberia_id, proveedor_codigo, entorno, plan_codigo, precio_id, external_plan_id, activo, checkout_habilitado').eq('proveedor_codigo', SANDBOX_BILLING.provider).eq('entorno', SANDBOX_BILLING.environment).eq('activo', true).order('barberia_id'),
       supabase.from('saas_proveedores_pago').select('codigo, activo, entorno').eq('codigo', SANDBOX_BILLING.provider).maybeSingle(),
       supabase.from('saas_plan_proveedores').select('plan_codigo, external_plan_id, external_product_id, habilitado, metadata').eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).maybeSingle(),
       supabase.from('saas_plan_precios').select('id, plan_codigo, proveedor_codigo, pais_codigo, moneda, importe, periodicidad, entorno, external_plan_id, external_product_id, habilitado, activo').eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).eq('pais_codigo', 'AR').eq('entorno', 'sandbox').maybeSingle(),
-      supabase.from('saas_billing_checkout_attempts').select('id, barberia_id, plan_codigo, proveedor_codigo, estado, checkout_url, external_checkout_id, created_at, updated_at').eq('barberia_id', SANDBOX_BILLING.tenantId).eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     ])
+    const bindings = bindingResult.data || []
+    const binding = bindings.length === 1 ? bindings[0] : null
+    const tenantId = binding?.barberia_id || null
+    const [tenantResult, checkoutResult] = tenantId ? await Promise.all([
+      supabase.from('barberias').select('id, metadata').eq('id', tenantId).maybeSingle(),
+      supabase.from('saas_billing_checkout_attempts').select('id, barberia_id, plan_codigo, proveedor_codigo, estado, checkout_url, external_checkout_id, created_at, updated_at').eq('barberia_id', tenantId).eq('plan_codigo', SANDBOX_BILLING.planCode).eq('proveedor_codigo', SANDBOX_BILLING.provider).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    ]) : [{ data: null }, { data: null }]
     setSandboxSnapshot((current) => ({
       ...current,
       tenant: tenantResult.data || null,
+      binding: binding ? {
+        barberia_id: binding.barberia_id,
+        provider: binding.proveedor_codigo,
+        environment: binding.entorno,
+        plan: binding.plan_codigo,
+        price_id: binding.precio_id,
+        external_plan_id: binding.external_plan_id,
+        active: binding.activo,
+        checkout_enabled: binding.checkout_habilitado,
+      } : null,
       provider: providerResult.data || null,
       plan: planResult.data || null,
       price: priceResult.data || null,
@@ -310,7 +330,7 @@ export default function PlatformCRM({ role = 'owner' }) {
     setSandboxNotice('')
     setSandboxAuditWarning('')
     let status = 'failed'
-    const auditMetadata = { action }
+    const auditMetadata = { action, tenant_id: sandboxSnapshot.binding?.barberia_id || null }
     try {
       if (action === 'config-status') {
         const data = await sandboxBillingApi('config-status')
@@ -336,12 +356,12 @@ export default function PlatformCRM({ role = 'owner' }) {
         setSandboxSnapshot((current) => ({ ...current, productionPilot: data }))
         setSandboxNotice('Piloto productivo preparado. Checkout y cobros continúan bloqueados.')
       } else if (action === 'sync-plans') {
-        const data = await sandboxBillingApi('sync-plans', { method: 'POST', body: { tenant_id: SANDBOX_BILLING.tenantId, proveedor_codigo: SANDBOX_BILLING.provider, plan_codigo: SANDBOX_BILLING.planCode } })
+        const data = await sandboxBillingApi('sync-plans', { method: 'POST', body: { proveedor_codigo: SANDBOX_BILLING.provider, plan_codigo: SANDBOX_BILLING.planCode } })
         auditMetadata.result = data?.results?.[0]?.status || 'unknown'
         setSandboxNotice('El plan starter fue sincronizado en sandbox.')
         await loadSandboxSnapshot()
       } else if (action === 'checkout') {
-        const data = await sandboxBillingApi('checkout', { method: 'POST', body: { tenant_id: SANDBOX_BILLING.tenantId, plan_codigo: SANDBOX_BILLING.planCode, proveedor_codigo: SANDBOX_BILLING.provider } })
+        const data = await sandboxBillingApi('checkout', { method: 'POST', body: { plan_codigo: SANDBOX_BILLING.planCode, proveedor_codigo: SANDBOX_BILLING.provider } })
         auditMetadata.checkout_attempt_id = data?.checkout_attempt_id || null
         auditMetadata.has_checkout_url = Boolean(data?.checkout_url)
         auditMetadata.result = data?.status || 'unknown'
@@ -357,7 +377,7 @@ export default function PlatformCRM({ role = 'owner' }) {
       } else if (action === 'external-status') {
         const attemptId = sandboxSnapshot.checkout?.id
         if (!attemptId) throw Object.assign(new Error('Todavía no existe un checkout sandbox.'), { code: 'external_status_failed' })
-        const data = await sandboxBillingApi('external-status', { method: 'POST', body: { tenant_id: SANDBOX_BILLING.tenantId, checkout_attempt_id: attemptId, proveedor_codigo: SANDBOX_BILLING.provider } })
+        const data = await sandboxBillingApi('external-status', { method: 'POST', body: { checkout_attempt_id: attemptId, proveedor_codigo: SANDBOX_BILLING.provider } })
         auditMetadata.checkout_attempt_id = attemptId
         auditMetadata.result = data?.status || 'unknown'
         setSandboxSnapshot((current) => ({ ...current, externalStatus: data }))

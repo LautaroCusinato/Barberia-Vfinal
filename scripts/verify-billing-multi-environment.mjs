@@ -42,6 +42,9 @@ assert.match(api, /resolveMercadoPagoEnvironment/)
 assert.match(api, /sandboxSubscription/)
 assert.match(api, /external_subscription_already_linked/)
 assert.match(api, /billing_binding_not_configured/)
+assert.match(api, /resolveSandboxScope/)
+assert.match(api, /sandbox_plan_not_ready/)
+assert.doesNotMatch(api, /const SANDBOX_BILLING\s*=\s*Object\.freeze\(\{\s*tenantId:/)
 assert.match(api, /metadata\.environment/)
 assert.match(api, /MERCADOPAGO_SANDBOX_PAYER_EMAIL/)
 assert.doesNotMatch(api, /sandboxSubscription[\s\S]*tenant\.billing_email/)
@@ -53,42 +56,42 @@ assert.match(billingPage, /VITE_MERCADOPAGO_SANDBOX_PUBLIC_KEY/)
 assert.match(billingPage, /sandboxCheckoutReady/)
 assert.match(billingPage, /Continuar con tarjeta TEST/)
 assert.match(cardForm, /environment = 'production'/)
+assert.doesNotMatch(billingPage, /sandbox.*tenant_id\s*:/i)
 
-const contracts = {
-  sandbox: { tenant: 6, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 },
-  production: { tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791 },
-}
+const bindings = [
+  { tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346, active: true, checkoutEnabled: false, externalPlanId: null, priceEnabled: false },
+  { tenant: 202, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, active: true, checkoutEnabled: false, externalPlanId: 'production-plan', priceEnabled: true },
+]
 
 function resolve(input) {
-  const expected = contracts[input.environment]
-  if (!expected || input.provider !== 'mercadopago') return { allowed: false, reason: 'unsupported_or_unknown_environment' }
-  if (input.tenant !== expected.tenant) return { allowed: false, reason: 'tenant_environment_binding_mismatch' }
-  if (input.plan !== expected.plan || input.price !== expected.price) return { allowed: false, reason: 'billing_price_binding_mismatch' }
-  if (input.seller !== expected.seller || input.application !== expected.application) return { allowed: false, reason: 'provider_identity_mismatch' }
-  if (input.amount !== expected.amount || input.currency !== expected.currency) return { allowed: false, reason: 'provider_contract_mismatch' }
+  const binding = bindings.find((item) => item.tenant === input.tenant && item.provider === input.provider && item.environment === input.environment && item.active)
+  if (!binding) return { allowed: false, reason: 'billing_binding_not_configured' }
+  if (input.plan !== binding.plan || input.price !== binding.price) return { allowed: false, reason: 'billing_price_binding_mismatch' }
+  if (input.seller !== binding.seller || input.application !== binding.application) return { allowed: false, reason: 'provider_identity_mismatch' }
+  if (input.amount !== binding.amount || input.currency !== binding.currency) return { allowed: false, reason: 'provider_contract_mismatch' }
   if (input.environment === 'production' && input.productionEnabled !== true) return { allowed: false, reason: 'production_checkout_blocked' }
+  if (input.environment === 'sandbox' && (!binding.checkoutEnabled || !binding.externalPlanId || !binding.priceEnabled)) return { allowed: true, reason: 'sandbox_scope_resolved_plan_pending' }
   return { allowed: true, reason: 'binding_match' }
 }
 
 const checks = [
-  ['A tenant6 sandbox allowed', resolve({ tenant: 6, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed],
-  ['B tenant6 production rejected', !resolve({ tenant: 6, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: false }).allowed],
-  ['C tenant8 production identified but checkout blocked', !resolve({ tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: false }).allowed],
-  ['D tenant8 sandbox rejected', !resolve({ tenant: 8, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed],
-  ['E tenant1 production blocked', !resolve({ tenant: 1, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed],
-  ['F tenant5 production blocked', !resolve({ tenant: 5, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed],
-  ['G unknown tenant blocked', !resolve({ tenant: 999, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed],
-  ['H production credential in sandbox rejected', !resolve({ tenant: 6, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 1334909095, application: 3640459333061791 }).allowed],
-  ['I sandbox credential in production rejected', !resolve({ tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 3595396521, application: 3172086171935346, productionEnabled: true }).allowed],
-  ['J wrong plan rejected', !resolve({ tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'pro', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed],
-  ['K wrong seller rejected', !resolve({ tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1, application: 3640459333061791, productionEnabled: true }).allowed],
-  ['L wrong application rejected', !resolve({ tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 1, productionEnabled: true }).allowed],
-  ['M wrong currency rejected', !resolve({ tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'USD', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed],
-  ['N wrong amount rejected', !resolve({ tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 1, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed],
+  ['A QA tenant with sandbox binding resolves scope', resolve({ tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).reason === 'sandbox_scope_resolved_plan_pending'],
+  ['B second QA tenant without binding rejected', !resolve({ tenant: 102, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed],
+  ['C historical id 6 without binding rejected', !resolve({ tenant: 6, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed],
+  ['D production binding identified but checkout blocked', !resolve({ tenant: 202, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: false }).allowed],
+  ['E sandbox tenant cannot resolve production environment', !resolve({ tenant: 101, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed],
+  ['F unknown tenant rejected', !resolve({ tenant: 999, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed],
+  ['G production credential in sandbox rejected', !resolve({ tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 1334909095, application: 3640459333061791 }).allowed],
+  ['H sandbox credential in production rejected', !resolve({ tenant: 202, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 3595396521, application: 3172086171935346, productionEnabled: true }).allowed],
+  ['I wrong plan rejected', !resolve({ tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'pro', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed],
+  ['J wrong seller rejected', !resolve({ tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 1, application: 3172086171935346 }).allowed],
+  ['K wrong application rejected', !resolve({ tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 1 }).allowed],
+  ['L wrong currency rejected', !resolve({ tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'USD', seller: 3595396521, application: 3172086171935346 }).allowed],
+  ['M wrong amount rejected', !resolve({ tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 1, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed],
 ]
 for (const [name, passed] of checks) assert.equal(passed, true, name)
 
-assert.equal(resolve({ tenant: 8, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed, true)
-assert.equal(resolve({ tenant: 6, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed, true)
+assert.equal(resolve({ tenant: 101, provider: 'mercadopago', environment: 'sandbox', plan: 'starter', price: 1, amount: 15000, currency: 'ARS', seller: 3595396521, application: 3172086171935346 }).allowed, true)
+assert.equal(resolve({ tenant: 202, provider: 'mercadopago', environment: 'production', plan: 'starter', price: 2, amount: 30000, currency: 'ARS', seller: 1334909095, application: 3640459333061791, productionEnabled: true }).allowed, true)
 
-console.log(JSON.stringify({ matrix: checks.length, tenant6_sandbox: 'allowed', tenant8_production: 'identified_but_checkout_blocked', unknown_and_cross_environment: 'rejected', financial_writes: 0 }, null, 2))
+console.log(JSON.stringify({ matrix: checks.length, sandbox_binding_scope: 'resolved_plan_pending', unbound_and_cross_environment: 'rejected', financial_writes: 0 }, null, 2))

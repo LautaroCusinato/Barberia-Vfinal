@@ -23,10 +23,12 @@ const verifyBlock = providers.slice(verifyStart, verifyEnd)
 assert.ok(verifyBlock.indexOf('const valid =') < verifyBlock.indexOf('await mercadoPagoWebhookIdentity()'))
 assert.match(verifyBlock, /if \(!valid\) return false/)
 
-// Sandbox billing remains restricted to the one technical tenant.
+// Sandbox billing is restricted to the unique active provider/environment
+// binding; no tenant id is an authorization signal.
 assert.match(billingApi, /sandboxOnly = false/)
-assert.match(billingApi, /sandboxOnly && tenantId !== SANDBOX_BILLING\.tenantId/)
-assert.match(billingApi, /checkoutTenant\(admin, userId, \{ tenant_id: requestedTenantId \}, \{ sandboxOnly: true \}\)/)
+assert.match(billingApi, /resolveSandboxScope/)
+assert.doesNotMatch(billingApi, /sandboxOnly && tenantId !== SANDBOX_BILLING\.tenantId/)
+assert.match(billingApi, /checkoutTenant\(admin, userId, requestedTenantId == null \? \{\} : \{ tenant_id: requestedTenantId \}, \{ sandboxOnly: true \}\)/)
 assert.match(billingApi, /checkoutTenant\(admin, userId, body, \{ sandboxOnly: provider === 'mercadopago' \}\)/)
 
 console.log('RC2 hardening checks passed: PII-safe realtime logs, fail-closed provider environment/HMAC y sandbox billing scoped.')
