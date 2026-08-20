@@ -24,7 +24,7 @@ import Billing from './pages/Billing.jsx'
 import TenantSettings from './components/TenantSettings.jsx'
 import WorkspacePreparing from './components/WorkspacePreparing.jsx'
 import { supabase, isSupabaseConfigured as supabaseConfigured } from './lib/supabaseClient'
-import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, generarSlotsDisponibles, parseHabilidades, parseHorarioTexto, siguienteNombreServicio, soloDigitos } from './lib/text'
+import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, generarSlotsDisponibles, parseHabilidades, parseHorarioTexto, siguienteNombreServicio, soloDigitos, turnosSeSuperponen } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
 import { clearWorkspaceTransition } from './lib/workspaceTransition.js'
 import {
@@ -76,7 +76,7 @@ function addCalendarDays(value, offset) {
   return date.toISOString().slice(0, 10)
 }
 
-function demoBookingDate(todayKey, barberos, servicios, bloqueos, timezone) {
+function demoBookingDate(todayKey, barberos, servicios, bloqueos, turnos, timezone) {
   const servicio = servicios.find((item) => item.activo !== false)
   if (!servicio) return todayKey
   const preferredBarber = barberos.find((barbero) => (
@@ -94,7 +94,15 @@ function demoBookingDate(todayKey, barberos, servicios, bloqueos, timezone) {
       15,
       timezone,
     )
-    if (slots.length > 0) return candidate
+    const occupied = (turnos || []).filter((turno) => (
+      turno.fecha === candidate &&
+      String(turno.barbero_id) === String(preferredBarber.id) &&
+      !['no_asistio', 'cancelado'].includes(statusMeta(turno.estado).value)
+    ))
+    const available = slots.filter((slot) => !occupied.some((turno) => (
+      turnosSeSuperponen(slot, duracionServicioBarbero(preferredBarber, servicio, servicio.duracion || 30), turno.hora, turno.duracion || 30)
+    )))
+    if (available.length > 0) return candidate
   }
 
   return todayKey
@@ -183,7 +191,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const todayKey = todayInClinicTZ(zonaHoraria)
   const demoDefaultTurnDate = demoMode && !turnoFechaPrefijada
-    ? demoBookingDate(todayKey, barberos, servicios, bloqueos, zonaHoraria)
+    ? demoBookingDate(todayKey, barberos, servicios, bloqueos, turnos, zonaHoraria)
     : (turnoFechaPrefijada || todayKey)
 
   useEffect(() => {
