@@ -83,12 +83,12 @@
 .booking-progress { margin-top: var(--space-8); padding: var(--space-4); border: 1px solid var(--booking-line); border-radius: 16px; background: var(--booking-surface-muted); }
 .booking-progress ol { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .booking-progress-step { display: grid; justify-items: center; gap: var(--space-1); min-width: 0; color: var(--booking-ink-faint); text-align: center; }
-.booking-progress-step span { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--booking-line); border-radius: 50%; color: var(--booking-ink-soft); background: var(--booking-surface); font-size: .78rem; font-weight: 800; }
+.booking-progress-step > span { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--booking-line); border-radius: 50%; color: var(--booking-ink-soft); background: var(--booking-surface); font-size: .78rem; font-weight: 800; }
 .booking-progress-step small { max-width: 100%; overflow: hidden; color: inherit; font-size: .68rem; font-weight: 700; line-height: 1.15; text-overflow: ellipsis; }
 .booking-progress-short { display: none; }
 .booking-progress-step.current { color: var(--booking-ink); }
-.booking-progress-step.current span,
-.booking-progress-step.complete span { border-color: var(--booking-accent); background: var(--booking-accent); color: var(--booking-accent-foreground); }
+.booking-progress-step.current > span,
+.booking-progress-step.complete > span { border-color: var(--booking-accent); background: var(--booking-accent); color: var(--booking-accent-foreground); }
 .booking-progress-step.complete small { color: var(--booking-accent); }
 .booking-live-region { min-height: 0; margin-top: var(--space-3); color: var(--booking-ink-soft); font-size: .82rem; line-height: 1.4; }
 .booking-live-region.has-message { padding: var(--space-3); border: 1px solid var(--booking-line); border-radius: var(--radius-control); background: var(--booking-surface-muted); }
@@ -216,7 +216,7 @@
   .booking-progress-step small { font-size: .61rem; }
   .booking-progress-short { display: inline; }
   .booking-progress-full { display: none; }
-  .booking-progress-step span { width: 26px; height: 26px; }
+  .booking-progress-step > span { width: 26px; height: 26px; }
   .service-list,
   .professional-list { grid-template-columns: 1fr; }
   .time-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }

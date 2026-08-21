@@ -43,14 +43,14 @@ export default function PasswordRecovery() {
   }
 
   return (
-    <div className="auth-shell">
+    <main className="auth-shell">
       <div className="auth-card fade-in">
         <button className="auth-back" onClick={() => window.location.assign('/')}><ArrowLeft size={15} /> Volver</button>
         <div className="auth-success-icon"><KeyRound size={22} /></div>
         <p className="auth-kicker">Acceso seguro</p>
         <h1 className="auth-title">{recoveryMode ? 'Elegí una contraseña nueva' : 'Recuperar contraseña'}</h1>
         <p className="auth-copy">{recoveryMode ? 'La contraseña se actualiza de forma segura en Supabase.' : 'Te enviaremos un enlace de un solo uso para recuperar tu cuenta.'}</p>
-        {message && <p className="auth-message"><CheckCircle2 size={15} /> {message}</p>}
+        {message && <p className="auth-message" role="status" aria-live="polite"><CheckCircle2 size={15} /> {message}</p>}
         {error && <p className="login-error" role="alert">{error}</p>}
         {recoveryMode ? (
           <form className="auth-form" onSubmit={savePassword}>
@@ -64,6 +64,6 @@ export default function PasswordRecovery() {
           </form>
         )}
       </div>
-    </div>
+    </main>
   )
 }

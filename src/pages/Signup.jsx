@@ -54,7 +54,7 @@ export default function Signup() {
 
   if (created) {
     return (
-      <div className="auth-shell">
+      <main className="auth-shell">
         <div className="auth-card fade-in auth-success-card">
           <div className="auth-success-icon"><CheckCircle2 size={24} /></div>
           <p className="auth-kicker">Cuenta creada</p>
@@ -64,12 +64,12 @@ export default function Signup() {
             Ir a iniciar sesión <ArrowRight size={15} />
           </button>
         </div>
-      </div>
+      </main>
     )
   }
 
   return (
-    <div className="auth-shell">
+    <main className="auth-shell">
       <div className="auth-card fade-in">
         <div className="auth-brand">
           <div className="brand-mark"><Scissors size={19} strokeWidth={2.4} /></div>
@@ -107,6 +107,6 @@ export default function Signup() {
         </form>
         <p className="auth-footer-copy">¿Ya tenés una cuenta? <button className="auth-link" onClick={() => go('/')}>Iniciar sesión</button></p>
       </div>
-    </div>
+    </main>
   )
 }

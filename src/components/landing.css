@@ -279,6 +279,8 @@
   .marketing-brand strong { font-size: 13px; }.marketing-brand small { font-size: 9px; }
   .marketing-hero { padding-top: 46px; }.marketing-hero h1 { font-size: clamp(2.45rem, 13vw, 3.5rem); }.marketing-actions { align-items: stretch; flex-direction: column; }.marketing-actions .marketing-button { width: 100%; }.marketing-trust-row { display: grid; gap: 8px; }
   .marketing-preview { min-height: 330px; }.marketing-management-grid { gap: 8px; }.marketing-management-grid article { min-height: 110px; padding: 11px; }.marketing-management-grid span { font-size: 9px; }.marketing-crm-columns { gap: 5px; }.marketing-crm-columns > div { padding: 7px; }.marketing-crm-columns article { padding: 8px 6px; }.marketing-crm-columns article strong { font-size: 9px; }.marketing-agenda-layout { grid-template-columns: 44px minmax(0, 1fr); gap: 8px; }.marketing-turno { left: 9px; width: calc(100% - 18px); padding: 8px; }.marketing-turno strong { font-size: 10px; }
+  .marketing-product-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+  .marketing-product-tabs button { width: 100%; justify-content: center; padding-inline: 8px; }
   .marketing-steps-grid { grid-template-columns: 1fr; }.marketing-steps-grid article { min-height: 0; }.marketing-plan-card { padding: 19px; }.marketing-plan-card-heading { display: grid; gap: 10px; }.marketing-plan-trial { justify-self: start; }.marketing-plan-price { font-size: 28px; }
 }
 

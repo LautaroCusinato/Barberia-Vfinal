@@ -21,9 +21,10 @@ import { getVerticalProfile, normalizeVertical } from '../lib/tenant'
 import { ProductPreview } from '../components/LandingProductVisual.jsx'
 
 const FALLBACK_PLANS = [
-  { codigo: 'starter', nombre: 'Starter', descripcion: 'Agenda, clientes y reservas online', precio_mensual: 19, moneda: 'USD', trial_dias: 14 },
-  { codigo: 'pro', nombre: 'Pro', descripcion: 'Automatizaciones, WhatsApp y métricas avanzadas', precio_mensual: 39, moneda: 'USD', trial_dias: 14 },
-  { codigo: 'business', nombre: 'Business', descripcion: 'Operación multi-sede y soporte prioritario', precio_mensual: 79, moneda: 'USD', trial_dias: 14 },
+  // Fallback comercial seguro: sólo mostramos el plan y el precio respaldados
+  // por el catálogo vigente. Nunca inventamos tiers o convertimos moneda si
+  // el catálogo público no está disponible.
+  { codigo: 'starter', nombre: 'Starter', descripcion: 'Agenda, clientes y reservas online', precio_mensual: 30000, moneda: 'ARS', trial_dias: 14 },
 ]
 
 const FEATURE_GROUPS = [

@@ -56,7 +56,10 @@ test.describe('experiencia de producto demo', () => {
     await page.goto('/')
     await page.getByRole('link', { name: /ver cómo funciona/i }).click()
     await expect(page).toHaveURL(/\/demo$/)
-    await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible()
+    // The demo shell is a lazy route. Use the same readiness window as the
+    // shared openDemo helper so a cold CI chunk load is not mistaken for a
+    // product failure.
+    await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible({ timeout: 30_000 })
   })
 
   test('DEMO-02 entra sin login', async ({ page }) => {

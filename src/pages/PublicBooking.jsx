@@ -6,7 +6,7 @@ import { Badge, Button, Card, EmptyState, FormField, IconButton, Input, LiveRegi
 import { PREFIJO_AR, soloDigitos } from '../lib/text'
 import './PublicBooking.css'
 
-const STEPS = [{ label: 'Servicio', short: 'Servicio' }, { label: 'Profesional', short: 'Profesional' }, { label: 'Fecha y hora', short: 'Fecha/hora' }, { label: 'Tus datos', short: 'Datos' }, { label: 'Confirmación', short: 'Confirmar' }]
+const STEPS = [{ label: 'Servicio', short: 'Serv.' }, { label: 'Profesional', short: 'Prof.' }, { label: 'Fecha y hora', short: 'Fecha' }, { label: 'Tus datos', short: 'Datos' }, { label: 'Confirmación', short: 'Listo' }]
 const PHONE_HINT = 'Formato: +54 9 11 0000-0000. Completá los 8 dígitos locales.'
 const PHONE_ERROR = 'Ingresá tu número completo: 8 dígitos después de +54 9 11. ' + PHONE_HINT
 const dateKey = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())

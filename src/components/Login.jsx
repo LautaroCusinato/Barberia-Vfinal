@@ -36,7 +36,7 @@ export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME 
   }
 
   return (
-    <div className="login-shell">
+    <main className="login-shell">
       <div className="login-box fade-in">
         <div className="brand" style={{ justifyContent: 'center', marginBottom: 22 }}>
           <div className="brand-mark"><Scissors size={20} strokeWidth={2.4} /></div>
@@ -66,6 +66,6 @@ export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME 
           <button className="btn login-signup-button" onClick={() => window.location.assign('/registro')}><UserPlus size={14} /> Crear una cuenta</button>
         </div>
       </div>
-    </div>
+    </main>
   )
 }
