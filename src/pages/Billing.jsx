@@ -133,6 +133,11 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
     && selectedProvider?.entorno === 'sandbox'
     && portal?.sandbox_checkout_ready === true
     && Boolean(sandboxPublicKey)
+  // A current-plan sandbox rerun is a QA-only server decision. The browser
+  // only renders the control when the backend has already resolved the
+  // tenant binding, project ref and explicit QA flag; it never sends a
+  // bypass, tenant id or environment back to billing-api.
+  const samePlanSandboxE2EReady = sandboxCheckoutReady && portal?.sandbox_e2e_same_plan_ready === true
   const currentAmount = subscription?.precio ?? plan?.precio_mensual
   const currentIsTrial = !subscriptionMissing && subscription?.estado === 'trialing' && Number(currentAmount) === 0
   const currentPrice = currentIsTrial ? 'Sin cargo durante el trial' : formatMoney(currentAmount, subscription?.moneda || plan?.moneda)
@@ -243,6 +248,9 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
         <div className="billing-plans-grid">{catalog.map((item) => {
           const externalPrice = findExternalPrice(item)
           const providerUnavailable = !selectedProvider?.activo && !sandboxCheckoutReady && !productionCheckoutReady
+          const isCurrentPlan = item.codigo === subscription?.plan_codigo
+          const itemSandboxCheckoutReady = sandboxCheckoutReady && (!isCurrentPlan || samePlanSandboxE2EReady)
+          const itemCheckoutReady = productionCheckoutReady || itemSandboxCheckoutReady
           const basePrice = formatMoney(item.precio_mensual, item.moneda)
           const displayPrice = externalPrice ? formatMoney(externalPrice.importe, externalPrice.moneda) : basePrice
           const priceMeta = externalPrice
@@ -254,8 +262,8 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
             <p className={`billing-plan-price ${externalPrice ? '' : 'billing-plan-price--reference'}`}>{displayPrice} <small>{priceMeta}</small></p>
             {!externalPrice && <p className="billing-plan-unavailable">Referencia informativa: no hay un precio externo habilitado para {PROVIDER_LABELS[provider] || provider}.</p>}
             <ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul>
-            <button className="btn btn-primary billing-plan-action" disabled={saving || (item.codigo === subscription?.plan_codigo && !demoMode) || (!demoMode && (!externalPrice || providerUnavailable))} onClick={() => { if (demoMode) startCheckout(item.codigo); else if (productionCheckoutReady || sandboxCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{demoMode ? 'Empezar prueba gratuita' : item.codigo === subscription?.plan_codigo ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : sandboxCheckoutReady ? 'Continuar con tarjeta TEST' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
-            {(productionCheckoutReady || sandboxCheckoutReady) && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={sandboxCheckoutReady ? sandboxPublicKey : import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} environment={sandboxCheckoutReady ? 'sandbox' : 'production'} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitSubscription(item.codigo, token, sandboxCheckoutReady ? 'sandbox' : 'production')} /></Suspense>}
+            <button className="btn btn-primary billing-plan-action" disabled={saving || (isCurrentPlan && !demoMode && !samePlanSandboxE2EReady) || (!demoMode && (!externalPrice || providerUnavailable))} onClick={() => { if (demoMode) startCheckout(item.codigo); else if (itemCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{demoMode ? 'Empezar prueba gratuita' : isCurrentPlan && !samePlanSandboxE2EReady ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : itemSandboxCheckoutReady ? 'Continuar con tarjeta TEST' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
+            {itemCheckoutReady && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={sandboxCheckoutReady ? sandboxPublicKey : import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} environment={sandboxCheckoutReady ? 'sandbox' : 'production'} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitSubscription(item.codigo, token, sandboxCheckoutReady ? 'sandbox' : 'production')} /></Suspense>}
           </article>
         })}</div>
       </section>

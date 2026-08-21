@@ -623,6 +623,31 @@ export async function mercadoPagoPreapprovalDetails(preapprovalId: string) {
 }
 
 /**
+ * Cancel a Mercado Pago preapproval only inside the explicitly sandbox
+ * binding-aware QA flow. Production is deliberately rejected before any
+ * provider mutation. The response is read back from Mercado Pago so callers
+ * never treat an accepted PUT as proof of cancellation by itself.
+ */
+export async function mercadoPagoCancelSubscription(preapprovalId: string, environment: MercadoPagoEnvironment = 'sandbox') {
+  if (environment !== 'sandbox') throw new ProviderError('La cancelación automática sólo está habilitada para QA sandbox.', 403, 'sandbox_cancellation_only')
+  const normalizedId = String(preapprovalId || '').trim()
+  if (!/^[A-Za-z0-9_-]{8,120}$/.test(normalizedId)) throw new ProviderError('Suscripción sandbox inválida.', 422, 'invalid_sandbox_preapproval')
+  const token = configuredMercadoPagoAccessToken({ allowProduction: false, environment: 'sandbox' })
+  const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
+  const response = await fetch(`${base}/preapproval/${encodeURIComponent(normalizedId)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'canceled' }),
+  })
+  await responseJson(response, 'Mercado Pago')
+  const details = await mercadoPagoPreapprovalDetails(normalizedId)
+  if (!['canceled', 'cancelled'].includes(String(details.status || '').toLowerCase())) {
+    throw new ProviderError('Mercado Pago no confirmó la cancelación sandbox.', 409, 'sandbox_cancellation_unconfirmed')
+  }
+  return { ...details, status: 'canceled' as const }
+}
+
+/**
  * Validate the configured credential against Mercado Pago itself.  No token
  * value is ever returned, logged, or included in an error.  The exact seller
  * allow-list is only active while the environment is explicitly sandbox.

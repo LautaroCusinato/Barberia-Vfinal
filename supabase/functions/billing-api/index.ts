@@ -1,7 +1,7 @@
 import { adminClient, authenticate, ownerTenant, platformRole, requestClient } from '../_shared/supabase.ts'
 import { corsHeaders, errorJson, json, readJson, requestId } from '../_shared/http.ts'
 import { resolveTenantBillingBinding } from '../_shared/billing-context.ts'
-import { EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCreateProductionPlan, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionPlanDetails, mercadoPagoProductionPlanSearch, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, mercadoPagoSubscription, normalizeStatus, paypal, paypalExternalStatus, productionFinancialActivation, productionTechnicalReadiness, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
+import { EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID, EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, mercadoPago, mercadoPagoCancelSubscription, mercadoPagoCreateProductionPlan, mercadoPagoCredentialStatus, mercadoPagoCurrentUser, mercadoPagoExternalStatus, mercadoPagoPlanDetails, mercadoPagoPreapprovalDetails, mercadoPagoPreapprovalSearch, mercadoPagoProductionIdentity, mercadoPagoProductionPlanDetails, mercadoPagoProductionPlanSearch, mercadoPagoProductionReadiness, mercadoPagoProductionSubscription, mercadoPagoSubscription, normalizeStatus, paypal, paypalExternalStatus, productionFinancialActivation, productionTechnicalReadiness, providerConfigured, syncMercadoPagoPlan, syncPayPalPlan } from '../_shared/providers.ts'
 
 const PROVIDERS = new Set(['mercadopago', 'paypal'])
 const SANDBOX_BILLING = Object.freeze({
@@ -27,6 +27,26 @@ const PRODUCTION_PILOT = Object.freeze({
   slug: 'austral-billing-pilot',
   name: 'Austral Billing Pilot',
 })
+
+const QA_SUPABASE_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
+const PRODUCTION_SUPABASE_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
+
+/**
+ * QA-only authorization for re-running the same internal plan in the
+ * sandbox. This is intentionally server-side and fail-closed: the browser
+ * cannot choose the tenant, environment, or bypass flag. Production never
+ * satisfies this predicate, even if an operator accidentally copies a flag.
+ */
+function qaSandboxE2EEnabled(tenantId: number) {
+  const projectRef = String(Deno.env.get('SUPABASE_URL') || '').match(/https?:\/\/([a-z0-9]+)\.supabase\.co/i)?.[1]?.toLowerCase() || ''
+  const configuredTenant = Number(Deno.env.get('BILLING_QA_E2E_TENANT_ID'))
+  return Deno.env.get('BILLING_QA_E2E_ENABLED') === '1'
+    && Deno.env.get('BILLING_ENVIRONMENT') === 'qa'
+    && projectRef === QA_SUPABASE_PROJECT_REF
+    && projectRef !== PRODUCTION_SUPABASE_PROJECT_REF
+    && Number.isSafeInteger(configuredTenant)
+    && configuredTenant === tenantId
+}
 
 function normalizeCountryCode(value: unknown) {
   const raw = String(value || '').trim().toUpperCase()
@@ -106,7 +126,7 @@ async function resolveSandboxScope(admin: ReturnType<typeof adminClient>, userId
 async function resolveInternalSubscription(admin: ReturnType<typeof adminClient>, tenantId: number, environment: 'sandbox' | 'production') {
   const { data: subscription, error: subscriptionError } = await admin
     .from('saas_suscripciones')
-    .select('id, provider_subscription_id')
+    .select('id, provider_subscription_id, plan_codigo, estado')
     .eq('barberia_id', tenantId)
     .maybeSingle()
   if (subscriptionError || !subscription?.id) throw Object.assign(new Error('No se encontró la suscripción interna.'), { status: 502, code: 'subscription_registration_failed' })
@@ -302,10 +322,15 @@ async function sandboxSubscription(request: Request, admin: ReturnType<typeof ad
   const payerEmail = String(Deno.env.get('MERCADOPAGO_SANDBOX_PAYER_EMAIL') || '').trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) throw Object.assign(new Error('El email de facturación sandbox no es válido.'), { status: 422, code: 'billing_email_invalid' })
 
+  // Apply the same-plan gate before consulting idempotency records. A stale
+  // attempt must never become an accidental bypass of the normal protection.
+  const subscription = await resolveInternalSubscription(admin, tenantId, 'sandbox')
+  if (subscription.plan_codigo === planCode && !qaSandboxE2EEnabled(tenantId)) {
+    throw Object.assign(new Error('El checkout del mismo plan permanece bloqueado fuera del E2E QA sandbox autorizado.'), { status: 409, code: 'same_plan_checkout_blocked' })
+  }
   const { data: existing } = await admin.from('saas_billing_checkout_attempts').select('id, estado, external_checkout_id, checkout_url, metadata').eq('barberia_id', tenantId).eq('idempotency_key', idempotencyKey).maybeSingle()
   if (existing?.external_checkout_id) return json({ status: 'verifying', environment: 'sandbox', checkout_attempt_id: existing.id, external_subscription_id: existing.external_checkout_id, checkout_url: existing.checkout_url || null, activation: 'webhook_pending', idempotent: true })
 
-  const subscription = await resolveInternalSubscription(admin, tenantId, 'sandbox')
   const { data: intent, error: intentError } = await requestClient(request).rpc('create_billing_checkout_intent_with_price', { p_barberia_id: tenantId, p_plan_codigo: planCode, p_proveedor_codigo: 'mercadopago', p_precio_id: externalPrice.id, p_idempotency_key: idempotencyKey })
   if (intentError || !intent?.checkout_attempt_id) throw Object.assign(new Error('No se pudo preparar el intento de suscripción sandbox.'), { status: 502, code: 'subscription_intent_failed' })
   const attemptId = Number(intent.checkout_attempt_id)
@@ -336,6 +361,116 @@ async function subscription(request: Request, admin: ReturnType<typeof adminClie
   if (!environment) throw Object.assign(new Error('El tenant no tiene un binding activo de Mercado Pago.'), { status: 409, code: 'billing_binding_not_configured' })
   if (environment === 'sandbox') return await sandboxSubscription(request, admin, userId, body)
   return await productionSubscription(request, admin, userId, body)
+}
+
+/**
+ * Cancel the single sandbox subscription created by the QA financial E2E.
+ * Tenant ownership, binding identity and provider state are all resolved on
+ * the server. No external ID or environment supplied by the browser is ever
+ * trusted. Production cancellation is rejected before a provider call.
+ */
+async function cancelSandboxSubscription(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
+  const forbiddenFields = ['tenant_id', 'environment', 'external_preapproval_id', 'preapproval_id', 'external_subscription_id', 'provider_subscription_id']
+  if (forbiddenFields.some((field) => Object.prototype.hasOwnProperty.call(body, field))) {
+    throw Object.assign(new Error('El tenant, entorno y suscripción se resuelven exclusivamente en backend.'), { status: 422, code: 'client_billing_context_forbidden' })
+  }
+
+  const { data: memberships, error: membershipError } = await admin
+    .from('barberia_members')
+    .select('barberia_id, role')
+    .eq('user_id', userId)
+    .in('role', ['owner', 'admin'])
+  if (membershipError) throw Object.assign(new Error('No se pudo resolver el tenant del usuario.'), { status: 502, code: 'tenant_lookup_failed' })
+  const tenantIds = [...new Set((memberships || []).map((row) => Number(row.barberia_id)).filter((id) => Number.isSafeInteger(id) && id > 0))]
+  if (tenantIds.length !== 1) throw Object.assign(new Error('La cancelación sandbox requiere un único tenant owner/admin.'), { status: tenantIds.length ? 409 : 403, code: tenantIds.length ? 'tenant_selection_required' : 'owner_admin_required' })
+  const tenantId = tenantIds[0]
+  if (!qaSandboxE2EEnabled(tenantId)) throw Object.assign(new Error('La cancelación sandbox sólo está habilitada para el tenant QA autorizado.'), { status: 403, code: 'sandbox_cancellation_not_authorized' })
+
+  const binding = await resolveTenantBillingBinding(admin, tenantId, 'mercadopago', 'sandbox')
+  if (!binding.activo || binding.entorno !== 'sandbox' || binding.proveedor_codigo !== 'mercadopago') throw Object.assign(new Error('El tenant no tiene un binding Mercado Pago sandbox válido.'), { status: 409, code: 'sandbox_binding_invalid' })
+  if (binding.external_seller_id !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID || binding.external_application_id !== EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID || !binding.external_plan_id) {
+    throw Object.assign(new Error('La identidad del binding sandbox no coincide con el contrato QA.'), { status: 409, code: 'sandbox_binding_identity_mismatch' })
+  }
+
+  const { data: subscription, error: subscriptionError } = await admin
+    .from('saas_suscripciones')
+    .select('id, barberia_id, plan_codigo, estado, provider_subscription_id')
+    .eq('barberia_id', tenantId)
+    .maybeSingle()
+  if (subscriptionError || !subscription?.id) throw Object.assign(new Error('No se encontró la suscripción interna QA.'), { status: 409, code: 'sandbox_subscription_missing' })
+
+  const { data: external, error: externalError } = await admin
+    .from('saas_suscripciones_externas')
+    .select('id, suscripcion_id, barberia_id, proveedor_codigo, external_subscription_id, external_plan_id, estado_externo, metadata')
+    .eq('suscripcion_id', subscription.id)
+    .eq('barberia_id', tenantId)
+    .eq('proveedor_codigo', 'mercadopago')
+    .maybeSingle()
+  if (externalError || !external?.external_subscription_id) throw Object.assign(new Error('No existe una suscripción sandbox externa vinculada para cancelar.'), { status: 409, code: 'sandbox_external_subscription_missing' })
+  const metadata = external.metadata && typeof external.metadata === 'object' ? external.metadata as Record<string, unknown> : {}
+  if (metadata.environment !== 'sandbox' || external.external_plan_id !== binding.external_plan_id || external.barberia_id !== tenantId || external.suscripcion_id !== subscription.id) {
+    throw Object.assign(new Error('La suscripción externa no coincide con el binding sandbox del tenant.'), { status: 409, code: 'sandbox_external_subscription_mismatch' })
+  }
+
+  const externalId = String(external.external_subscription_id)
+  const [providerDetails, planDetails] = await Promise.all([
+    mercadoPagoPreapprovalDetails(externalId),
+    mercadoPagoPlanDetails(String(binding.external_plan_id)),
+  ])
+  if (providerDetails.id !== externalId
+    || providerDetails.collectorId !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
+    || providerDetails.applicationId !== EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID
+    || providerDetails.planId !== binding.external_plan_id
+    || providerDetails.amount !== 15000
+    || providerDetails.currency !== 'ARS'
+    || providerDetails.frequency !== 1
+    || providerDetails.frequencyType !== 'months'
+    || planDetails.collectorId !== EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID
+    || planDetails.applicationId !== EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID
+    || planDetails.id !== binding.external_plan_id) {
+    throw Object.assign(new Error('La suscripción sandbox no supera la verificación autoritativa de identidad.'), { status: 409, code: 'sandbox_external_identity_mismatch' })
+  }
+
+  const alreadyCanceled = ['canceled', 'cancelled'].includes(String(providerDetails.status || '').toLowerCase())
+  const canceled = alreadyCanceled
+    ? { ...providerDetails, status: 'canceled' as const }
+    : await mercadoPagoCancelSubscription(externalId, 'sandbox')
+  const providerEventId = `qa-sandbox-cancel:${externalId}`
+  const now = new Date().toISOString()
+  const { data: transition, error: transitionError } = await admin.rpc('transition_saas_subscription', {
+    p_subscription_id: subscription.id,
+    p_to_state: 'canceled',
+    p_reason: 'sandbox_e2e_cancel',
+    p_source: 'provider',
+    p_provider_event_id: providerEventId,
+    p_provider_event_at: canceled.lastModified || now,
+  })
+  if (transitionError) throw Object.assign(new Error('No se pudo actualizar el estado interno de cancelación sandbox.'), { status: 502, code: 'sandbox_cancellation_transition_failed' })
+  const mergedMetadata = { ...metadata, environment: 'sandbox', source: 'sandbox_e2e_cancel', cancellation_verified_at: now, provider_status: canceled.status }
+  const { error: externalUpdateError } = await admin.from('saas_suscripciones_externas').update({ estado_externo: 'canceled', cancel_at_period_end: false, last_synced_at: now, metadata: mergedMetadata }).eq('id', external.id).eq('barberia_id', tenantId).eq('suscripcion_id', subscription.id)
+  if (externalUpdateError) throw Object.assign(new Error('No se pudo registrar la cancelación externa sandbox.'), { status: 502, code: 'sandbox_cancellation_persist_failed' })
+  const { error: auditError } = await admin.from('saas_billing_events').upsert({
+    event_name: 'subscription.sandbox_canceled',
+    barberia_id: tenantId,
+    suscripcion_id: subscription.id,
+    dedupe_key: `qa-sandbox-cancel:${externalId}`,
+    payload: { environment: 'sandbox', provider: 'mercadopago', tenant_id: tenantId, subscription_id: subscription.id, external_subscription_id: externalId, external_plan_id: binding.external_plan_id, collector_id: EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID, application_id: EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID, status: 'canceled', idempotent: alreadyCanceled || Boolean(transition?.idempotent) },
+  }, { onConflict: 'dedupe_key' })
+  if (auditError) throw Object.assign(new Error('La cancelación sandbox terminó sin auditoría completa.'), { status: 502, code: 'sandbox_cancellation_audit_failed' })
+
+  return json({
+    environment: 'sandbox',
+    tenant_id: tenantId,
+    subscription_id: subscription.id,
+    external_subscription_id: externalId,
+    status: 'canceled',
+    provider_status: canceled.status,
+    seller_id: EXPECTED_MERCADO_PAGO_SANDBOX_SELLER_ID,
+    application_id: EXPECTED_MERCADO_PAGO_SANDBOX_APPLICATION_ID,
+    external_plan_id: binding.external_plan_id,
+    idempotent: alreadyCanceled || Boolean(transition?.idempotent),
+    audit_dedupe_key: `qa-sandbox-cancel:${externalId}`,
+  })
 }
 
 async function syncPlans(request: Request, admin: ReturnType<typeof adminClient>, userId: string, body: Record<string, unknown>) {
@@ -1055,6 +1190,9 @@ Deno.serve(async (request) => {
           && binding.price?.periodicidad === 'monthly'
           && binding.price?.habilitado === true
           && sandboxConfig.configured
+        const sandboxE2ESamePlanReady = sandboxCheckoutReady
+          && qaSandboxE2EEnabled(tenantId)
+          && String(data?.subscription?.plan_codigo || '').trim().toLowerCase() === SANDBOX_BILLING.planCode
         const productionReadiness = resolvedEnvironment === 'production'
           ? productionFinancialActivation({ tenantId, externalPlanId: binding.external_plan_id, multiEnvironmentVerified: true })
           : null
@@ -1063,9 +1201,9 @@ Deno.serve(async (request) => {
             ? { ...item, entorno: resolvedEnvironment, sandbox_checkout_ready: sandboxCheckoutReady, production_checkout_ready: Boolean(productionReadiness?.ready) }
             : item)
           : data?.providers
-        return json({ ...data, providers, billing_environment: resolvedEnvironment, sandbox_checkout_ready: sandboxCheckoutReady, production_checkout_ready: Boolean(productionReadiness?.ready) })
+        return json({ ...data, providers, billing_environment: resolvedEnvironment, sandbox_checkout_ready: sandboxCheckoutReady, sandbox_e2e_same_plan_ready: sandboxE2ESamePlanReady, production_checkout_ready: Boolean(productionReadiness?.ready) })
       }
-      return json({ ...data, sandbox_checkout_ready: false, production_checkout_ready: false })
+      return json({ ...data, sandbox_checkout_ready: false, sandbox_e2e_same_plan_ready: false, production_checkout_ready: false })
     }
     if (request.method === 'GET' && route === 'config-status') return await configurationStatus(admin, user.id)
     if (request.method === 'GET' && route === 'verify-production-provider-identity') return await verifyProductionProviderIdentity(admin, user.id)
@@ -1074,6 +1212,7 @@ Deno.serve(async (request) => {
     if (request.method === 'POST' && route === 'prepare-production-pilot') return await prepareProductionPilot(admin, user.id, body)
     if (request.method === 'POST' && route === 'checkout') return await checkout(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'subscription') return await subscription(request, admin, user.id, body)
+    if (request.method === 'POST' && route === 'cancel') return await cancelSandboxSubscription(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'external-status') return await externalStatus(admin, user.id, body)
     if (request.method === 'POST' && route === 'sync-plans') return await syncPlans(request, admin, user.id, body)
     if (request.method === 'POST' && route === 'reconcile-sandbox') return await reconcileSandboxPreapproval(request, admin, user.id, body)
