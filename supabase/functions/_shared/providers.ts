@@ -423,9 +423,10 @@ export async function syncMercadoPagoPlan(input: { name: string; description?: s
 }
 
 /** Read-only ownership/configuration check for the isolated sandbox plan. */
-export async function mercadoPagoPlanDetails(externalPlanId: string) {
+export async function mercadoPagoPlanDetails(externalPlanId: string, environment: MercadoPagoEnvironment = 'sandbox') {
+  if (environment !== 'sandbox') throw new ProviderError('La verificación de plan de este flujo sólo admite sandbox.', 403, 'sandbox_plan_only')
   await mercadoPagoSandboxIdentity()
-  const token = mercadoPagoAccessToken()
+  const token = configuredMercadoPagoAccessToken({ allowProduction: false, environment: 'sandbox' })
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const body = await responseJson(await fetch(`${base}/preapproval_plan/${encodeURIComponent(externalPlanId)}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
   return {
@@ -599,8 +600,9 @@ export async function mercadoPagoPreapprovalSearch(planId?: string | null) {
 }
 
 /** Read-only detail lookup for a preapproval returned by the seller search. */
-export async function mercadoPagoPreapprovalDetails(preapprovalId: string) {
-  const token = mercadoPagoAccessToken()
+export async function mercadoPagoPreapprovalDetails(preapprovalId: string, environment: MercadoPagoEnvironment = 'sandbox') {
+  if (environment !== 'sandbox') throw new ProviderError('La verificación de suscripción de este flujo sólo admite sandbox.', 403, 'sandbox_subscription_only')
+  const token = configuredMercadoPagoAccessToken({ allowProduction: false, environment: 'sandbox' })
   const base = (Deno.env.get('MERCADOPAGO_API_BASE_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
   const body = await responseJson(await fetch(`${base}/preapproval/${encodeURIComponent(preapprovalId)}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }), 'Mercado Pago')
   return {
@@ -640,7 +642,7 @@ export async function mercadoPagoCancelSubscription(preapprovalId: string, envir
     body: JSON.stringify({ status: 'canceled' }),
   })
   await responseJson(response, 'Mercado Pago')
-  const details = await mercadoPagoPreapprovalDetails(normalizedId)
+  const details = await mercadoPagoPreapprovalDetails(normalizedId, 'sandbox')
   if (!['canceled', 'cancelled'].includes(String(details.status || '').toLowerCase())) {
     throw new ProviderError('Mercado Pago no confirmó la cancelación sandbox.', 409, 'sandbox_cancellation_unconfirmed')
   }
