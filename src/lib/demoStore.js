@@ -1,18 +1,22 @@
 const SESSION_KEY = 'austral-demo-session-v2'
 const SNAPSHOT_PREFIX = 'austral-demo-snapshot-v2:'
 const DEMO_TTL_MS = 8 * 60 * 60 * 1000
+const DEMO_TIMEZONE = 'America/Argentina/Buenos_Aires'
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
-function dateKey(date) {
-  return date.toISOString().slice(0, 10)
+function dateKey(date, timezone = DEMO_TIMEZONE) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(date)
 }
 
 function dateOffset(offset) {
-  const date = new Date()
-  date.setHours(12, 0, 0, 0)
-  date.setDate(date.getDate() + offset)
-  return dateKey(date)
+  // Keep demo fixtures aligned with the clinic calendar used by the app.
+  // Using the runner's local timezone here made the "today" fixture drift by
+  // one day when CI ran in UTC while the demo business runs in Argentina.
+  const today = dateKey(new Date())
+  const date = new Date(`${today}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + offset)
+  return date.toISOString().slice(0, 10)
 }
 
 function makeSeed() {
