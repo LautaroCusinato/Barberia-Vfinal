@@ -60,6 +60,7 @@ assert.match(billingPage, /VITE_MERCADOPAGO_SANDBOX_PUBLIC_KEY/)
 assert.match(billingPage, /sandboxCheckoutReady/)
 assert.match(billingPage, /Continuar con tarjeta TEST/)
 assert.match(cardForm, /environment = 'production'/)
+for (const field of ['card-number', 'expiration', 'security-code']) assert.match(cardForm, new RegExp(`formId\\}-${field}.*billing-card-secure-field`), `secure field ${field} debe usar contenedor compatible con Mercado Pago.js`)
 assert.doesNotMatch(billingPage, /sandbox.*tenant_id\s*:/i)
 
 const bindings = [

@@ -103,9 +103,9 @@ export default function MercadoPagoCardTokenForm({ publicKey, amount, currency =
     <form id={formId} className="billing-card-form" onSubmit={(event) => event.preventDefault()} aria-describedby={`${formId}-help`}>
       <p id={`${formId}-help`} className="billing-helper">Datos protegidos por Mercado Pago. Austral recibe únicamente un token de un solo uso.</p>
       <div className="billing-card-grid">
-        <label htmlFor={`${formId}-card-number`}>Número de tarjeta<input id={`${formId}-card-number`} autoComplete="cc-number" inputMode="numeric" /></label>
-        <label htmlFor={`${formId}-expiration`}>Vencimiento<input id={`${formId}-expiration`} autoComplete="cc-exp" inputMode="numeric" /></label>
-        <label htmlFor={`${formId}-security-code`}>Código de seguridad<input id={`${formId}-security-code`} autoComplete="cc-csc" inputMode="numeric" /></label>
+        <label htmlFor={`${formId}-card-number`}><span>Número de tarjeta</span><div id={`${formId}-card-number`} className="billing-card-secure-field" role="group" aria-label="Número de tarjeta" /></label>
+        <label htmlFor={`${formId}-expiration`}><span>Vencimiento</span><div id={`${formId}-expiration`} className="billing-card-secure-field" role="group" aria-label="Vencimiento" /></label>
+        <label htmlFor={`${formId}-security-code`}><span>Código de seguridad</span><div id={`${formId}-security-code`} className="billing-card-secure-field" role="group" aria-label="Código de seguridad" /></label>
         <label htmlFor={`${formId}-cardholder`}>Titular<input id={`${formId}-cardholder`} autoComplete="cc-name" /></label>
         <label htmlFor={`${formId}-email`}>Email de facturación<input id={`${formId}-email`} defaultValue={email} autoComplete="email" type="email" /></label>
         <label htmlFor={`${formId}-identification-type`}>Documento<select id={`${formId}-identification-type`} defaultValue=""><option value="" disabled>Tipo</option></select></label>
