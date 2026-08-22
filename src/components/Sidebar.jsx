@@ -26,7 +26,7 @@ const GROUPS = [
 const TABBAR_PRINCIPAL = ['resumen', 'agenda', 'mensajes', 'pacientes']
 const TABBAR_MAS = ITEMS.filter((i) => !TABBAR_PRINCIPAL.includes(i.id))
 
-export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, botActivo, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onOpenBilling, onLogout, onAccountSecurity, branding, demoMode = false }) {
+export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onOpenBilling, onLogout, onAccountSecurity, branding, demoMode = false }) {
   const isDark = theme === 'dark'
   const whatsappConfigured = Boolean(whatsappStatus.configured)
   const whatsappConnected = Boolean(whatsappStatus.connected)
@@ -55,7 +55,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
     : billingUnavailable
       ? 'No pudimos verificar el plan'
       : whatsappReady
-        ? 'Conectado a WhatsApp vía n8n'
+        ? 'Conectado y listo para validar'
           : whatsappConfigured
             ? 'La integración necesita atención'
             : 'Integración todavía no configurada'
@@ -123,14 +123,12 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
 
         <div className="sidebar-footer">
           <div className={`sidebar-whatsapp-status whatsapp-state-${whatsappState}`} aria-label="Estado de WhatsApp">
-            <button className="theme-toggle" type="button" aria-pressed={botActivo} onClick={onToggleBot} aria-describedby="whatsapp-status" aria-label={whatsappReady ? 'Activar o desactivar bot de WhatsApp' : whatsappLabel}>
+            <button className="theme-toggle" type="button" aria-describedby="whatsapp-status" onClick={onToggleBot} aria-label="Abrir configuración de WhatsApp">
               <span className="theme-toggle-label">
                 <Bot size={14} />
                 {whatsappLabel}
               </span>
-              <span className={`theme-switch ${botActivo ? 'on' : ''}`}>
-                <span className="theme-switch-knob" />
-              </span>
+              <Settings2 size={14} aria-hidden="true" />
             </button>
             <div className="sidebar-status">
               <span className={`live-dot ${whatsappReady ? '' : 'is-offline'}`} />

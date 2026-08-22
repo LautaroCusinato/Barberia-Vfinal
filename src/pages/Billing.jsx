@@ -3,6 +3,7 @@ import { CheckCircle2, CreditCard, ExternalLink, LoaderCircle, ShieldCheck } fro
 import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabaseClient'
 import { classifyBillingFailure } from '../lib/runtimeStability.js'
 import { getBillingReturnState } from '../lib/billingReturnState.js'
+import { COMMERCIAL_CATALOG, catalogPlan } from '../lib/commercialCatalog.js'
 
 const MercadoPagoCardTokenForm = lazy(() => import('../components/billing/MercadoPagoCardTokenForm.jsx'))
 
@@ -32,7 +33,7 @@ const DEMO_PORTAL = {
   production_checkout_ready: false,
 }
 
-const DEMO_CATALOG = [{ codigo: 'starter', nombre: 'Starter', descripcion: 'La base para ordenar turnos, equipo y clientes.', precio_mensual: 30000, moneda: 'ARS', periodicidad: 'monthly', limites: { empleados: 'Equipo completo', reservas: 'Reservas online', whatsapp: 'Preparado para conectar' }, precios_externos: [] }]
+const DEMO_CATALOG = COMMERCIAL_CATALOG.map((plan) => ({ ...plan, limites: { funciones: plan.funcionalidades.join(' · ') }, precios_externos: [] }))
 
 function statusLabel(value) {
   return STATUS_LABELS[value] || value || 'Sin estado'
@@ -116,14 +117,16 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
       setError('No se pudo consultar facturación en este momento. Intentá nuevamente en unos segundos.')
     }
     setPortal(portalResult.status === 'fulfilled' ? portalResult.value : null)
-    setCatalog(catalogResult.status === 'fulfilled' && Array.isArray(catalogResult.value.data) ? catalogResult.value.data : [])
+    // El catálogo comercial canónico se mantiene en el frontend mientras el
+    // proveedor de pagos está pausado. No mostrar precios stale del RPC.
+    setCatalog(COMMERCIAL_CATALOG.map((plan) => ({ ...plan, limites: { funciones: plan.funcionalidades.join(' · ') }, precios_externos: [] })))
     setLoading(false)
   }, [demoMode])
 
   useEffect(() => { load() }, [load])
 
   const subscription = portal?.subscription
-  const plan = subscription?.plan
+  const plan = subscription?.plan_codigo ? { ...(subscription.plan || {}), ...catalogPlan(subscription.plan_codigo) } : subscription?.plan
   const providers = useMemo(() => portal?.providers || [], [portal])
   const displayProviders = providers.length ? providers : (subscriptionMissing ? [{ codigo: provider, nombre: PROVIDER_LABELS[provider] || provider, activo: false, unavailable: true }] : [])
   const selectedProvider = displayProviders.find((item) => item.codigo === provider)
@@ -138,9 +141,9 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
   // tenant binding, project ref and explicit QA flag; it never sends a
   // bypass, tenant id or environment back to billing-api.
   const samePlanSandboxE2EReady = sandboxCheckoutReady && portal?.sandbox_e2e_same_plan_ready === true
-  const currentAmount = subscription?.precio ?? plan?.precio_mensual
+  const currentAmount = plan?.precio_mensual ?? subscription?.precio
   const currentIsTrial = !subscriptionMissing && subscription?.estado === 'trialing' && Number(currentAmount) === 0
-  const currentPrice = currentIsTrial ? 'Sin cargo durante el trial' : formatMoney(currentAmount, subscription?.moneda || plan?.moneda)
+  const currentPrice = currentIsTrial ? 'Sin cargo durante el trial' : formatMoney(currentAmount, plan?.moneda || 'ARS')
   const tenantCountry = normalizeCountryCode(portal?.tenant?.pais)
   const findExternalPrice = (item) => {
     const prices = (item?.precios_externos || []).filter((price) => price.proveedor_codigo === provider && price.activo !== false && price.habilitado !== false && (!selectedProvider?.entorno || price.entorno === selectedProvider.entorno))
@@ -255,7 +258,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
           const displayPrice = externalPrice ? formatMoney(externalPrice.importe, externalPrice.moneda) : basePrice
           const priceMeta = externalPrice
             ? `/ ${externalPrice.periodicidad === 'yearly' ? 'año' : 'mes'} · ${externalPrice.pais_codigo}`
-            : `/ ${item.periodicidad === 'yearly' ? 'año' : 'mes'} · referencia base ${item.moneda || 'USD'}`
+            : `/ ${item.periodicidad === 'yearly' ? 'año' : 'mes'} · referencia base ${item.moneda || 'ARS'}`
           return <article className={`billing-plan ${item.codigo === subscription?.plan_codigo ? 'current' : ''}`} key={item.codigo}>
             <div className="billing-plan-heading"><h3>{item.nombre}</h3>{item.codigo === subscription?.plan_codigo && <span className="status-pill">Actual</span>}</div>
             <p className="billing-plan-description">{item.descripcion}</p>

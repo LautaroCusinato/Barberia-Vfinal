@@ -15,17 +15,10 @@ import {
   Sun,
   UsersRound,
 } from 'lucide-react'
-import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { getLocale, t } from '../lib/i18n'
 import { getVerticalProfile, normalizeVertical } from '../lib/tenant'
 import { ProductPreview } from '../components/LandingProductVisual.jsx'
-
-const FALLBACK_PLANS = [
-  // Fallback comercial seguro: sólo mostramos el plan y el precio respaldados
-  // por el catálogo vigente. Nunca inventamos tiers o convertimos moneda si
-  // el catálogo público no está disponible.
-  { codigo: 'starter', nombre: 'Starter', descripcion: 'Agenda, clientes y reservas online', precio_mensual: 30000, moneda: 'ARS', trial_dias: 14 },
-]
+import { COMMERCIAL_CATALOG, getSalesWhatsAppHref } from '../lib/commercialCatalog'
 
 const FEATURE_GROUPS = [
   {
@@ -102,7 +95,7 @@ function planFeatures(plan) {
 function formatPlanPrice(plan, locale) {
   const amount = Number(plan.precio_mensual)
   if (!Number.isFinite(amount) || amount === 0) return 'Personalizado'
-  const currency = String(plan.moneda || 'USD').toUpperCase()
+  const currency = String(plan.moneda || 'ARS').toUpperCase()
   return `${currency} ${amount.toLocaleString(locale, { maximumFractionDigits: 2 })}`
 }
 
@@ -110,7 +103,7 @@ export default function Landing({ vertical = 'custom' }) {
   const locale = getLocale()
   const normalizedVertical = normalizeVertical(vertical)
   const profile = useMemo(() => getVerticalProfile(normalizedVertical), [normalizedVertical])
-  const [plans, setPlans] = useState(FALLBACK_PLANS)
+  const [plans] = useState(COMMERCIAL_CATALOG)
   const [theme, setTheme] = useState(() => {
     try {
       const saved = localStorage.getItem('austral-public-theme')
@@ -118,13 +111,6 @@ export default function Landing({ vertical = 'custom' }) {
     } catch { /* storage is optional */ }
     return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) return undefined
-    let active = true
-    supabase.rpc('get_public_saas_catalog').then(({ data }) => { if (active && Array.isArray(data) && data.length) setPlans(data) })
-    return () => { active = false }
-  }, [])
 
   useEffect(() => {
     const previousTheme = document.documentElement.getAttribute('data-theme')
@@ -176,7 +162,7 @@ export default function Landing({ vertical = 'custom' }) {
 
       <section className="marketing-section marketing-crm-section"><div className="marketing-container marketing-product-story reverse"><ProductPreview mode="crm" /><div className="marketing-product-story-copy"><span className="marketing-kicker">Seguimiento comercial</span><h2>Cuando el negocio crece, también necesitás ordenar las oportunidades.</h2><p>El CRM de plataforma organiza negocios, leads, etapas y próximas acciones sin mezclarlo con la operación de cada tenant.</p></div></div></section>
 
-      <section id="planes" className="marketing-section marketing-pricing-section"><div className="marketing-container"><div className="marketing-section-heading"><span className="marketing-kicker">Planes</span><h2>Elegí el punto de partida de tu operación.</h2><p>Los precios y monedas se muestran desde el catálogo configurado. No agregamos descuentos ni valores fuera del contrato vigente.</p></div><div className="marketing-plan-grid">{plans.map((plan) => <article className="marketing-plan-card" key={plan.codigo}><div className="marketing-plan-card-heading"><div><span className="marketing-plan-code">{plan.codigo}</span><h3>{plan.nombre}</h3></div><span className="marketing-plan-trial">{plan.trial_dias || 14} días de prueba</span></div><p className="marketing-plan-description">{plan.descripcion}</p><strong className="marketing-plan-price">{formatPlanPrice(plan, locale)}<small>{Number(plan.precio_mensual) > 0 ? ` / ${plan.periodicidad === 'yearly' ? 'año' : 'mes'}` : ''}</small></strong><ul>{planFeatures(plan).map((feature) => <li key={feature}><Check size={15} /> {feature}</li>)}</ul><a className="marketing-button secondary" href="/registro">Empezar con {plan.nombre} <ArrowRight size={15} /></a></article>)}</div><p className="marketing-pricing-note"><ShieldCheck size={15} /> El trial se inicia al completar el onboarding. Las opciones de pago dependen del proveedor habilitado.</p></div></section>
+      <section id="planes" className="marketing-section marketing-pricing-section"><div className="marketing-container"><div className="marketing-section-heading"><span className="marketing-kicker">Planes</span><h2>Elegí el punto de partida de tu operación.</h2><p>Precios vigentes en pesos argentinos. Mercado Pago está pausado: podés crear tu cuenta o consultar con el equipo.</p></div><div className="marketing-plan-grid">{plans.map((plan) => { const salesHref = getSalesWhatsAppHref(plan); return <article className="marketing-plan-card" key={plan.codigo}><div className="marketing-plan-card-heading"><div><span className="marketing-plan-code">{plan.codigo}</span><h3>{plan.nombre}</h3></div><span className="marketing-plan-trial">{plan.trial_dias || 14} días de prueba</span></div><p className="marketing-plan-description">{plan.descripcion}</p><strong className="marketing-plan-price">{formatPlanPrice(plan, locale)}<small> / mes</small></strong><ul>{planFeatures(plan).map((feature) => <li key={feature}><Check size={15} /> {feature}</li>)}</ul><div className="marketing-plan-actions"><a className="marketing-button secondary" href="/registro">Empezar con {plan.nombre} <ArrowRight size={15} /></a>{salesHref && <a className="marketing-text-link" href={salesHref} target="_blank" rel="noreferrer">Consultar por WhatsApp <MessageCircle size={15} /></a>}</div></article> })}</div><p className="marketing-pricing-note"><ShieldCheck size={15} /> El trial se inicia al completar el onboarding. El pago se habilitará cuando el proveedor esté listo.</p></div></section>
 
       <section id="faq" className="marketing-section marketing-faq-section"><div className="marketing-container marketing-faq-layout"><div className="marketing-section-heading"><span className="marketing-kicker">Preguntas frecuentes</span><h2>Antes de empezar, lo importante.</h2><p>Respuestas basadas en el flujo actual de Austral.</p></div><div className="marketing-faq-list">{FAQ_ITEMS.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<ChevronDown size={17} /></summary><p>{answer}</p></details>)}</div></div></section>
 

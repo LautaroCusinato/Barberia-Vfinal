@@ -5364,6 +5364,25 @@ input.client-search-input {
 .settings-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
 .settings-notice { display: flex; align-items: center; gap: 7px; background: var(--accent-soft); color: var(--accent-strong); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 14px; font-size: 13px; }
 .settings-loading { display: flex; align-items: center; gap: 8px; min-height: 160px; justify-content: center; }
+.whatsapp-connection-card { display: grid; gap: 14px; margin-bottom: 14px; }
+.whatsapp-connection-header { align-items: flex-start; margin-bottom: 0; }
+.whatsapp-connection-pill { gap: 6px; }
+.whatsapp-connection-pill > span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.whatsapp-connection-pill--success { color: var(--green-text); background: var(--green-soft); }
+.whatsapp-connection-pill--pending { color: var(--amber-text); background: var(--amber-soft); }
+.whatsapp-connection-pill--error { color: var(--rose-text); background: var(--rose-soft); }
+.whatsapp-connection-pill--neutral { color: var(--ink-soft); background: var(--surface-muted); }
+.whatsapp-connection-body { display: grid; gap: 12px; }
+.whatsapp-connection-message { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-muted); color: var(--accent-strong); }
+.whatsapp-connection-message > div { display: grid; gap: 3px; }
+.whatsapp-connection-message p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
+.whatsapp-qr-wrap { display: grid; gap: 9px; justify-items: start; }
+.whatsapp-qr-heading { display: grid; gap: 2px; }
+.whatsapp-qr-heading small { color: var(--ink-faint); font-size: 11px; }
+.whatsapp-qr-frame { display: grid; place-items: center; width: min(220px, 100%); min-height: 180px; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: #fff; }
+.whatsapp-qr-frame img { display: block; width: 100%; max-width: 190px; aspect-ratio: 1; object-fit: contain; }
+.whatsapp-connection-note { display: flex; align-items: center; gap: 7px; color: var(--ink-faint); font-size: 11px; }
+.whatsapp-connection-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .logo-preview { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 108px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 14px; color: var(--ink-faint); }
 .logo-preview img { width: 82px; height: 82px; object-fit: contain; border-radius: 12px; background: var(--surface-muted); }
 .logo-preview input + * { pointer-events: none; }
@@ -5429,6 +5448,7 @@ input.client-search-input {
   .billing-card-grid { grid-template-columns: 1fr; }
   .billing-card-actions .btn { width: 100%; justify-content: center; }
   .settings-grid { grid-template-columns: 1fr; }.settings-actions { grid-column: auto; }.settings-three { grid-template-columns: 1fr; }.invite-form { grid-template-columns: 1fr; }.invite-link { flex-direction: column; }.member-row { align-items: flex-start; }.member-actions { flex-wrap: wrap; }
+  .whatsapp-connection-header { flex-direction: column; }.whatsapp-connection-actions { display: grid; grid-template-columns: 1fr; }.whatsapp-connection-actions .btn { width: 100%; justify-content: center; }.whatsapp-qr-frame { width: min(100%, 240px); }
   .agent-contract { align-items: flex-start; flex-direction: column; }
   .crm-toolbar { align-items: stretch; }.crm-toolbar .crm-search, .crm-filter, .crm-toolbar > .btn { width: 100%; }.crm-filter select { flex: 1; }.crm-pipeline-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }.crm-duplicate-alert { align-items: flex-start; flex-wrap: wrap; }.crm-duplicate-alert span { flex-basis: calc(100% - 25px); }.crm-leads-table { min-width: 780px; }.crm-pagination { align-items: flex-start; flex-direction: column; }.crm-import-modal { max-height: 94vh; overflow-y: auto; }.crm-action-row { align-items: flex-start; flex-direction: column; }.crm-action-row > div:last-child { width: 100%; justify-content: space-between; }.action-form { padding: 1rem; }
 }

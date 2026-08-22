@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { COMMERCIAL_CATALOG, getSalesWhatsAppMessage } from '../src/lib/commercialCatalog.js'
+
+const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+const migration = read('supabase/migrations/20260821090000_whatsapp_tenant_provisioning.sql')
+const functionSource = read('supabase/functions/whatsapp-provision/index.ts')
+const panel = read('src/components/WhatsAppConnectionPanel.jsx')
+const settings = read('src/components/TenantSettings.jsx')
+const sidebar = read('src/components/Sidebar.jsx')
+const catalog = read('src/lib/commercialCatalog.js')
+const assistant = read('src/lib/pricingAssistant.js')
+const cleanup = read('scripts/e2e-cleanup.mjs')
+
+assert.match(migration, /create table if not exists public\.saas_whatsapp_connections/)
+assert.match(migration, /unique \(barberia_id, environment\)/)
+assert.match(migration, /enable row level security/)
+assert.match(migration, /revoke all on table public\.saas_whatsapp_connections from public, anon, authenticated/)
+assert.match(migration, /grant select, insert, update, delete on table public\.saas_whatsapp_connections to service_role/)
+for (const state of ['NOT_CONFIGURED', 'CREATING_INSTANCE', 'QR_READY', 'CONNECTING', 'CONNECTED', 'DISCONNECTED', 'ERROR']) assert.match(migration, new RegExp(state))
+
+assert.match(functionSource, /cmsymmszlzikqpvfqjre/)
+assert.match(functionSource, /ssagttjdgtypxjcgdnrw/)
+assert.match(functionSource, /WHATSAPP_MODE.*shadow|shadow.*WHATSAPP_MODE/s)
+assert.match(functionSource, /PILOT_MODE.*shadow|shadow.*PILOT_MODE/s)
+assert.match(functionSource, /owner.*admin|admin.*owner/s)
+assert.match(functionSource, /barberia_members/)
+assert.match(functionSource, /manage: action !== 'status'/)
+assert.match(functionSource, /tenant_membership_required/)
+assert.match(functionSource, /crypto\.randomUUID/)
+assert.match(functionSource, /23505/)
+assert.match(functionSource, /E2E_QA_/)
+assert.doesNotMatch(functionSource, /sendText|crear_reserva_whatsapp|editar.*reserva|cancelar.*reserva|payment|preapproval/i)
+assert.doesNotMatch(functionSource, /tenant\s*[:=]\s*6\b|barberia_id\s*[:=]\s*6\b/i)
+
+for (const source of [panel, settings, sidebar]) {
+  assert.doesNotMatch(source, /service_role|access_token|webhook_secret|EVOLUTION_API_KEY/i)
+}
+for (const state of ['NOT_CONFIGURED', 'CREATING_INSTANCE', 'QR_READY', 'CONNECTING', 'CONNECTED', 'DISCONNECTED', 'ERROR']) assert.match(panel, new RegExp(state))
+assert.match(panel, /whatsapp-provision/)
+assert.match(panel, /No.*credenciales|credenciales.*navegador/i)
+assert.doesNotMatch(panel, /Evolution|n8n|webhook/i)
+assert.match(settings, /WhatsAppConnectionPanel/)
+
+for (const [amount, plan] of [['30000', 'starter'], ['60000', 'pro'], ['100000', 'premium']]) {
+  assert.match(catalog, new RegExp(`codigo: '${plan}'`))
+  assert.match(catalog, new RegExp(`precio_mensual: ${amount}`))
+}
+assert.match(catalog, /moneda: 'ARS'/)
+assert.match(catalog, /VITE_SALES_WHATSAPP_NUMBER/)
+assert.match(catalog, /wa\.me/)
+assert.equal(getSalesWhatsAppMessage(COMMERCIAL_CATALOG[0]), 'Hola! Quiero contratar el plan Starter de Austral por $30.000 mensuales.')
+assert.equal(getSalesWhatsAppMessage(COMMERCIAL_CATALOG[1]), 'Hola! Quiero contratar el plan Pro de Austral por $60.000 mensuales.')
+assert.equal(getSalesWhatsAppMessage(COMMERCIAL_CATALOG[2]), 'Hola! Quiero contratar el plan Premium de Austral por $100.000 mensuales.')
+assert.match(assistant, /catalogPlan/)
+assert.match(assistant, /currency: plan\.moneda/)
+assert.doesNotMatch(assistant, /currency:\s*['"]USD|USD\s*10|BASE_BY_VERTICAL/)
+assert.match(cleanup, /saas_whatsapp_connections/)
+assert.match(cleanup, /PGRST205/)
+
+console.log('WhatsApp multitenant architecture checks passed: QA guard, owner/admin server authorization, idempotent provisioning, UI states, catalog ARS and sales fallback.')

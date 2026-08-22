@@ -1,11 +1,20 @@
-const BASE_BY_VERTICAL = { barberia: 19, peluqueria: 24, estetica: 29, tattoo: 35, custom: 19 }
+import { catalogPlan } from './commercialCatalog.js'
 
-export function recommendPrice({ country = 'AR', vertical = 'custom', employees = 1, expectedUsage = 'standard', whatsapp = false, ai = false, support = 'standard', customization = false } = {}) {
-  const base = BASE_BY_VERTICAL[vertical] || BASE_BY_VERTICAL.custom
-  const countryFactor = country === 'AR' ? 1 : country === 'UY' ? 1.1 : country === 'ES' ? 1.25 : 1
-  const size = Math.max(0, Math.min(Number(employees) - 1, 20)) * 2
-  const usage = expectedUsage === 'high' ? 12 : expectedUsage === 'light' ? -4 : 0
-  const extras = { whatsapp: whatsapp ? 8 : 0, ai: ai ? 10 : 0, support: support === 'priority' ? 15 : 0, customization: customization ? 20 : 0 }
-  const monthly = Math.max(10, Math.round((base * countryFactor + size + usage + Object.values(extras).reduce((sum, value) => sum + value, 0)) / 1))
-  return { currency: 'USD', monthly, setup: customization ? 75 : 0, extras, rationale: [`Base vertical: ${base}`, `Ajuste por tamaño: ${size}`, `Uso esperado: ${usage >= 0 ? '+' : ''}${usage}`, 'Mínimo comercial aplicado: USD 10'] }
+// Recomendación explicable sobre el catálogo comercial vigente. No calcula
+// importes, conversiones ni descuentos: sólo elige un tier ya publicado.
+export function recommendPrice({ employees = 1, expectedUsage = 'standard', whatsapp = false, ai = false, support = 'standard', customization = false } = {}) {
+  const teamSize = Math.max(1, Number(employees) || 1)
+  const premiumSignal = teamSize > 10 || support === 'priority' || customization
+  const proSignal = teamSize > 3 || expectedUsage === 'high' || whatsapp || ai
+  const code = premiumSignal ? 'premium' : proSignal ? 'pro' : 'starter'
+  const plan = catalogPlan(code)
+  const extras = { whatsapp: Boolean(whatsapp), ai: Boolean(ai), support: support === 'priority', customization: Boolean(customization) }
+  return {
+    currency: plan.moneda,
+    monthly: plan.precio_mensual,
+    setup: 0,
+    plan: plan.codigo,
+    extras,
+    rationale: [`Plan recomendado: ${plan.nombre}`, `Equipo considerado: ${teamSize}`, 'Catálogo vigente: pesos argentinos, facturación mensual', 'No se agregan cargos de implementación ni conversiones'],
+  }
 }

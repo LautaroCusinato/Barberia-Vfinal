@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, Copy, ImagePlus, LoaderCircle, Save, ShieldCheck, Trash2, UserPlus, UsersRound } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { getAppOrigin } from '../lib/authRedirect'
+import WhatsAppConnectionPanel from './WhatsAppConnectionPanel.jsx'
 
 const DEFAULTS = {
   nombre: '', descripcion: '', slug: '', vertical: 'barberia', pais: 'AR', locale: 'es-AR', zona_horaria: 'America/Argentina/Buenos_Aires', moneda: 'ARS', direccion: '', email: '', telefono: '', whatsapp: '', logo_url: '', logo_storage_path: '', color_principal: '#9B6A2F', color_secundario: '#EDE6D8', reservas_publicas: true, politica_cancelacion: '', anticipacion_minutos: 60, max_dias_reserva: 60, intervalo_reserva_min: 15,
@@ -141,6 +142,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange, demoMode 
   return <div className="management-screen management-settings settings-page fade-in">
     <div className="page-header"><div><p className="page-kicker">Tenant y marca</p><h1 className="page-title">Configuración del negocio</h1><p className="page-date">{demoMode ? 'Probá branding y preferencias sin modificar ningún negocio real.' : 'Los cambios se validan en Supabase y afectan sólo a este negocio.'}</p></div><span className="billing-security"><ShieldCheck size={14} /> {demoMode ? 'Sesión aislada' : 'RLS activo'}</span></div>
     {error && <div className="error-banner" role="alert">{error}</div>}{notice && <div className="settings-notice" role="status"><Check size={15} /> {notice}</div>}
+    <WhatsAppConnectionPanel barberiaId={barberiaId} demoMode={demoMode} />
     <form className="settings-grid" onSubmit={save}>
       <section className="panel settings-card"><h2 className="panel-title">Identidad y contacto</h2><div className="settings-fields">
         <label>Nombre comercial<input className="text-input" required value={form.nombre} onChange={(e) => update('nombre', e.target.value)} /></label>

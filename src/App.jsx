@@ -211,48 +211,24 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       navigateFromMenu('facturacion')
       return
     }
-    if (botActivo) {
-      const nuevo = false
-      setBotActivo(nuevo)
-      if (isSupabaseConfigured) {
-        const { error } = await supabase
-          .from('config')
-          .upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: String(nuevo) })
-        if (error) {
-          setBotActivo(true)
-          reportError('No se pudo cambiar el estado del bot', error)
-        }
-      }
-      return
-    }
     if (whatsappEntitlement.entitlementLoading) {
-      setDbError('Estamos verificando el plan antes de activar WhatsApp. Intentá nuevamente en unos segundos')
+      setDbError('Estamos verificando el plan antes de configurar WhatsApp. Intentá nuevamente en unos segundos.')
       return
     }
     if (!whatsappEntitlement.entitled) {
       setDbError(whatsappEntitlement.entitlement === 'unavailable'
-        ? 'No pudimos verificar la habilitación de WhatsApp. Revisá Facturación antes de activarlo'
-        : 'WhatsApp requiere un plan habilitado. Revisá Facturación para continuar')
+        ? 'No pudimos verificar la habilitación de WhatsApp. Revisá Facturación antes de activarlo.'
+        : 'WhatsApp requiere un plan habilitado. Revisá Facturación para continuar.')
       navigateFromMenu('facturacion')
       return
     }
-    if (!whatsappIntegration.configured || !whatsappIntegration.connected) {
-      setDbError('El plan permite WhatsApp, pero la integración todavía no está conectada. Configurala antes de activar el bot')
-      navigateFromMenu('configuracion')
-      return
-    }
-    const nuevo = !botActivo
-    const anterior = botActivo
-    setBotActivo(nuevo)
-    if (isSupabaseConfigured) {
-      const { error } = await supabase
-        .from('config')
-        .upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: String(nuevo) })
-      if (error) {
-        setBotActivo(anterior)
-        reportError('No se pudo cambiar el estado del bot', error)
-      }
-    }
+    // El control del sidebar no habilita automatizaciones ni escribe
+    // `config.bot_activo` desde el navegador. La conexión y cualquier futura
+    // activación se gestionan desde la superficie server-side de WhatsApp,
+    // con guard de owner/admin, tenant y entorno.
+    navigateFromMenu('configuracion')
+    setDbError('Gestioná la conexión de WhatsApp desde Configuración.')
+    return
   }
 
   const verNotasDePaciente = (nombre) => {

@@ -17,7 +17,7 @@ for (const name of ['barberia_invitaciones', 'crm_agent_drafts', 'saas_product_e
 for (const name of ['get_public_saas_catalog', 'get_onboarding_status', 'reservas_publicas', 'anticipacion_minutos']) assert.match(checklist, new RegExp(name), `falta contrato público ${name}`)
 assert.match(guards, /set_crm_agent_draft_status/)
 for (const name of ['update_tenant_settings', 'storage.from', 'create_barberia_invitation']) assert.match(settings, new RegExp(name), `falta UI ${name}`)
-for (const name of ['get_public_saas_catalog', 'application/ld\\+json', '14 días', 'faq']) assert.match(landing, new RegExp(name), `falta landing ${name}`)
+for (const name of ['COMMERCIAL_CATALOG', 'application/ld\\+json', '14 días', 'faq']) assert.match(landing, new RegExp(name), `falta landing ${name}`)
 for (const name of ['pending_approval', 'crm_agent_drafts', 'do_not_contact']) assert.match(agent, new RegExp(name), `falta control de agente ${name}`)
 assert.match(main, /Landing/)
 assert.match(main, /InvitationPage/)

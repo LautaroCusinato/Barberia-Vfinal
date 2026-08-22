@@ -54,6 +54,13 @@ await assertPrefixedRows('turnos', 'paciente,motivo', (row) => String(row.pacien
 await assertPrefixedRows('bloqueos_agenda', 'motivo', (row) => String(row.motivo || '').startsWith(config.testPrefix), 'bloqueos')
 await assertPrefixedRows('saas_integraciones', 'referencia_externa,metadata', (row) => String(row.referencia_externa || '').startsWith(config.testPrefix) && row.metadata?.e2e_prefix === config.testPrefix, 'integraciones')
 if (candidateTenantIds.length > 0) {
+  const { data: connections, error: connectionError } = await admin.from('saas_whatsapp_connections').select('metadata,environment,provider').in('barberia_id', candidateTenantIds)
+  // La tabla es aditiva y puede no existir todavía en un proyecto QA que aún
+  // no recibió la migración. En ese caso no hay filas que limpiar.
+  if (connectionError && !['42P01', 'PGRST205'].includes(connectionError.code)) throw new Error('Cleanup abortado: no se pudo auditar conexiones WhatsApp QA.')
+  if ((connections || []).some((row) => row.environment !== config.environment || row.provider !== 'evolution' || row.metadata?.e2e_prefix !== config.testPrefix)) throw new Error('Cleanup abortado: conexiones WhatsApp fuera de las marcas QA.')
+}
+if (candidateTenantIds.length > 0) {
   const { data: configs, error: configError } = await admin.from('config').select('clave,valor').in('barberia_id', candidateTenantIds)
   if (configError) throw new Error('Cleanup abortado: no se pudo auditar la configuración QA.')
   if ((configs || []).some((row) => {

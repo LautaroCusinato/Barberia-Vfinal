@@ -35,6 +35,6 @@ assert.match(messages, /stripMarkdown\(/)
 assert.match(booking, /short: 'Serv\.'/)
 assert.match(bookingStyles, /\.booking-progress-step > span \{/)
 assert.doesNotMatch(bookingStyles, /\.booking-progress-step span \{ /)
-assert.match(landing, /precio_mensual: 30000, moneda: 'ARS'/)
+assert.match(landing, /COMMERCIAL_CATALOG/)
 
 console.log('Mobile polish checks passed')
