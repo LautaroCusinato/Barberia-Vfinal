@@ -177,7 +177,7 @@ test.describe('experiencia de producto demo', () => {
     await openDemo(page, 'Facturacion')
     await expect(page.getByText(/14 días de prueba/i)).toBeVisible()
     await expect(page.getByText(/checkout se habilita al crear tu cuenta real/i)).toBeVisible()
-    await page.getByRole('button', { name: 'Empezar prueba gratuita' }).click()
+    await page.getByRole('button', { name: /Empezar prueba gratuita con Starter/i }).click()
     await expect(page).toHaveURL(/\/registro\?source=demo-billing/)
   })
 
