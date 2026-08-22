@@ -142,3 +142,28 @@ La implementación debe ser aditiva y reversible en QA:
 - Playwright y smoke visual no pudieron iniciar Chromium en este runner: el
   proceso hijo falla con `spawn EPERM`. No se interpreta como un PASS visual.
   Requiere repetirlo en CI o una sesión de navegador con permisos de proceso.
+
+## Continuación de cierre QA
+
+El proyecto QA `cmsymmszlzikqpvfqjre` fue verificado por host y el frontend
+`https://barberia-qa.cuchitron.lat` respondió HTTP 200. El bundle remoto aún
+corresponde al deploy anterior: contiene los secure fields y la referencia QA,
+pero todavía no contiene el panel nuevo de WhatsApp ni el CTA comercial
+accesible por plan del commit local.
+
+El preflight oficial de migraciones se detuvo sin escribir. QA contiene 43
+versiones remotas entre `20260810171324` y `20260811024120` que no existen en
+este repositorio; además `20260813120000` y
+`20260821090000_whatsapp_tenant_provisioning.sql` figuran sólo localmente. Por
+eso `db push --dry-run` devuelve `LegacyDbPushMissingLocalError`. No se ejecutó
+repair automático ni se aplicó la migración nueva.
+
+La regresión de demo causada por el catálogo de tres planes fue corregida de
+forma mínima: cada CTA ahora incluye el nombre del plan y el test selecciona
+Starter de manera explícita. Resultado final: demo 160 PASS y 8 SKIPPED
+esperados; DEMO-14 pasó en los ocho viewports. La suite pública quedó en 72/72
+PASS. `npm test`, lint, build, diff-check y secret scan siguen verdes.
+
+Mientras el historial no sea reconciliado, no se desplegó
+`whatsapp-provision`, no se ejecutó la matriz live Tenant A/B y no se publicó
+ningún commit en `main`.
