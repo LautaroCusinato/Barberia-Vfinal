@@ -5,6 +5,10 @@ const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
 const CONNECTION_ENVIRONMENT = 'qa'
 const QA_FIXTURE_PREFIX = 'E2E_QA_'
 const PROVIDER = 'evolution'
+const EVOLUTION_HOST = 'evolution.cuchitron.lat'
+const PROTECTED_INSTANCE = 'miwsp'
+const WEBHOOK_HEADER = 'X-Austral-Webhook-Secret'
+const WEBHOOK_EVENTS = ['QRCODE_UPDATED', 'CONNECTION_UPDATE']
 const STATES = new Set(['NOT_CONFIGURED', 'CREATING_INSTANCE', 'QR_READY', 'CONNECTING', 'CONNECTED', 'DISCONNECTED', 'ERROR'])
 const ACTIONS = new Set(['status', 'connect', 'reconnect', 'disconnect'])
 
@@ -58,6 +62,9 @@ async function resolveTenant(admin: SupabaseClient, userId: string, requestedTen
   const { data: tenant, error: tenantError } = await admin.from('barberias').select('id, nombre, metadata').eq('id', tenantId).maybeSingle()
   if (tenantError || !tenant) throw Object.assign(new Error('No se pudo resolver el negocio.'), { status: 404, code: 'tenant_not_found' })
   if (tenant.metadata?.environment && tenant.metadata.environment !== 'qa') throw Object.assign(new Error('El negocio no pertenece al entorno QA.'), { status: 403, code: 'qa_tenant_required' })
+  if (!String(tenant.nombre || '').startsWith(QA_FIXTURE_PREFIX) && tenant.metadata?.e2e_prefix !== QA_FIXTURE_PREFIX) {
+    throw Object.assign(new Error('El negocio no pertenece al fixture QA autorizado.'), { status: 403, code: 'qa_fixture_required' })
+  }
   return { tenantId, role: memberships[0].role, tenant }
 }
 
@@ -106,9 +113,11 @@ async function ensureIntegration(admin: SupabaseClient, tenantId: number) {
 }
 
 function instanceNameFor(tenantId: number) {
-  // Generated once and persisted in the QA connection row. It is never
-  // accepted from the browser and is not displayed as a product label.
-  return `austral-qa-${tenantId}-${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
+  // Stable server-side name. It is never accepted from the browser, and the
+  // protected production instance `miwsp` can never be selected here.
+  const name = `austral-qa-tenant-${tenantId}`
+  if (name.toLowerCase() === PROTECTED_INSTANCE) throw new Error('La instancia protegida no puede ser utilizada por QA.')
+  return name
 }
 
 function mockAdapter(instanceName: string) {
@@ -122,12 +131,136 @@ function mockAdapter(instanceName: string) {
   }
 }
 
-function adapterFor(instanceName: string) {
-  const adapter = Deno.env.get('WHATSAPP_PROVISIONING_ADAPTER') || 'mock'
-  if (adapter === 'mock') return mockAdapter(instanceName)
-  // Real Evolution provisioning is intentionally not implicit. It needs a
-  // separately allowlisted QA host and a dedicated operational authorization.
-  throw Object.assign(new Error('La instancia QA de WhatsApp todavía requiere configuración operativa.'), { status: 503, code: 'qa_provider_not_configured' })
+function adapterMode() { return String(Deno.env.get('WHATSAPP_PROVISIONING_ADAPTER') || 'mock').trim().toLowerCase() }
+
+function evolutionBaseUrl() {
+  const raw = String(Deno.env.get('EVOLUTION_BASE_URL') || '').trim()
+  if (!raw) throw Object.assign(new Error('La conexión todavía requiere configuración operativa.'), { status: 503, code: 'evolution_base_url_missing' })
+  let url: URL
+  try { url = new URL(raw) } catch { throw Object.assign(new Error('La conexión todavía requiere configuración operativa.'), { status: 503, code: 'evolution_base_url_invalid' }) }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.hostname.toLowerCase() !== EVOLUTION_HOST) {
+    throw Object.assign(new Error('La conexión segura de WhatsApp no está disponible.'), { status: 503, code: 'evolution_https_required' })
+  }
+  return url.toString().replace(/\/$/, '')
+}
+
+function evolutionApiKey() {
+  const key = String(Deno.env.get('EVOLUTION_API_KEY') || '').trim()
+  if (!key) throw Object.assign(new Error('La conexión todavía requiere configuración operativa.'), { status: 503, code: 'evolution_api_key_missing' })
+  return key
+}
+
+function evolutionWebhookSecret() {
+  const secret = String(Deno.env.get('EVOLUTION_WEBHOOK_SECRET') || '').trim()
+  if (!secret) throw Object.assign(new Error('La conexión todavía requiere configuración operativa.'), { status: 503, code: 'evolution_webhook_secret_missing' })
+  return secret
+}
+
+function evolutionWebhookUrl() {
+  return `https://${QA_PROJECT_REF}.supabase.co/functions/v1/whatsapp-evolution-webhook`
+}
+
+function assertEvolutionConfiguration() {
+  evolutionBaseUrl()
+  evolutionApiKey()
+  evolutionWebhookSecret()
+  if (Deno.env.get('WHATSAPP_PROVISIONING_ENV') !== CONNECTION_ENVIRONMENT || Deno.env.get('WHATSAPP_MODE') !== 'shadow' || Deno.env.get('PILOT_MODE') !== 'shadow') {
+    throw Object.assign(new Error('La conexión QA requiere modo shadow.'), { status: 503, code: 'shadow_mode_required' })
+  }
+}
+
+async function evolutionRequest(path: string, init: { method?: string, body?: unknown } = {}) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 12_000)
+  try {
+    const response = await fetch(`${evolutionBaseUrl()}${path}`, {
+      method: init.method || 'GET',
+      headers: { apikey: evolutionApiKey(), 'content-type': 'application/json' },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      signal: controller.signal,
+    })
+    const raw = await response.text()
+    let body: unknown = null
+    try { body = raw ? JSON.parse(raw) : null } catch { body = null }
+    if (!response.ok) throw Object.assign(new Error('Evolution no pudo completar la operación.'), { status: 502, code: `evolution_http_${response.status}` })
+    return body
+  } catch (error) {
+    if ((error as { code?: string })?.code?.startsWith('evolution_http_')) throw error
+    throw Object.assign(new Error('Evolution no está disponible temporalmente.'), { status: 502, code: 'evolution_unreachable' })
+  } finally { clearTimeout(timeout) }
+}
+
+function instanceNameFrom(value: unknown) {
+  const name = String(value || '').trim()
+  if (!name || name.toLowerCase() === PROTECTED_INSTANCE || !name.startsWith('austral-qa-tenant-')) return null
+  return name
+}
+
+function evolutionInstances(payload: unknown) {
+  if (Array.isArray(payload)) return payload as Record<string, unknown>[]
+  if (payload && typeof payload === 'object' && Array.isArray((payload as { instances?: unknown[] }).instances)) return (payload as { instances: unknown[] }).instances as Record<string, unknown>[]
+  return []
+}
+
+function evolutionInstanceName(row: Record<string, unknown>) {
+  return instanceNameFrom(row.name ?? row.instanceName ?? (row.instance as Record<string, unknown> | undefined)?.instanceName)
+}
+
+function normalizeQr(value: unknown) {
+  if (typeof value !== 'string' || value.trim().length < 20) return null
+  const qr = value.trim()
+  return qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`
+}
+
+function extractQr(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return null
+  const data = payload as Record<string, unknown>
+  return normalizeQr(data.base64 ?? data.qrcode ?? data.qr ?? (data.data as Record<string, unknown> | undefined)?.base64 ?? (data.data as Record<string, unknown> | undefined)?.qrcode)
+}
+
+async function configureEvolutionWebhook(instanceName: string) {
+  const expectedUrl = evolutionWebhookUrl()
+  await evolutionRequest(`/webhook/set/${encodeURIComponent(instanceName)}`, {
+    method: 'POST',
+    body: { enabled: true, url: expectedUrl, webhookByEvents: false, webhookBase64: false, events: WEBHOOK_EVENTS, headers: { [WEBHOOK_HEADER]: evolutionWebhookSecret() } },
+  })
+  const readback = await evolutionRequest(`/webhook/find/${encodeURIComponent(instanceName)}`)
+  const config = (readback as Record<string, unknown> | null)?.webhook && typeof (readback as Record<string, unknown>).webhook === 'object'
+    ? ((readback as Record<string, unknown>).webhook as Record<string, unknown>).webhook as Record<string, unknown> || (readback as Record<string, unknown>).webhook as Record<string, unknown>
+    : readback as Record<string, unknown>
+  const headers = config?.headers && typeof config.headers === 'object' ? config.headers as Record<string, unknown> : {}
+  const hasSecretHeader = Object.keys(headers).some((name) => name.toLowerCase() === WEBHOOK_HEADER.toLowerCase())
+  const events = Array.isArray(config?.events) ? config.events.map(String) : []
+  if (config?.enabled !== true || String(config?.url || '') !== expectedUrl || !hasSecretHeader || events.sort().join(',') !== [...WEBHOOK_EVENTS].sort().join(',')) {
+    throw Object.assign(new Error('No se pudo confirmar el webhook QA.'), { status: 502, code: 'evolution_webhook_not_confirmed' })
+  }
+}
+
+async function realEvolutionConnect(instanceName: string, reconnect = false) {
+  assertEvolutionConfiguration()
+  const instances = evolutionInstances(await evolutionRequest('/instance/fetchInstances'))
+  const existing = instances.find((row) => evolutionInstanceName(row) === instanceName)
+  if (!existing) {
+    await evolutionRequest('/instance/create', { method: 'POST', body: { instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' } })
+  }
+  await configureEvolutionWebhook(instanceName)
+  const qrResponse = await evolutionRequest(`/instance/connect/${encodeURIComponent(instanceName)}`)
+  const qr = extractQr(qrResponse)
+  if (!qr && !reconnect) throw Object.assign(new Error('Evolution no devolvió un código temporal.'), { status: 502, code: 'evolution_qr_missing' })
+  return { mode: 'shadow' as const, instanceName, externalInstanceId: instanceName, receiverNumber: null, qr, qrExpiresAt: qr ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : null }
+}
+
+async function realEvolutionStatus(instanceName: string) {
+  assertEvolutionConfiguration()
+  const payload = await evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceName)}`)
+  const raw = String((payload as Record<string, unknown> | null)?.instance?.state ?? (payload as Record<string, unknown> | null)?.state ?? '').toLowerCase()
+  const state = raw === 'open' || raw === 'connected' ? 'CONNECTED' : raw === 'connecting' ? 'CONNECTING' : raw === 'close' || raw === 'closed' ? 'DISCONNECTED' : null
+  return state
+}
+
+async function realEvolutionDisconnect(instanceName: string) {
+  assertEvolutionConfiguration()
+  await evolutionRequest(`/instance/logout/${encodeURIComponent(instanceName)}`, { method: 'DELETE' })
 }
 
 async function upsertConnection(admin: SupabaseClient, tenantId: number, integrationId: number, patch: Record<string, unknown>) {
@@ -147,22 +280,31 @@ async function upsertConnection(admin: SupabaseClient, tenantId: number, integra
 }
 
 async function connect(admin: SupabaseClient, tenantId: number, reconnect = false) {
+  if (adapterMode() === 'evolution') assertEvolutionConfiguration()
   const integration = await ensureIntegration(admin, tenantId)
   let connection = await getConnection(admin, tenantId)
   if (connection?.state === 'CONNECTED' && !reconnect) return { connection, qr: null }
   if (connection?.state === 'CREATING_INSTANCE' && Date.now() - new Date(String(connection.updated_at)).getTime() < 5 * 60 * 1000) return { connection, qr: null }
-  const instanceName = String(connection?.instance_name || instanceNameFor(tenantId))
+  const instanceName = instanceNameFrom(connection?.instance_name) || instanceNameFor(tenantId)
   connection = await upsertConnection(admin, tenantId, Number(integration.id), {
     state: 'CREATING_INSTANCE',
-    provisioning_mode: Deno.env.get('WHATSAPP_PROVISIONING_ADAPTER') === 'evolution' ? 'shadow' : 'mock',
+    provisioning_mode: adapterMode() === 'evolution' ? 'shadow' : 'mock',
     instance_name: instanceName,
     last_error_code: null,
     last_error_message: null,
     metadata: { environment: CONNECTION_ENVIRONMENT, provisioning: 'managed', e2e_prefix: QA_FIXTURE_PREFIX, last_action: reconnect ? 'reconnect' : 'connect' },
   })
-  const result = adapterFor(instanceName)
+  const result = adapterMode() === 'evolution' ? await realEvolutionConnect(instanceName, reconnect) : mockAdapter(instanceName)
+  if (!result.qr && result.mode === 'shadow') {
+    const state = await realEvolutionStatus(instanceName)
+    if (state === 'CONNECTED') {
+      const next = await upsertConnection(admin, tenantId, Number(integration.id), { state: 'CONNECTED', provisioning_mode: 'shadow', instance_name: instanceName, external_instance_id: result.externalInstanceId, receiver_number: result.receiverNumber, qr_expires_at: null, last_verified_at: new Date().toISOString(), last_error_code: null, last_error_message: null })
+      return { connection: next, qr: null }
+    }
+    throw Object.assign(new Error('Evolution no devolvió un código temporal.'), { status: 502, code: 'evolution_qr_missing' })
+  }
   const next = await upsertConnection(admin, tenantId, Number(integration.id), {
-    state: 'QR_READY',
+    state: result.qr ? 'QR_READY' : 'CONNECTING',
     provisioning_mode: result.mode,
     instance_name: result.instanceName,
     external_instance_id: result.externalInstanceId,
@@ -184,12 +326,22 @@ async function connect(admin: SupabaseClient, tenantId: number, reconnect = fals
 async function disconnect(admin: SupabaseClient, tenantId: number) {
   const connection = await getConnection(admin, tenantId)
   if (!connection) return { connection: null, qr: null }
+  const instanceName = instanceNameFrom(connection.instance_name)
+  if (adapterMode() === 'evolution' && instanceName) await realEvolutionDisconnect(instanceName)
   const next = await upsertConnection(admin, tenantId, Number(connection.integration_id), {
     state: 'DISCONNECTED', qr_expires_at: null, last_error_code: null, last_error_message: null,
     metadata: { environment: CONNECTION_ENVIRONMENT, provisioning: 'managed', e2e_prefix: QA_FIXTURE_PREFIX, last_action: 'disconnect' },
   })
   if (connection.integration_id) await admin.from('saas_integraciones').update({ estado: 'desactivado' }).eq('id', connection.integration_id).eq('barberia_id', tenantId)
   return { connection: next, qr: null }
+}
+
+async function refreshStatus(admin: SupabaseClient, tenantId: number) {
+  const current = await getConnection(admin, tenantId)
+  if (!current || adapterMode() !== 'evolution' || !instanceNameFrom(current.instance_name)) return current
+  const state = await realEvolutionStatus(String(current.instance_name))
+  if (!state || state === current.state) return current
+  return upsertConnection(admin, tenantId, Number(current.integration_id), { state, last_verified_at: new Date().toISOString(), qr_expires_at: null, last_error_code: null, last_error_message: null })
 }
 
 const headers = (request: Request): HeadersInit => {
@@ -212,7 +364,7 @@ Deno.serve(async (request) => {
     const action = String(body.action || url.searchParams.get('action') || 'status').trim().toLowerCase()
     if (!ACTIONS.has(action)) throw Object.assign(new Error('Acción de WhatsApp inválida.'), { status: 422, code: 'invalid_action' })
     const tenant = await resolveTenant(admin, user.id, body.tenant_id || url.searchParams.get('tenant_id'), { manage: action !== 'status' })
-    if (action === 'status') return json(request, { tenant_id: tenant.tenantId, connection: publicConnection(await getConnection(admin, tenant.tenantId)) })
+    if (action === 'status') return json(request, { tenant_id: tenant.tenantId, connection: publicConnection(await refreshStatus(admin, tenant.tenantId)) })
     if (action === 'disconnect') {
       const result = await disconnect(admin, tenant.tenantId)
       return json(request, { tenant_id: tenant.tenantId, connection: publicConnection(result.connection), changed: Boolean(result.connection) })
