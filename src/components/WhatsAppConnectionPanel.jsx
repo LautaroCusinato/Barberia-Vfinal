@@ -28,7 +28,7 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
 
   const state = connection?.state || 'NOT_CONFIGURED'
   const copy = STATE_COPY[state] || STATE_COPY.ERROR
-  const canConnect = !working && ['NOT_CONFIGURED', 'DISCONNECTED', 'ERROR', 'QR_READY'].includes(state)
+  const canConnect = !working && ['NOT_CONFIGURED', 'DISCONNECTED', 'ERROR', 'QR_READY', 'CONNECTING'].includes(state)
   const canDisconnect = !working && ['CONNECTED', 'QR_READY', 'CONNECTING'].includes(state)
   const qrVisible = Boolean(connection?.qr_available && connection?.qr)
 

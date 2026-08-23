@@ -244,8 +244,15 @@ async function realEvolutionConnect(instanceName: string, reconnect = false) {
     await evolutionRequest('/instance/create', { method: 'POST', body: { instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' } })
   }
   await configureEvolutionWebhook(instanceName)
-  const qrResponse = await evolutionRequest(`/instance/connect/${encodeURIComponent(instanceName)}`)
-  const qr = extractQr(qrResponse)
+  // Evolution 2.3.7 puede crear la instancia primero y publicar el QR unos
+  // instantes después. Releer el mismo endpoint acotadamente evita dejar al
+  // owner en CONNECTING sin generar otra instancia ni tocar tráfico externo.
+  let qr: string | null = null
+  for (let attempt = 0; attempt < 3 && !qr; attempt += 1) {
+    const qrResponse = await evolutionRequest(`/instance/connect/${encodeURIComponent(instanceName)}`)
+    qr = extractQr(qrResponse)
+    if (!qr && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 750))
+  }
   if (!qr && !reconnect) throw Object.assign(new Error('Evolution no devolvió un código temporal.'), { status: 502, code: 'evolution_qr_missing' })
   return { mode: 'shadow' as const, instanceName, externalInstanceId: instanceName, receiverNumber: null, qr, qrExpiresAt: qr ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : null }
 }
