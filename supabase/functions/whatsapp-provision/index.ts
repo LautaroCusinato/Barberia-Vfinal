@@ -222,7 +222,7 @@ async function configureEvolutionWebhook(instanceName: string) {
   const expectedUrl = evolutionWebhookUrl()
   await evolutionRequest(`/webhook/set/${encodeURIComponent(instanceName)}`, {
     method: 'POST',
-    body: { enabled: true, url: expectedUrl, webhookByEvents: false, webhookBase64: false, events: WEBHOOK_EVENTS, headers: { [WEBHOOK_HEADER]: evolutionWebhookSecret() } },
+    body: { webhook: { enabled: true, url: expectedUrl, webhookByEvents: false, webhookBase64: false, events: WEBHOOK_EVENTS, headers: { [WEBHOOK_HEADER]: evolutionWebhookSecret() } } },
   })
   const readback = await evolutionRequest(`/webhook/find/${encodeURIComponent(instanceName)}`)
   const config = (readback as Record<string, unknown> | null)?.webhook && typeof (readback as Record<string, unknown>).webhook === 'object'
