@@ -43,7 +43,11 @@ export default function TenantSettings({ barberiaId, onBrandingChange, demoMode 
     setLoading(true); setError('')
     const [settingsResult, membersResult, invitationsResult, activityResult] = await Promise.all([
       supabase.rpc('get_tenant_settings', { p_barberia_id: barberiaId }),
-      supabase.from('barberia_members').select('id, user_id, role, created_at, profiles(full_name)').eq('barberia_id', barberiaId).order('created_at'),
+      // `barberia_members.user_id` references auth.users, not public.profiles;
+      // embedding profiles here makes PostgREST return PGRST200 and breaks
+      // the whole settings screen. Keep the member list tenant-scoped and
+      // fall back to the safe user id when a display profile is unavailable.
+      supabase.from('barberia_members').select('id, user_id, role, created_at').eq('barberia_id', barberiaId).order('created_at'),
       supabase.from('barberia_invitaciones').select('id, email, role, status, expires_at, created_at').eq('barberia_id', barberiaId).order('created_at', { ascending: false }).limit(20),
       supabase.from('saas_audit_log').select('id, event_name, metadata, created_at').eq('barberia_id', barberiaId).order('created_at', { ascending: false }).limit(20),
     ])
