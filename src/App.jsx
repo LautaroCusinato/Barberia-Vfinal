@@ -41,6 +41,10 @@ import { getDemoSnapshot, resetDemoSession, saveDemoSnapshot } from './lib/demoS
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
 const N8N_SEND_WEBHOOK_URL = import.meta.env.VITE_N8N_SEND_WEBHOOK_URL || ''
+const QA_SUPABASE_HOST = 'cmsymmszlzikqpvfqjre.supabase.co'
+const QA_PROVISIONING_RUNTIME = (() => {
+  try { return new URL(import.meta.env.VITE_SUPABASE_URL || '').hostname === QA_SUPABASE_HOST } catch { return false }
+})()
 
 function nextLocalId(items) {
   return Math.max(0, ...items.map((item) => Number(item.id) || 0)) + 1
@@ -367,19 +371,31 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
 
     async function cargarIntegracionWhatsApp() {
-      const { data, error } = await supabase
-        .from('saas_integraciones')
-        .select('id, proveedor, estado, metadata')
-        .eq('barberia_id', barberiaId)
-        .eq('proveedor', 'evolution')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      const result = QA_PROVISIONING_RUNTIME
+        ? await supabase.functions.invoke('whatsapp-provision', { body: { action: 'status', tenant_id: barberiaId } })
+        : await supabase
+          .from('saas_integraciones')
+          .select('id, proveedor, estado, metadata')
+          .eq('barberia_id', barberiaId)
+          .eq('proveedor', 'evolution')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      const { data, error } = result
       if (cancelado) return
       if (error) {
         reportError('No se pudo verificar la integración de WhatsApp', error)
         setWhatsappIntegration({ loading: false, configured: false, connected: false })
         setBotActivo(false)
+        return
+      }
+      if (QA_PROVISIONING_RUNTIME) {
+        const connection = data?.connection
+        const state = String(connection?.state || 'NOT_CONFIGURED')
+        const configured = state !== 'NOT_CONFIGURED'
+        const connected = state === 'CONNECTED'
+        setWhatsappIntegration({ loading: false, configured, connected, estado: connected ? 'conectado' : state.toLowerCase() })
+        if (!connected) setBotActivo(false)
         return
       }
       const configured = Boolean(data)

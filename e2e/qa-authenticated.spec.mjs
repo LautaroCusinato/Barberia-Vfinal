@@ -95,6 +95,15 @@ async function billingApi(token, path, options = {}) {
   return { status: response.status, body: await response.json().catch(() => ({})) }
 }
 
+async function whatsappApi(token, body) {
+  const response = await fetch(`${qaUrl}/functions/v1/whatsapp-provision`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, apikey: anonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return { status: response.status, body: await response.json().catch(() => ({})) }
+}
+
 async function noOverflow(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 }
@@ -308,6 +317,33 @@ test.describe('QA autenticado aislado', () => {
     const bMember = await tenantOf(b.supabase)
     const attempt = await a.supabase.from('clientes').insert({ barberia_id: bMember.barberia_id, nombre: `${prefix}FOREIGN_WRITE`, apellido: 'Blocked', telefono: '5491100000099', email: 'foreign@e2e-qa.invalid' })
     expect(attempt.error).toBeTruthy()
+  })
+
+  test('aislamiento de conexión WhatsApp', async () => {
+    const a = await auth('ownerA')
+    const b = await auth('ownerB')
+    const aMember = await tenantOf(a.supabase)
+    const bMember = await tenantOf(b.supabase)
+    const ownStatus = await whatsappApi(a.token, { action: 'status', tenant_id: aMember.barberia_id })
+    expect(ownStatus.status).toBe(200)
+    expect(ownStatus.body.tenant_id).toBe(aMember.barberia_id)
+    expect(ownStatus.body.connection?.state).toBe('CONNECTED')
+
+    for (const body of [
+      { action: 'status', tenant_id: aMember.barberia_id },
+      { action: 'reconnect', tenant_id: aMember.barberia_id },
+      { action: 'disconnect', tenant_id: aMember.barberia_id },
+      { action: 'status', tenant_id: aMember.barberia_id, connection_id: ownStatus.body.connection?.id },
+    ]) {
+      const crossTenant = await whatsappApi(b.token, body)
+      expect([403, 404]).toContain(crossTenant.status)
+      expect(crossTenant.body.connection).toBeUndefined()
+    }
+
+    const ownB = await whatsappApi(b.token, { action: 'status', tenant_id: bMember.barberia_id })
+    expect(ownB.status).toBe(200)
+    expect(ownB.body.tenant_id).toBe(bMember.barberia_id)
+    expect(ownB.body.connection?.state).not.toBe('CONNECTED')
   })
 
   test('acceso de plataforma', async ({ page }) => {

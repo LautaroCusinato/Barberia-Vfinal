@@ -5,6 +5,28 @@ export function normalizeEvolutionState(value) {
   return NORMALIZED_STATES.has(state) ? state : null
 }
 
+export function mergeEvolutionConnectionMetadata(currentMetadata = {}, signals = {}, resolvedState, observedAt = new Date().toISOString()) {
+  const metadata = currentMetadata && typeof currentMetadata === 'object' ? { ...currentMetadata } : {}
+  metadata.last_observed_state = signals.connectionState ?? null
+  metadata.last_observed_fetch_state = signals.fetchState ?? null
+  metadata.last_observed_at = observedAt
+  if (resolvedState === 'CONNECTED') {
+    metadata.ever_connected = true
+    metadata.last_connected_at = currentMetadata?.last_connected_at || observedAt
+  }
+  return metadata
+}
+
+export function shouldPersistEvolutionStatus(currentState, resolvedState, currentMetadata = {}) {
+  if (!resolvedState || resolvedState !== currentState) return Boolean(resolvedState)
+  return resolvedState === 'CONNECTED' && (
+    currentMetadata?.ever_connected !== true
+    || !currentMetadata?.last_connected_at
+    || !currentMetadata?.last_observed_state
+    || !currentMetadata?.last_observed_fetch_state
+  )
+}
+
 function hadPreviousConnection({ receiverNumber, metadata = {} }) {
   return Boolean(
     String(receiverNumber || '').trim()

@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2.45.0'
-import { normalizeEvolutionState, resolveEvolutionState } from '../_shared/evolutionState.mjs'
+import { mergeEvolutionConnectionMetadata, normalizeEvolutionState, resolveEvolutionState, shouldPersistEvolutionStatus } from '../_shared/evolutionState.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -272,19 +272,7 @@ async function realEvolutionSignals(instanceName: string) {
 }
 
 function connectionMetadata(current: Record<string, unknown>, signals: { connectionState: string | null, fetchState: string | null }, resolution: { state: string }) {
-  const currentMetadata = current.metadata && typeof current.metadata === 'object' ? current.metadata as Record<string, unknown> : {}
-  const observedAt = new Date().toISOString()
-  const metadata: Record<string, unknown> = {
-    ...currentMetadata,
-    last_observed_state: signals.connectionState,
-    last_observed_fetch_state: signals.fetchState,
-    last_observed_at: observedAt,
-  }
-  if (resolution.state === 'CONNECTED') {
-    metadata.ever_connected = true
-    metadata.last_connected_at = currentMetadata.last_connected_at || observedAt
-  }
-  return metadata
+  return mergeEvolutionConnectionMetadata(current.metadata as Record<string, unknown> || {}, signals, resolution.state)
 }
 
 async function realEvolutionStatus(instanceName: string, current: Record<string, unknown> = {}) {
@@ -382,13 +370,14 @@ async function refreshStatus(admin: SupabaseClient, tenantId: number) {
   const current = await getConnection(admin, tenantId)
   if (!current || adapterMode() !== 'evolution' || !instanceNameFrom(current.instance_name)) return current
   const status = await realEvolutionStatus(String(current.instance_name), current)
-  if (!status.state || status.state === current.state) return current
+  const nextMetadata = connectionMetadata(current, status.signals, status)
+  if (!shouldPersistEvolutionStatus(String(current.state || ''), status.state, current.metadata as Record<string, unknown> || {})) return current
   const qrExpiresAt = ['QR_READY', 'CONNECTING'].includes(status.state) ? current.qr_expires_at : null
   return upsertConnection(admin, tenantId, Number(current.integration_id), {
     state: status.state,
     last_verified_at: new Date().toISOString(),
     qr_expires_at: qrExpiresAt,
-    metadata: connectionMetadata(current, status.signals, status),
+    metadata: nextMetadata,
     last_error_code: status.state === 'ERROR' ? status.reason : null,
     last_error_message: status.state === 'ERROR' ? 'Evolution devolvió señales contradictorias.' : null,
   })
