@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2.45.0'
+import { normalizeEvolutionState, resolveEvolutionState } from '../_shared/evolutionState.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -257,12 +258,46 @@ async function realEvolutionConnect(instanceName: string, reconnect = false) {
   return { mode: 'shadow' as const, instanceName, externalInstanceId: instanceName, receiverNumber: null, qr, qrExpiresAt: qr ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : null }
 }
 
-async function realEvolutionStatus(instanceName: string) {
+async function realEvolutionSignals(instanceName: string) {
   assertEvolutionConfiguration()
-  const payload = await evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceName)}`)
-  const raw = String((payload as Record<string, unknown> | null)?.instance?.state ?? (payload as Record<string, unknown> | null)?.state ?? '').toLowerCase()
-  const state = raw === 'open' || raw === 'connected' ? 'CONNECTED' : raw === 'connecting' ? 'CONNECTING' : raw === 'close' || raw === 'closed' ? 'DISCONNECTED' : null
-  return state
+  const [connectionPayload, instancesPayload] = await Promise.all([
+    evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceName)}`),
+    evolutionRequest(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`),
+  ])
+  const connection = connectionPayload as Record<string, unknown> | null
+  const connectionState = normalizeEvolutionState((connection?.instance as Record<string, unknown> | undefined)?.state ?? connection?.state)
+  const instance = evolutionInstances(instancesPayload).find((row) => evolutionInstanceName(row) === instanceName)
+  const fetchState = normalizeEvolutionState(instance?.connectionStatus ?? instance?.status ?? instance?.state)
+  return { connectionState, fetchState }
+}
+
+function connectionMetadata(current: Record<string, unknown>, signals: { connectionState: string | null, fetchState: string | null }, resolution: { state: string }) {
+  const currentMetadata = current.metadata && typeof current.metadata === 'object' ? current.metadata as Record<string, unknown> : {}
+  const observedAt = new Date().toISOString()
+  const metadata: Record<string, unknown> = {
+    ...currentMetadata,
+    last_observed_state: signals.connectionState,
+    last_observed_fetch_state: signals.fetchState,
+    last_observed_at: observedAt,
+  }
+  if (resolution.state === 'CONNECTED') {
+    metadata.ever_connected = true
+    metadata.last_connected_at = currentMetadata.last_connected_at || observedAt
+  }
+  return metadata
+}
+
+async function realEvolutionStatus(instanceName: string, current: Record<string, unknown> = {}) {
+  const signals = await realEvolutionSignals(instanceName)
+  const resolution = resolveEvolutionState({
+    connectionState: signals.connectionState,
+    fetchState: signals.fetchState,
+    previousState: String(current.state || ''),
+    receiverNumber: current.receiver_number,
+    metadata: current.metadata,
+    qrExpiresAt: current.qr_expires_at,
+  })
+  return { ...resolution, signals }
 }
 
 async function realEvolutionDisconnect(instanceName: string) {
@@ -303,9 +338,9 @@ async function connect(admin: SupabaseClient, tenantId: number, reconnect = fals
   })
   const result = adapterMode() === 'evolution' ? await realEvolutionConnect(instanceName, reconnect) : mockAdapter(instanceName)
   if (!result.qr && result.mode === 'shadow') {
-    const state = await realEvolutionStatus(instanceName)
-    if (state === 'CONNECTED') {
-      const next = await upsertConnection(admin, tenantId, Number(integration.id), { state: 'CONNECTED', provisioning_mode: 'shadow', instance_name: instanceName, external_instance_id: result.externalInstanceId, receiver_number: result.receiverNumber, qr_expires_at: null, last_verified_at: new Date().toISOString(), last_error_code: null, last_error_message: null })
+    const status = await realEvolutionStatus(instanceName, connection || {})
+    if (status.state === 'CONNECTED') {
+      const next = await upsertConnection(admin, tenantId, Number(integration.id), { state: 'CONNECTED', provisioning_mode: 'shadow', instance_name: instanceName, external_instance_id: result.externalInstanceId, receiver_number: result.receiverNumber, qr_expires_at: null, last_verified_at: new Date().toISOString(), metadata: connectionMetadata(connection || {}, status.signals, status), last_error_code: null, last_error_message: null })
       return { connection: next, qr: null }
     }
     throw Object.assign(new Error('Evolution no devolvió un código temporal.'), { status: 502, code: 'evolution_qr_missing' })
@@ -346,9 +381,17 @@ async function disconnect(admin: SupabaseClient, tenantId: number) {
 async function refreshStatus(admin: SupabaseClient, tenantId: number) {
   const current = await getConnection(admin, tenantId)
   if (!current || adapterMode() !== 'evolution' || !instanceNameFrom(current.instance_name)) return current
-  const state = await realEvolutionStatus(String(current.instance_name))
-  if (!state || state === current.state) return current
-  return upsertConnection(admin, tenantId, Number(current.integration_id), { state, last_verified_at: new Date().toISOString(), qr_expires_at: null, last_error_code: null, last_error_message: null })
+  const status = await realEvolutionStatus(String(current.instance_name), current)
+  if (!status.state || status.state === current.state) return current
+  const qrExpiresAt = ['QR_READY', 'CONNECTING'].includes(status.state) ? current.qr_expires_at : null
+  return upsertConnection(admin, tenantId, Number(current.integration_id), {
+    state: status.state,
+    last_verified_at: new Date().toISOString(),
+    qr_expires_at: qrExpiresAt,
+    metadata: connectionMetadata(current, status.signals, status),
+    last_error_code: status.state === 'ERROR' ? status.reason : null,
+    last_error_message: status.state === 'ERROR' ? 'Evolution devolvió señales contradictorias.' : null,
+  })
 }
 
 const headers = (request: Request): HeadersInit => {
