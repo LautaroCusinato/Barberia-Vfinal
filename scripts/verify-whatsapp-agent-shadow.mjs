@@ -7,6 +7,7 @@ import {
   generateShadowProposal,
   interpretRequestedDate,
   parseRequestedTime,
+  resolveRequestedServices,
 } from '../supabase/functions/_shared/whatsappAgentShadow.mjs'
 
 assert.deepEqual(assertShadowAgentConfiguration({ WHATSAPP_MODE: 'shadow', PILOT_MODE: 'shadow' }), { mutation_allowed: false, outbound_allowed: false })
@@ -46,6 +47,17 @@ assert.deepEqual(parseRequestedTime('a las cuatro de la tarde'), { requested_tim
 assert.deepEqual(parseRequestedTime('tipo 4 de la tarde'), { requested_time: '16:00', requested_daypart: 'afternoon', time_ambiguous: false, time_candidate: null })
 assert.deepEqual(parseRequestedTime('mañana a las 4'), { requested_time: null, requested_daypart: null, time_ambiguous: true, time_candidate: '04:00' })
 assert.deepEqual(parseRequestedTime('Hay turno mañana a las 10?'), { requested_time: '10:00', requested_daypart: 'morning', time_ambiguous: false, time_candidate: null })
+
+assert.equal(resolveRequestedServices('Quiero reservar para E2E_QA_A_SERVICIO', tenantA.services).status, 'matched')
+assert.equal(resolveRequestedServices('Quiero reservar para E2E_QA_A_SERVICIO', tenantA.services).matches[0].id, 1)
+assert.equal(resolveRequestedServices('quiero CORTE CLÁSICO', [{ id: 3, nombre: 'Corte clásico', activo: true }]).matches[0].id, 3)
+assert.equal(resolveRequestedServices('quiero corte y barba', [{ id: 4, nombre: 'Corte y barba', activo: true }]).matches[0].id, 4)
+assert.equal(resolveRequestedServices('quiero un corte', [{ id: 5, nombre: 'Corte', activo: true }, { id: 6, nombre: 'Corte y barba', activo: true }]).status, 'ambiguous')
+assert.equal(resolveRequestedServices('quiero un corte', [{ id: 5, nombre: 'Corte', activo: true }, { id: 6, nombre: 'Corte', activo: true }]).status, 'ambiguous')
+assert.equal(resolveRequestedServices('quiero un servicio premium', [{ id: 7, nombre: 'Servicio Premium', activo: true }]).matches[0].id, 7)
+assert.equal(resolveRequestedServices('quiero un fade', [{ id: 8, nombre: 'Corte clásico', aliases: ['fade'], activo: true }]).matches[0].id, 8)
+assert.equal(resolveRequestedServices('quiero el servicio de Tenant B', tenantA.services).status, 'none')
+assert.equal(resolveRequestedServices('quiero un turno', tenantA.services).status, 'none')
 
 const proposalA = buildDeterministicShadowProposal({ text: 'Hola, ¿qué servicios tienen?', ...tenantA })
 const proposalB = buildDeterministicShadowProposal({ text: 'Hola, ¿qué servicios tienen?', ...tenantB })

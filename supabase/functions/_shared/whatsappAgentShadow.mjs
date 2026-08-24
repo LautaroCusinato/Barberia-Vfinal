@@ -15,6 +15,86 @@ function normalizedSearchText(value) {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
+function normalizedServiceText(value) {
+  return normalizedSearchText(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function serviceAliases(service) {
+  const aliases = Array.isArray(service?.aliases)
+    ? service.aliases
+    : service?.alias
+      ? [service.alias]
+      : []
+  return aliases.map(normalizedServiceText).filter(Boolean)
+}
+
+const SERVICE_GENERIC_TOKENS = new Set(['e2e', 'qa', 'servicio'])
+
+function meaningfulServiceTokens(value) {
+  return normalizedServiceText(value)
+    .split(' ')
+    .filter((token) => token.length >= 3 && !SERVICE_GENERIC_TOKENS.has(token))
+}
+
+function containsServicePhrase(text, phrase) {
+  if (!phrase) return false
+  return ` ${normalizedServiceText(text)} `.includes(` ${phrase} `)
+}
+
+/**
+ * Resolves services only from the already tenant-scoped list supplied by the caller.
+ * Full normalized names (including fixture-like names) are checked before stopwords.
+ */
+export function resolveRequestedServices(text, services = []) {
+  const candidates = services.filter((service) => service?.activo !== false && textFrom(service?.nombre))
+  const normalizedMessage = normalizedServiceText(text)
+  const exactMatches = []
+  const aliasMatches = []
+
+  for (const service of candidates) {
+    const normalizedName = normalizedServiceText(service.nombre)
+    if (containsServicePhrase(normalizedMessage, normalizedName)) exactMatches.push(service)
+    if (serviceAliases(service).some((alias) => containsServicePhrase(normalizedMessage, alias))) aliasMatches.push(service)
+  }
+
+  const maximalExactMatches = exactMatches.filter((service) => {
+    const name = normalizedServiceText(service.nombre)
+    return !exactMatches.some((other) => other !== service && normalizedServiceText(other.nombre).length > name.length && containsServicePhrase(normalizedServiceText(other.nombre), name))
+  })
+  if (maximalExactMatches.length > 1) return { status: 'ambiguous', matches: maximalExactMatches, match_type: 'exact' }
+  if (maximalExactMatches.length === 1) {
+    const exact = maximalExactMatches[0]
+    const exactName = normalizedServiceText(exact.nombre)
+    const exactTokens = meaningfulServiceTokens(exact.nombre)
+    const overlapping = candidates.filter((service) => {
+      if (service === exact) return false
+      const candidateName = normalizedServiceText(service.nombre)
+      const candidateTokens = meaningfulServiceTokens(service.nombre)
+      return candidateName.startsWith(`${exactName} `)
+        && exactTokens.length > 0
+        && exactTokens.every((token) => candidateTokens.includes(token))
+        && exactTokens.every((token) => containsServicePhrase(normalizedMessage, token))
+    })
+    if (overlapping.length) return { status: 'ambiguous', matches: [exact, ...overlapping], match_type: 'overlap' }
+    return { status: 'matched', matches: [exact], match_type: 'exact' }
+  }
+  if (aliasMatches.length > 1) return { status: 'ambiguous', matches: aliasMatches, match_type: 'alias' }
+  if (aliasMatches.length === 1) return { status: 'matched', matches: aliasMatches, match_type: 'alias' }
+
+  const tokenMatches = candidates.filter((service) => {
+    const tokenSets = [service.nombre, ...serviceAliases(service)]
+      .map(meaningfulServiceTokens)
+      .filter((tokens) => tokens.length)
+    return tokenSets.some((tokens) => tokens.every((token) => containsServicePhrase(normalizedMessage, token)))
+  })
+  if (tokenMatches.length > 1) return { status: 'ambiguous', matches: tokenMatches, match_type: 'tokens' }
+  if (tokenMatches.length === 1) return { status: 'matched', matches: tokenMatches, match_type: 'tokens' }
+  return { status: 'none', matches: [], match_type: null }
+}
+
 function dateKeyInTimezone(date, timezone = DEFAULT_TIMEZONE) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone || DEFAULT_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
   const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
@@ -167,6 +247,7 @@ function formatAvailabilitySlot(slot) {
 function availabilityReply({ intent, businessName, availability }) {
   const request = availability?.request || {}
   if (availability?.status === 'error') return `No pude consultar la disponibilidad de ${businessName} en este momento. No se confirmó ningún turno.`
+  if (availability?.status === 'service_ambiguous') return 'Encontré más de un servicio posible. ¿Cuál querés reservar? No se creó ningún turno.'
   if (availability?.status === 'service_required') return 'Para revisar la reserva necesito saber qué servicio querés. No se creó ningún turno.'
   if (request.time_ambiguous) return `¿Te referís a las ${request.time_candidate || 'esa hora'} de la mañana o de la tarde? No se creó ningún turno.`
   if (!request.date_key) {

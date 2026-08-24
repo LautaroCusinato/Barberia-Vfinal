@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
-import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate } from '../_shared/whatsappAgentShadow.mjs'
+import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate, resolveRequestedServices } from '../_shared/whatsappAgentShadow.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -103,10 +103,6 @@ async function loadTenantContext(admin: ReturnType<typeof adminClient>, tenantId
   }
 }
 
-function normalizedSearchText(value: unknown) {
-  return safeString(value).toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-}
-
 function timeMinutes(value: unknown) {
   const match = safeString(value).match(/^(\d{1,2}):(\d{2})/)
   if (!match) return null
@@ -123,29 +119,14 @@ function matchesTimePeriod(value: unknown, period: string | null) {
   return true
 }
 
-function relevantServices(text: string, services: Array<Record<string, unknown>>) {
-  const normalized = normalizedSearchText(text)
-  const matches = services.filter((service) => {
-    const words = normalizedSearchText(service.nombre).split(/[^a-z0-9]+/).filter((word) => word.length >= 3 && !['e2e', 'qa', 'servicio'].includes(word))
-    return words.some((word) => normalized.includes(word))
-  })
-  return matches.length ? matches : services
-}
-
-function hasExplicitService(text: string, services: Array<Record<string, unknown>>) {
-  const normalized = normalizedSearchText(text)
-  return services.some((service) => normalizedSearchText(service.nombre).split(/[^a-z0-9]+/).filter((word) => word.length >= 3 && !['e2e', 'qa', 'servicio'].includes(word)).some((word) => normalized.includes(word)))
-}
-
 async function loadAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, text: string, intent: string) {
   const request = interpretRequestedDate(text, safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires')
   if (!request.date_key) return { status: 'date_required', request, slots: [] }
-  const serviceMatches = relevantServices(text, context.services)
-  if (intent === 'booking_intent' && !hasExplicitService(text, context.services)) {
-    return { status: 'service_required', request, slots: [], rpc_executed: false }
-  }
+  const serviceResolution = resolveRequestedServices(text, context.services)
+  if (serviceResolution.status === 'ambiguous') return { status: 'service_ambiguous', request, slots: [], rpc_executed: false, service_resolution: serviceResolution }
+  if (intent === 'booking_intent' && serviceResolution.status !== 'matched') return { status: 'service_required', request, slots: [], rpc_executed: false, service_resolution: serviceResolution }
   if (!context.business.slug) return { status: 'error', request, slots: [] }
-  const services = serviceMatches
+  const services = serviceResolution.status === 'matched' ? serviceResolution.matches : context.services
   const results = await Promise.all(services.map(async (service) => {
     const { data, error } = await admin.rpc('horarios_disponibles_reserva_publica', {
       p_slug: context.business.slug,
@@ -168,7 +149,7 @@ async function loadAvailability(admin: ReturnType<typeof adminClient>, context: 
   const requestedSlotAvailable = request.requested_time
     ? slots.some((slot: Record<string, unknown>) => safeString(slot.hora).slice(0, 5) === request.requested_time)
     : null
-  return { status: 'ready', request, slots, requested_slot_available: requestedSlotAvailable, rpc_executed: true }
+  return { status: 'ready', request, slots, requested_slot_available: requestedSlotAvailable, rpc_executed: true, service_resolution: serviceResolution }
 }
 
 Deno.serve(async (request) => {
@@ -235,7 +216,20 @@ Deno.serve(async (request) => {
             confidence: proposal.confidence,
             requested_action: proposal.requested_action,
             tools_considered: proposal.tools_considered,
-            context_counts: { ...proposal.context_counts, availability_request: availability?.request || null, availability_status: availability?.status || null, requested_slot_available: availability?.requested_slot_available ?? null },
+            context_counts: {
+              ...proposal.context_counts,
+              availability_request: availability?.request || null,
+              availability_status: availability?.status || null,
+              requested_slot_available: availability?.requested_slot_available ?? null,
+              service_resolution: availability?.service_resolution
+                ? {
+                    status: availability.service_resolution.status,
+                    match_type: availability.service_resolution.match_type,
+                    resolved_service_ids: availability.service_resolution.matches.map((service: Record<string, unknown>) => service.id),
+                    resolved_service_names: availability.service_resolution.matches.map((service: Record<string, unknown>) => safeString(service.nombre).slice(0, 120)),
+                  }
+                : null,
+            },
           },
           proposed_reply: proposal.proposed_reply,
           mutation_blocked: true,
