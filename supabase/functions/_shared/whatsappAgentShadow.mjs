@@ -1,6 +1,10 @@
 const MAX_INBOUND_TEXT = 2000
 const MAX_PROPOSED_REPLY = 1000
 const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
+const NUMBER_WORD_HOURS = new Map([
+  ['una', 1], ['uno', 1], ['un', 1], ['dos', 2], ['tres', 3], ['cuatro', 4], ['cinco', 5], ['seis', 6],
+  ['siete', 7], ['ocho', 8], ['nueve', 9], ['diez', 10], ['once', 11], ['doce', 12],
+])
 
 const textFrom = (value) => String(value ?? '').trim()
 
@@ -60,12 +64,54 @@ export function interpretRequestedDate(text, timezone = DEFAULT_TIMEZONE, now = 
     }
   }
 
-  let timePeriod = null
-  if (/\b(noche|noches)\b/.test(normalized)) timePeriod = 'evening'
-  else if (/\b(tarde|tardes)\b/.test(normalized)) timePeriod = 'afternoon'
-  else if (/\b(a la manana|por la manana|esta manana)\b/.test(normalized)) timePeriod = 'morning'
+  const requestedTime = parseRequestedTime(text)
+  return {
+    date_key: dateKey,
+    date_phrase: datePhrase,
+    time_period: requestedTime.requested_daypart,
+    requested_date: dateKey,
+    requested_time: requestedTime.requested_time,
+    requested_daypart: requestedTime.requested_daypart,
+    time_ambiguous: requestedTime.time_ambiguous,
+    time_candidate: requestedTime.time_candidate,
+    timezone: timezone || DEFAULT_TIMEZONE,
+  }
+}
 
-  return { date_key: dateKey, date_phrase: datePhrase, time_period: timePeriod, timezone: timezone || DEFAULT_TIMEZONE }
+export function parseRequestedTime(text) {
+  const normalized = normalizedSearchText(text)
+  const explicitMorning = /\b(de la manana|por la manana|a la manana|esta manana)\b/.test(normalized)
+  const explicitAfternoon = /\b(de la tarde|por la tarde|a la tarde|esta tarde)\b/.test(normalized)
+  const explicitEvening = /\b(de la noche|por la noche|a la noche|noche|noches)\b/.test(normalized)
+  const explicitDaypart = explicitMorning ? 'morning' : explicitAfternoon ? 'afternoon' : explicitEvening ? 'evening' : null
+  const numericMatch = normalized.match(/\b(?:a las|tipo)?\s*(\d{1,2})(?::(\d{2}))?\s*(?:hs?|horas?)?\b/)
+  let hour = numericMatch ? Number(numericMatch[1]) : null
+  let minute = numericMatch?.[2] ? Number(numericMatch[2]) : 0
+  if (hour === null) {
+    for (const [word, value] of NUMBER_WORD_HOURS.entries()) {
+      if (new RegExp(`\\b(?:a las|tipo)\\s+${word}\\b`).test(normalized)) {
+        hour = value
+        break
+      }
+    }
+  }
+  if (hour === null) {
+    return { requested_time: null, requested_daypart: explicitDaypart, time_ambiguous: false, time_candidate: null }
+  }
+  if (minute > 59 || hour > 23) return { requested_time: null, requested_daypart: explicitDaypart, time_ambiguous: true, time_candidate: null }
+  if (hour <= 6 && !explicitDaypart) {
+    return { requested_time: null, requested_daypart: null, time_ambiguous: true, time_candidate: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}` }
+  }
+  if (explicitMorning && hour > 12) return { requested_time: null, requested_daypart: null, time_ambiguous: true, time_candidate: null }
+  if (explicitAfternoon && hour < 12) hour += 12
+  if (explicitEvening && hour < 12) hour += 12
+  const inferredDaypart = explicitDaypart || (hour < 12 ? 'morning' : hour < 19 ? 'afternoon' : 'evening')
+  return {
+    requested_time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+    requested_daypart: inferredDaypart,
+    time_ambiguous: false,
+    time_candidate: null,
+  }
 }
 
 export function extractInboundText(payload) {
@@ -121,6 +167,8 @@ function formatAvailabilitySlot(slot) {
 function availabilityReply({ intent, businessName, availability }) {
   const request = availability?.request || {}
   if (availability?.status === 'error') return `No pude consultar la disponibilidad de ${businessName} en este momento. No se confirmó ningún turno.`
+  if (availability?.status === 'service_required') return 'Para revisar la reserva necesito saber qué servicio querés. No se creó ningún turno.'
+  if (request.time_ambiguous) return `¿Te referís a las ${request.time_candidate || 'esa hora'} de la mañana o de la tarde? No se creó ningún turno.`
   if (!request.date_key) {
     return intent === 'booking_intent'
       ? 'Para revisar opciones necesito saber qué día y servicio querés reservar. No se creó ningún turno.'
@@ -132,6 +180,17 @@ function availabilityReply({ intent, businessName, availability }) {
     return intent === 'booking_intent'
       ? `No encontré disponibilidad para el ${dateLabel}. No se creó ningún turno.`
       : `No encontré disponibilidad para el ${dateLabel}. Puedo revisar otro día.`
+  }
+  if (request.requested_time && availability?.requested_slot_available === false) {
+    const alternatives = slots.map(formatAvailabilitySlot).filter(Boolean).slice(0, 6).join(', ')
+    return intent === 'booking_intent'
+      ? `A las ${request.requested_time} no está disponible el ${dateLabel}. Alternativas reales: ${alternatives}. No se creó ningún turno.`
+      : `A las ${request.requested_time} no está disponible el ${dateLabel}. Alternativas reales: ${alternatives}.`
+  }
+  if (request.requested_time && availability?.requested_slot_available === true) {
+    return intent === 'booking_intent'
+      ? `Sí, el ${dateLabel} a las ${request.requested_time} está disponible. La reserva permanece bloqueada en modo shadow.`
+      : `Sí, el ${dateLabel} a las ${request.requested_time} está disponible.`
   }
   const listed = slots.map(formatAvailabilitySlot).filter(Boolean).join(', ')
   const prefix = intent === 'booking_intent' ? 'Encontré estas opciones, pero la reserva permanece bloqueada en modo shadow' : `Sí, para el ${dateLabel} encontré`
@@ -164,7 +223,7 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
     proposedReply = availabilityReply({ intent, businessName, availability })
     requestedAction = intent === 'booking_intent' ? 'booking_read_only_proposal' : 'read_availability_only'
     toolsConsidered = ['tenant_context_read', 'services_read', 'barbers_read', 'schedules_read', 'blocks_read']
-    if (availability) toolsConsidered.push('availability_rpc_read')
+    if (availability?.rpc_executed) toolsConsidered.push('availability_rpc_read')
     confidence = intent === 'booking_intent' ? 0.93 : 0.9
   } else if (intent === 'booking_change_request') {
     proposedReply = 'Puedo revisar opciones de horario, pero cualquier alta, cambio o cancelación requiere una confirmación explícita y permanece bloqueada en este modo.'
@@ -191,6 +250,11 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
       schedules: schedules.length,
       blocks: blocks.length,
       availability: Array.isArray(availability?.slots) ? availability.slots.length : 0,
+      requested_date: availability?.request?.requested_date || null,
+      requested_time: availability?.request?.requested_time || null,
+      requested_daypart: availability?.request?.requested_daypart || null,
+      requested_slot_available: availability?.requested_slot_available ?? null,
+      time_ambiguous: availability?.request?.time_ambiguous || false,
     },
     provider: 'qa_deterministic_shadow',
     model: 'shadow-safe-v1',

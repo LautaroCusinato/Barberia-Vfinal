@@ -6,6 +6,7 @@ import {
   extractInboundText,
   generateShadowProposal,
   interpretRequestedDate,
+  parseRequestedTime,
 } from '../supabase/functions/_shared/whatsappAgentShadow.mjs'
 
 assert.deepEqual(assertShadowAgentConfiguration({ WHATSAPP_MODE: 'shadow', PILOT_MODE: 'shadow' }), { mutation_allowed: false, outbound_allowed: false })
@@ -37,8 +38,14 @@ assert.equal(classifyShadowIntent('¿Hay lugar mañana?'), 'availability_query')
 assert.equal(classifyShadowIntent('Quiero reservar mañana a las 16'), 'booking_intent')
 assert.equal(classifyShadowIntent('Reservame con Juan el viernes'), 'booking_intent')
 assert.deepEqual(interpretRequestedDate('mañana a la tarde', 'America/Argentina/Buenos_Aires', new Date('2030-01-07T12:00:00Z')), {
-  date_key: '2030-01-08', date_phrase: 'mañana', time_period: 'afternoon', timezone: 'America/Argentina/Buenos_Aires',
+  date_key: '2030-01-08', date_phrase: 'mañana', time_period: 'afternoon', requested_date: '2030-01-08', requested_time: null, requested_daypart: 'afternoon', time_ambiguous: false, time_candidate: null, timezone: 'America/Argentina/Buenos_Aires',
 })
+assert.deepEqual(parseRequestedTime('a las 16'), { requested_time: '16:00', requested_daypart: 'afternoon', time_ambiguous: false, time_candidate: null })
+assert.deepEqual(parseRequestedTime('a las 16:30'), { requested_time: '16:30', requested_daypart: 'afternoon', time_ambiguous: false, time_candidate: null })
+assert.deepEqual(parseRequestedTime('a las cuatro de la tarde'), { requested_time: '16:00', requested_daypart: 'afternoon', time_ambiguous: false, time_candidate: null })
+assert.deepEqual(parseRequestedTime('tipo 4 de la tarde'), { requested_time: '16:00', requested_daypart: 'afternoon', time_ambiguous: false, time_candidate: null })
+assert.deepEqual(parseRequestedTime('mañana a las 4'), { requested_time: null, requested_daypart: null, time_ambiguous: true, time_candidate: '04:00' })
+assert.deepEqual(parseRequestedTime('Hay turno mañana a las 10?'), { requested_time: '10:00', requested_daypart: 'morning', time_ambiguous: false, time_candidate: null })
 
 const proposalA = buildDeterministicShadowProposal({ text: 'Hola, ¿qué servicios tienen?', ...tenantA })
 const proposalB = buildDeterministicShadowProposal({ text: 'Hola, ¿qué servicios tienen?', ...tenantB })
@@ -58,8 +65,10 @@ assert.match(bookingProposal.requested_action, /read|proposal/i)
 
 const availability = {
   status: 'ready',
-  request: { date_key: '2030-01-08', date_phrase: 'mañana', time_period: 'afternoon', timezone: 'America/Argentina/Buenos_Aires' },
+  request: { date_key: '2030-01-08', date_phrase: 'mañana', time_period: 'afternoon', requested_date: '2030-01-08', requested_time: '16:00', requested_daypart: 'afternoon', time_ambiguous: false, timezone: 'America/Argentina/Buenos_Aires' },
   slots: [{ service_name: 'E2E_QA_A_SERVICIO', barbero_nombre: 'E2E_QA_A_EMPLEADO', hora: '15:30:00', duracion_min: 30 }],
+  requested_slot_available: false,
+  rpc_executed: true,
 }
 const availabilityProposal = buildDeterministicShadowProposal({ text: '¿Tienen turno mañana a la tarde?', availability, ...tenantA })
 assert.equal(availabilityProposal.intent, 'availability_query')
@@ -68,12 +77,23 @@ assert.match(availabilityProposal.tools_considered.join(','), /availability_rpc_
 assert.equal(availabilityProposal.mutation_allowed, false)
 assert.equal(availabilityProposal.outbound_allowed, false)
 assert.doesNotMatch(availabilityProposal.proposed_reply, /E2E_QA_B_/)
+assert.match(availabilityProposal.proposed_reply, /16:00 no está disponible/)
+assert.match(availabilityProposal.proposed_reply, /15:30/)
+assert.equal(availabilityProposal.context_counts.requested_slot_available, false)
 const safeAvailabilityWithApiKey = await generateShadowProposal({ text: '¿Tienen turno mañana a la tarde?', context: { ...tenantA, availability }, apiKey: 'test-only', fetchImpl: async () => { throw new Error('availability_must_not_call_llm') } })
 assert.equal(safeAvailabilityWithApiKey.provider, 'qa_deterministic_shadow')
 assert.match(safeAvailabilityWithApiKey.proposed_reply, /15:30/)
 
 const emptyAvailabilityProposal = buildDeterministicShadowProposal({ text: '¿Hay lugar mañana?', availability: { status: 'ready', request: availability.request, slots: [] }, ...tenantA })
 assert.match(emptyAvailabilityProposal.proposed_reply, /No encontré disponibilidad/)
+
+const bookingAvailable = buildDeterministicShadowProposal({ text: 'Quiero reservar mañana a las 16', availability: { ...availability, requested_slot_available: true, slots: [{ service_name: 'E2E_QA_A_SERVICIO', barbero_nombre: 'E2E_QA_A_EMPLEADO', hora: '16:00:00' }] }, ...tenantA })
+assert.equal(bookingAvailable.intent, 'booking_intent')
+assert.match(bookingAvailable.proposed_reply, /16:00 está disponible/)
+assert.doesNotMatch(bookingAvailable.proposed_reply, /reservado|creado/i)
+
+const bookingMissingService = buildDeterministicShadowProposal({ text: 'Quiero reservar mañana a las 16', availability: { status: 'service_required', request: availability.request, slots: [], rpc_executed: false }, ...tenantA })
+assert.match(bookingMissingService.proposed_reply, /qué servicio querés/)
 
 const duplicateEvents = new Set()
 const eventId = 'E2E_QA_AGENT_SHADOW_001'

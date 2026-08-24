@@ -126,17 +126,26 @@ function matchesTimePeriod(value: unknown, period: string | null) {
 function relevantServices(text: string, services: Array<Record<string, unknown>>) {
   const normalized = normalizedSearchText(text)
   const matches = services.filter((service) => {
-    const name = normalizedSearchText(service.nombre)
-    return name && normalized.includes(name)
+    const words = normalizedSearchText(service.nombre).split(/[^a-z0-9]+/).filter((word) => word.length >= 3 && !['e2e', 'qa', 'servicio'].includes(word))
+    return words.some((word) => normalized.includes(word))
   })
   return matches.length ? matches : services
 }
 
-async function loadAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, text: string) {
+function hasExplicitService(text: string, services: Array<Record<string, unknown>>) {
+  const normalized = normalizedSearchText(text)
+  return services.some((service) => normalizedSearchText(service.nombre).split(/[^a-z0-9]+/).filter((word) => word.length >= 3 && !['e2e', 'qa', 'servicio'].includes(word)).some((word) => normalized.includes(word)))
+}
+
+async function loadAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, text: string, intent: string) {
   const request = interpretRequestedDate(text, safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires')
   if (!request.date_key) return { status: 'date_required', request, slots: [] }
+  const serviceMatches = relevantServices(text, context.services)
+  if (intent === 'booking_intent' && !hasExplicitService(text, context.services)) {
+    return { status: 'service_required', request, slots: [], rpc_executed: false }
+  }
   if (!context.business.slug) return { status: 'error', request, slots: [] }
-  const services = relevantServices(text, context.services)
+  const services = serviceMatches
   const results = await Promise.all(services.map(async (service) => {
     const { data, error } = await admin.rpc('horarios_disponibles_reserva_publica', {
       p_slug: context.business.slug,
@@ -155,7 +164,11 @@ async function loadAvailability(admin: ReturnType<typeof adminClient>, context: 
         hora: slot.hora,
       }))
   }))
-  return { status: 'ready', request, slots: results.flat() }
+  const slots = results.flat()
+  const requestedSlotAvailable = request.requested_time
+    ? slots.some((slot: Record<string, unknown>) => safeString(slot.hora).slice(0, 5) === request.requested_time)
+    : null
+  return { status: 'ready', request, slots, requested_slot_available: requestedSlotAvailable, rpc_executed: true }
 }
 
 Deno.serve(async (request) => {
@@ -189,9 +202,9 @@ Deno.serve(async (request) => {
       const initialIntent = classifyShadowIntent(inbound.text)
       if (initialIntent === 'availability_query' || initialIntent === 'booking_intent') {
         try {
-          availability = await loadAvailability(admin, context, inbound.text)
+          availability = await loadAvailability(admin, context, inbound.text, initialIntent)
         } catch {
-          availability = { status: 'error', request: interpretRequestedDate(inbound.text, safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'), slots: [] }
+          availability = { status: 'error', request: interpretRequestedDate(inbound.text, safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'), slots: [], rpc_executed: false }
         }
       }
       const proposal = await generateShadowProposal({
@@ -222,7 +235,7 @@ Deno.serve(async (request) => {
             confidence: proposal.confidence,
             requested_action: proposal.requested_action,
             tools_considered: proposal.tools_considered,
-            context_counts: { ...proposal.context_counts, availability_request: availability?.request || null, availability_status: availability?.status || null },
+            context_counts: { ...proposal.context_counts, availability_request: availability?.request || null, availability_status: availability?.status || null, requested_slot_available: availability?.requested_slot_available ?? null },
           },
           proposed_reply: proposal.proposed_reply,
           mutation_blocked: true,
