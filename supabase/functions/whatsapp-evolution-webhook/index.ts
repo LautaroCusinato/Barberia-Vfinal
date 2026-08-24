@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
+import { assertShadowAgentConfiguration, extractInboundText, generateShadowProposal } from '../_shared/whatsappAgentShadow.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -18,6 +19,7 @@ function assertQaRuntime() {
   if (!ref || ref === PRODUCTION_PROJECT_REF || ref !== QA_PROJECT_REF) throw new Error('qa_project_required')
   if (Deno.env.get('WHATSAPP_PROVISIONING_ENV') !== 'qa' || Deno.env.get('WHATSAPP_MODE') !== 'shadow' || Deno.env.get('PILOT_MODE') !== 'shadow') throw new Error('shadow_mode_required')
   if (Deno.env.get('WHATSAPP_PROVISIONING_ADAPTER') !== 'evolution') throw new Error('evolution_adapter_required')
+  assertShadowAgentConfiguration({ WHATSAPP_MODE: Deno.env.get('WHATSAPP_MODE'), PILOT_MODE: Deno.env.get('PILOT_MODE') })
 }
 
 function adminClient() {
@@ -73,13 +75,32 @@ function messageData(payload: Record<string, unknown>) {
   const remoteJid = safeString(key.remoteJid || key.participant || data.remoteJid || payload.sender)
   const fromMe = key.fromMe === true || data.fromMe === true || payload.fromMe === true
   const messageType = safeString(data.messageType || payload.messageType || Object.keys(message)[0]).slice(0, 80) || null
-  return { eventId, remoteJid, fromMe, messageType }
+  return { eventId, remoteJid, fromMe, messageType, text: extractInboundText(payload) }
 }
 
 async function senderHash(value: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
   const bytes = new Uint8Array(digest)
   return `sha256:${Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('').slice(0, 12)}`
+}
+
+async function loadTenantContext(admin: ReturnType<typeof adminClient>, tenantId: number) {
+  const [business, services, barbers, schedules, blocks] = await Promise.all([
+    admin.from('barberias').select('id,nombre,slug,moneda,zona_horaria').eq('id', tenantId).maybeSingle(),
+    admin.from('servicios').select('id,nombre,descripcion,precio,duracion_min,activo').eq('barberia_id', tenantId).eq('activo', true).order('nombre'),
+    admin.from('barberos').select('id,nombre,especialidad,horario_texto,activo').eq('barberia_id', tenantId).eq('activo', true).order('nombre'),
+    admin.from('horarios_barbero').select('barbero_id,day_of_week,start_time,end_time,activo').eq('barberia_id', tenantId).eq('activo', true),
+    admin.from('bloqueos_agenda').select('fecha,barbero_id,start_time,end_time,tipo').eq('barberia_id', tenantId),
+  ])
+  const errors = [business, services, barbers, schedules, blocks].filter((result) => result.error)
+  if (errors.length) throw new Error('tenant_context_unavailable')
+  return {
+    business: business.data || {},
+    services: services.data || [],
+    barbers: barbers.data || [],
+    schedules: schedules.data || [],
+    blocks: blocks.data || [],
+  }
 }
 
 Deno.serve(async (request) => {
@@ -107,12 +128,20 @@ Deno.serve(async (request) => {
       if (inbound.fromMe) return json({ received: true, accepted: false, event, reason: 'from_me_ignored', mutation_blocked: true }, 202)
       const { data: existing, error: existingError } = await admin.from('saas_automation_shadow_runs').select('id').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle()
       if (existingError) return json({ error: 'shadow_lookup_failed', mutation_blocked: true }, 502)
+      if (existing) return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, 202)
+      const context = await loadTenantContext(admin, connection.barberia_id)
+      const proposal = await generateShadowProposal({
+        text: inbound.text,
+        context,
+        apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
+        model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
+      })
       const { data: recorded, error: recordError } = await admin.rpc('record_whatsapp_shadow_run', {
         p_integration_id: connection.integration_id,
         p_event_id: inbound.eventId,
-        p_intent: null,
-        p_proposed_result: 'inbound_received_shadow_only',
-        p_proposed_response_length: 0,
+        p_intent: proposal.intent,
+        p_proposed_result: 'agent_proposal_shadow',
+        p_proposed_response_length: proposal.proposed_reply.length,
         p_proposed_latency_ms: null,
         p_proposed_tokens_input: null,
         p_proposed_tokens_output: null,
@@ -123,14 +152,25 @@ Deno.serve(async (request) => {
           message_type: inbound.messageType,
           sender_hash: await senderHash(inbound.remoteJid),
           from_me: false,
+          agent: {
+            provider: proposal.provider,
+            model: proposal.model,
+            confidence: proposal.confidence,
+            requested_action: proposal.requested_action,
+            tools_considered: proposal.tools_considered,
+            context_counts: proposal.context_counts,
+          },
+          proposed_reply: proposal.proposed_reply,
           mutation_blocked: true,
           outbound_send: false,
+          mutation_allowed: false,
+          outbound_allowed: false,
           observed_at: new Date().toISOString(),
         },
       })
       if (recordError) return json({ error: 'shadow_record_failed', mutation_blocked: true }, 502)
       const shadowRun = Array.isArray(recorded) ? recorded[0] : recorded
-      return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, shadow_run_id: shadowRun?.shadow_run_id || null, duplicate: Boolean(existing), mutation_blocked: true, outbound_send: false })
+      return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, shadow_run_id: shadowRun?.shadow_run_id || null, duplicate: false, intent: proposal.intent, proposed_reply: proposal.proposed_reply, provider: proposal.provider, mutation_blocked: true, outbound_send: false })
     }
     const state = event === 'QRCODE_UPDATED' ? 'QR_READY' : connectionState(payload as Record<string, unknown>)
     if (state) {
