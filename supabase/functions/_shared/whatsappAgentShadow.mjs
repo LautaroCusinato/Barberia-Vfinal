@@ -1,7 +1,72 @@
 const MAX_INBOUND_TEXT = 2000
 const MAX_PROPOSED_REPLY = 1000
+const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
 
 const textFrom = (value) => String(value ?? '').trim()
+
+function normalizedSearchText(value) {
+  return textFrom(value)
+    .toLocaleLowerCase('es-AR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function dateKeyInTimezone(date, timezone = DEFAULT_TIMEZONE) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone || DEFAULT_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+function addDaysToDateKey(dateKey, days) {
+  const base = new Date(`${dateKey}T12:00:00Z`)
+  if (!Number.isFinite(base.getTime())) return null
+  base.setUTCDate(base.getUTCDate() + days)
+  return base.toISOString().slice(0, 10)
+}
+
+const WEEKDAYS = new Map([
+  ['domingo', 0],
+  ['lunes', 1],
+  ['martes', 2],
+  ['miercoles', 3],
+  ['jueves', 4],
+  ['viernes', 5],
+  ['sabado', 6],
+])
+
+export function interpretRequestedDate(text, timezone = DEFAULT_TIMEZONE, now = new Date()) {
+  const normalized = normalizedSearchText(text)
+  const today = dateKeyInTimezone(now, timezone)
+  let dateKey = null
+  let datePhrase = null
+
+  if (/\bpasado manana\b/.test(normalized)) {
+    dateKey = addDaysToDateKey(today, 2)
+    datePhrase = 'pasado mañana'
+  } else if (/\bmanana\b/.test(normalized)) {
+    dateKey = addDaysToDateKey(today, 1)
+    datePhrase = 'mañana'
+  } else if (/\bhoy\b/.test(normalized)) {
+    dateKey = today
+    datePhrase = 'hoy'
+  } else {
+    for (const [weekday, targetDay] of WEEKDAYS.entries()) {
+      if (!new RegExp(`\\b${weekday}\\b`).test(normalized)) continue
+      const currentDay = new Date(`${today}T12:00:00Z`).getUTCDay()
+      const delta = (targetDay - currentDay + 7) % 7 || 7
+      dateKey = addDaysToDateKey(today, delta)
+      datePhrase = weekday
+      break
+    }
+  }
+
+  let timePeriod = null
+  if (/\b(noche|noches)\b/.test(normalized)) timePeriod = 'evening'
+  else if (/\b(tarde|tardes)\b/.test(normalized)) timePeriod = 'afternoon'
+  else if (/\b(a la manana|por la manana|esta manana)\b/.test(normalized)) timePeriod = 'morning'
+
+  return { date_key: dateKey, date_phrase: datePhrase, time_period: timePeriod, timezone: timezone || DEFAULT_TIMEZONE }
+}
 
 export function extractInboundText(payload) {
   const body = payload && typeof payload === 'object' ? payload : {}
@@ -17,11 +82,14 @@ export function extractInboundText(payload) {
 }
 
 export function classifyShadowIntent(text) {
-  const normalized = textFrom(text).toLocaleLowerCase('es-AR')
-  if (/\b(servicio|servicios|hacen|ofrecen|tienen)\b/.test(normalized)) return 'services_query'
-  if (/\b(precio|precios|cu[aá]nto|cu[aá]ntos|costo|sale)\b/.test(normalized)) return 'price_query'
-  if (/\b(turno|turnos|reserva|reservar|disponib|horario|horarios)\b/.test(normalized)) return 'availability_query'
-  if (/\b(cancelar|cancelo|cancelaci[oó]n|cambiar|reprogramar)\b/.test(normalized)) return 'booking_change_request'
+  const normalized = normalizedSearchText(text)
+  const bookingAction = /\b(quiero|necesito|me gustaria|reservame|agendame|sacar|hacer)\b/.test(normalized)
+    && /\b(reservar|reserva|reservame|turno|agendar|agendame)\b/.test(normalized)
+  if (bookingAction) return 'booking_intent'
+  if (/\b(cancelar|cancelo|cancelacion|cambiar|reprogramar)\b/.test(normalized)) return 'booking_change_request'
+  if (/\b(turno|turnos|disponib|horario|horarios|hay lugar|libre|libres)\b/.test(normalized)) return 'availability_query'
+  if (/\b(precio|precios|cuanto|cuantos|costo|sale)\b/.test(normalized)) return 'price_query'
+  if (/\b(servicio|servicios|ofrecen|catalogo)\b/.test(normalized)) return 'services_query'
   return normalized ? 'general_query' : 'empty_query'
 }
 
@@ -35,7 +103,42 @@ function formatPrice(service, currency) {
   return `${currency || 'ARS'} ${amount.toLocaleString('es-AR')}`
 }
 
-export function buildDeterministicShadowProposal({ text, business = {}, services = [], barbers = [], schedules = [], blocks = [] }) {
+function formatDateLabel(dateKey) {
+  if (!dateKey) return ''
+  const date = new Date(`${dateKey}T12:00:00Z`)
+  if (!Number.isFinite(date.getTime())) return dateKey
+  return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })
+}
+
+function formatAvailabilitySlot(slot) {
+  const time = textFrom(slot?.hora).slice(0, 5)
+  const service = textFrom(slot?.service_name)
+  const barber = textFrom(slot?.barbero_nombre)
+  const detail = [service, barber].filter(Boolean).join(' · ')
+  return detail ? `${time} (${detail})` : time
+}
+
+function availabilityReply({ intent, businessName, availability }) {
+  const request = availability?.request || {}
+  if (availability?.status === 'error') return `No pude consultar la disponibilidad de ${businessName} en este momento. No se confirmó ningún turno.`
+  if (!request.date_key) {
+    return intent === 'booking_intent'
+      ? 'Para revisar opciones necesito saber qué día y servicio querés reservar. No se creó ningún turno.'
+      : '¿Qué día querés consultar? Puedo revisar horarios sin reservar ningún turno.'
+  }
+  const slots = Array.isArray(availability?.slots) ? availability.slots.slice(0, 8) : []
+  const dateLabel = formatDateLabel(request.date_key)
+  if (!slots.length) {
+    return intent === 'booking_intent'
+      ? `No encontré disponibilidad para el ${dateLabel}. No se creó ningún turno.`
+      : `No encontré disponibilidad para el ${dateLabel}. Puedo revisar otro día.`
+  }
+  const listed = slots.map(formatAvailabilitySlot).filter(Boolean).join(', ')
+  const prefix = intent === 'booking_intent' ? 'Encontré estas opciones, pero la reserva permanece bloqueada en modo shadow' : `Sí, para el ${dateLabel} encontré`
+  return `${prefix}: ${listed}. ¿Querés que te ayude a elegir un horario?`
+}
+
+export function buildDeterministicShadowProposal({ text, business = {}, services = [], barbers = [], schedules = [], blocks = [], availability = null }) {
   const intent = classifyShadowIntent(text)
   const activeServices = services.filter((service) => service?.activo !== false && safeServiceName(service))
   const businessName = textFrom(business?.nombre).replace(/[\r\n]/g, ' ').slice(0, 120) || 'la barbería'
@@ -57,10 +160,12 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
       ? `Estos son nuestros precios: ${prices.join(' · ')}.`
       : `Todavía no hay precios publicados para ${businessName}.`
     toolsConsidered = ['tenant_context_read', 'services_read']
-  } else if (intent === 'availability_query') {
-    proposedReply = 'Puedo consultar horarios disponibles para el servicio que elijas. No confirmé ningún turno.'
-    requestedAction = 'read_availability_only'
+  } else if (intent === 'availability_query' || intent === 'booking_intent') {
+    proposedReply = availabilityReply({ intent, businessName, availability })
+    requestedAction = intent === 'booking_intent' ? 'booking_read_only_proposal' : 'read_availability_only'
     toolsConsidered = ['tenant_context_read', 'services_read', 'barbers_read', 'schedules_read', 'blocks_read']
+    if (availability) toolsConsidered.push('availability_rpc_read')
+    confidence = intent === 'booking_intent' ? 0.93 : 0.9
   } else if (intent === 'booking_change_request') {
     proposedReply = 'Puedo revisar opciones de horario, pero cualquier alta, cambio o cancelación requiere una confirmación explícita y permanece bloqueada en este modo.'
     requestedAction = 'booking_mutation_proposal_only'
@@ -85,6 +190,7 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
       barbers: barbers.filter((barber) => barber?.activo !== false).length,
       schedules: schedules.length,
       blocks: blocks.length,
+      availability: Array.isArray(availability?.slots) ? availability.slots.length : 0,
     },
     provider: 'qa_deterministic_shadow',
     model: 'shadow-safe-v1',
@@ -102,7 +208,7 @@ export function assertShadowAgentConfiguration(env = {}) {
 
 export async function generateShadowProposal({ text, context = {}, apiKey = '', model = 'deepseek-chat', fetchImpl = globalThis.fetch }) {
   const deterministic = buildDeterministicShadowProposal({ text, ...context })
-  if (!textFrom(apiKey)) return deterministic
+  if (!textFrom(apiKey) || ['availability_query', 'booking_intent'].includes(deterministic.intent)) return deterministic
 
   const system = [
     'Sos un agente de WhatsApp en modo shadow para una única barbería QA.',
@@ -129,10 +235,10 @@ export async function generateShadowProposal({ text, context = {}, apiKey = '', 
   try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { throw new Error('llm_invalid_json') }
   const reply = textFrom(parsed?.reply).replace(/[\r\n]+/g, ' ').trim().slice(0, MAX_PROPOSED_REPLY)
   if (!reply || /tenant_id|barberia_id|service_role|access_token|webhook_secret/i.test(reply)) throw new Error('llm_unsafe_reply')
-  const allowedIntents = new Set(['general_query', 'services_query', 'price_query', 'availability_query', 'booking_change_request', 'empty_query'])
+  const allowedIntents = new Set(['general_query', 'services_query', 'price_query', 'availability_query', 'booking_intent', 'booking_change_request', 'empty_query'])
   const intent = allowedIntents.has(parsed?.intent) ? parsed.intent : deterministic.intent
   const action = textFrom(parsed?.requested_action).slice(0, 80) || deterministic.requested_action
   return { ...deterministic, intent, proposed_reply: reply, requested_action: action, provider: 'deepseek', model: model || 'deepseek-chat', confidence: 0.8 }
 }
 
-export const shadowAgentLimits = Object.freeze({ MAX_INBOUND_TEXT, MAX_PROPOSED_REPLY })
+export const shadowAgentLimits = Object.freeze({ MAX_INBOUND_TEXT, MAX_PROPOSED_REPLY, DEFAULT_TIMEZONE })

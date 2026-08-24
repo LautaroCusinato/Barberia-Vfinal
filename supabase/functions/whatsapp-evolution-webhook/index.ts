@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
-import { assertShadowAgentConfiguration, extractInboundText, generateShadowProposal } from '../_shared/whatsappAgentShadow.mjs'
+import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate } from '../_shared/whatsappAgentShadow.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -103,6 +103,61 @@ async function loadTenantContext(admin: ReturnType<typeof adminClient>, tenantId
   }
 }
 
+function normalizedSearchText(value: unknown) {
+  return safeString(value).toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+function timeMinutes(value: unknown) {
+  const match = safeString(value).match(/^(\d{1,2}):(\d{2})/)
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+function matchesTimePeriod(value: unknown, period: string | null) {
+  if (!period) return true
+  const minutes = timeMinutes(value)
+  if (minutes === null) return false
+  if (period === 'morning') return minutes < 12 * 60
+  if (period === 'afternoon') return minutes >= 12 * 60 && minutes < 19 * 60
+  if (period === 'evening') return minutes >= 19 * 60
+  return true
+}
+
+function relevantServices(text: string, services: Array<Record<string, unknown>>) {
+  const normalized = normalizedSearchText(text)
+  const matches = services.filter((service) => {
+    const name = normalizedSearchText(service.nombre)
+    return name && normalized.includes(name)
+  })
+  return matches.length ? matches : services
+}
+
+async function loadAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, text: string) {
+  const request = interpretRequestedDate(text, safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires')
+  if (!request.date_key) return { status: 'date_required', request, slots: [] }
+  if (!context.business.slug) return { status: 'error', request, slots: [] }
+  const services = relevantServices(text, context.services)
+  const results = await Promise.all(services.map(async (service) => {
+    const { data, error } = await admin.rpc('horarios_disponibles_reserva_publica', {
+      p_slug: context.business.slug,
+      p_servicio_id: service.id,
+      p_fecha: request.date_key,
+    })
+    if (error) throw new Error('availability_rpc_failed')
+    return (data || [])
+      .filter((slot: Record<string, unknown>) => matchesTimePeriod(slot.hora, request.time_period))
+      .map((slot: Record<string, unknown>) => ({
+        service_id: service.id,
+        service_name: service.nombre,
+        barbero_id: slot.barbero_id,
+        barbero_nombre: slot.barbero_nombre,
+        duracion_min: slot.duracion_min,
+        hora: slot.hora,
+      }))
+  }))
+  return { status: 'ready', request, slots: results.flat() }
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
   try {
@@ -130,9 +185,18 @@ Deno.serve(async (request) => {
       if (existingError) return json({ error: 'shadow_lookup_failed', mutation_blocked: true }, 502)
       if (existing) return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, 202)
       const context = await loadTenantContext(admin, connection.barberia_id)
+      let availability = null
+      const initialIntent = classifyShadowIntent(inbound.text)
+      if (initialIntent === 'availability_query' || initialIntent === 'booking_intent') {
+        try {
+          availability = await loadAvailability(admin, context, inbound.text)
+        } catch {
+          availability = { status: 'error', request: interpretRequestedDate(inbound.text, safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'), slots: [] }
+        }
+      }
       const proposal = await generateShadowProposal({
         text: inbound.text,
-        context,
+        context: { ...context, availability },
         apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
         model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
       })
@@ -158,7 +222,7 @@ Deno.serve(async (request) => {
             confidence: proposal.confidence,
             requested_action: proposal.requested_action,
             tools_considered: proposal.tools_considered,
-            context_counts: proposal.context_counts,
+            context_counts: { ...proposal.context_counts, availability_request: availability?.request || null, availability_status: availability?.status || null },
           },
           proposed_reply: proposal.proposed_reply,
           mutation_blocked: true,
