@@ -1,6 +1,6 @@
 # Austral Product Experience & Reliability Audit
 
-Fecha: 2026-08-25  
+Fecha: 2026-08-25
 Alcance: frontend público, demo y navegación del workspace. WhatsApp backend, Evolution, n8n, billing y Supabase quedaron fuera de cambios y operaciones.
 
 ## Método
