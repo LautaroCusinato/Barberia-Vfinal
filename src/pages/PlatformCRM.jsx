@@ -10,6 +10,21 @@ import CRMOutreachQueue from '../components/CRMOutreachQueue.jsx'
 import CommercialPilot from './CommercialPilot.jsx'
 
 const STAGES = ['discovered', 'qualified', 'contacted', 'replied', 'interested', 'demo', 'trial', 'negotiating', 'won', 'lost', 'do_not_contact']
+const PLATFORM_VIEWS = new Set(['businesses', 'leads', 'agent', 'pilot', 'queue', 'actions', 'billing'])
+
+function platformViewFromUrl(role) {
+  const requested = new URLSearchParams(window.location.search).get('section')
+  if (!PLATFORM_VIEWS.has(requested)) return 'businesses'
+  return requested === 'billing' && !['owner', 'admin'].includes(role) ? 'businesses' : requested
+}
+
+function updatePlatformViewUrl(view, replace = false) {
+  const url = new URL(window.location.href)
+  if (view === 'businesses') url.searchParams.delete('section')
+  else url.searchParams.set('section', view)
+  const next = `${url.pathname}${url.search}${url.hash}`
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', next)
+}
 
 // The sandbox tenant is resolved from the active QA binding returned by the
 // backend. These values describe the operation only; no tenant id is accepted
@@ -246,7 +261,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyBusiness)
-  const [view, setView] = useState('businesses')
+  const [view, setView] = useState(() => platformViewFromUrl(role))
   const [billingOverview, setBillingOverview] = useState(null)
   const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, binding: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null, productionIdentity: null, productionPlanSearch: null, productionPilot: null })
   const [sandboxBusy, setSandboxBusy] = useState(false)
@@ -255,6 +270,19 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [sandboxAuditWarning, setSandboxAuditWarning] = useState('')
   const [sandboxConfirmAction, setSandboxConfirmAction] = useState('')
   const canWrite = ['owner', 'admin', 'sales', 'automation'].includes(role)
+
+  useEffect(() => {
+    const handlePopState = () => setView(platformViewFromUrl(role))
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [role])
+
+  const navigatePlatformView = (nextView, { replace = false } = {}) => {
+    if (!PLATFORM_VIEWS.has(nextView)) return
+    if (nextView === 'billing' && !['owner', 'admin'].includes(role)) return
+    updatePlatformViewUrl(nextView, replace)
+    setView(nextView)
+  }
 
   const loadSandboxSnapshot = useCallback(async () => {
     if (!['owner', 'admin'].includes(role)) return
@@ -476,13 +504,13 @@ export default function PlatformCRM({ role = 'owner' }) {
         <nav className="nav platform-nav" aria-label="Navegación de plataforma">
           <div className="nav-section">
             <p className="nav-section-label">Plataforma</p>
-            <button type="button" className={`nav-item ${view === 'businesses' ? 'active' : ''}`} onClick={() => setView('businesses')}><BriefcaseBusiness size={17} /><span>CRM comercial</span></button>
-            <button type="button" className={`nav-item ${view === 'leads' ? 'active' : ''}`} onClick={() => setView('leads')}><UsersRound size={17} /><span>Negocios y leads</span></button>
-            <button type="button" className={`nav-item ${view === 'agent' ? 'active' : ''}`} onClick={() => setView('agent')}><Bot size={17} /><span>Agente comercial</span></button>
-            <button type="button" className={`nav-item ${view === 'pilot' ? 'active' : ''}`} onClick={() => setView('pilot')}><CheckSquare size={17} /><span>Piloto comercial</span></button>
-            <button type="button" className={`nav-item ${view === 'queue' ? 'active' : ''}`} onClick={() => setView('queue')}><Search size={17} /><span>Listos para contactar</span></button>
-            <button type="button" className={`nav-item ${view === 'actions' ? 'active' : ''}`} onClick={() => setView('actions')}><Bell size={17} /><span>Seguimientos</span></button>
-            {['owner', 'admin'].includes(role) && <button type="button" className={`nav-item ${view === 'billing' ? 'active' : ''}`} onClick={() => setView('billing')}><CreditCard size={17} /><span>Facturacion SaaS</span></button>}
+            <button type="button" className={`nav-item ${view === 'businesses' ? 'active' : ''}`} onClick={() => navigatePlatformView('businesses')}><BriefcaseBusiness size={17} /><span>CRM comercial</span></button>
+            <button type="button" className={`nav-item ${view === 'leads' ? 'active' : ''}`} onClick={() => navigatePlatformView('leads')}><UsersRound size={17} /><span>Negocios y leads</span></button>
+            <button type="button" className={`nav-item ${view === 'agent' ? 'active' : ''}`} onClick={() => navigatePlatformView('agent')}><Bot size={17} /><span>Agente comercial</span></button>
+            <button type="button" className={`nav-item ${view === 'pilot' ? 'active' : ''}`} onClick={() => navigatePlatformView('pilot')}><CheckSquare size={17} /><span>Piloto comercial</span></button>
+            <button type="button" className={`nav-item ${view === 'queue' ? 'active' : ''}`} onClick={() => navigatePlatformView('queue')}><Search size={17} /><span>Listos para contactar</span></button>
+            <button type="button" className={`nav-item ${view === 'actions' ? 'active' : ''}`} onClick={() => navigatePlatformView('actions')}><Bell size={17} /><span>Seguimientos</span></button>
+            {['owner', 'admin'].includes(role) && <button type="button" className={`nav-item ${view === 'billing' ? 'active' : ''}`} onClick={() => navigatePlatformView('billing')}><CreditCard size={17} /><span>Facturacion SaaS</span></button>}
           </div>
         </nav>
         <div className="sidebar-footer">
