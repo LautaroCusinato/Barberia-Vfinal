@@ -118,6 +118,21 @@ function initialTheme(tenantId, storageKey = null) {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
+const WORKSPACE_VIEWS = new Set(['resumen', 'agenda', 'equipo', 'mensajes', 'pacientes', 'notas', 'estadisticas', 'operacion', 'configuracion', 'facturacion'])
+
+function workspaceViewFromUrl() {
+  const requested = new URLSearchParams(window.location.search).get('view')
+  return WORKSPACE_VIEWS.has(requested) ? requested : 'resumen'
+}
+
+function updateWorkspaceViewUrl(view, replace = false) {
+  const url = new URL(window.location.href)
+  if (view === 'resumen') url.searchParams.delete('view')
+  else url.searchParams.set('view', view)
+  const next = `${url.pathname}${url.search}${url.hash}`
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', next)
+}
+
 function SkeletonBlock({ height = 90 }) {
   return <div className="skeleton" style={{ height, width: '100%', marginBottom: 10 }} />
 }
@@ -129,7 +144,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const isSupabaseConfigured = supabaseConfigured && !demoMode
   const demoSnapshot = demoMode ? getDemoSnapshot(demoSessionId) : null
   const themeKey = demoMode ? 'austral-demo-theme' : tenantStorageKey('theme', barberiaId)
-  const [view, setView] = useState('resumen')
+  const [view, setView] = useState(workspaceViewFromUrl)
   const [turnos, setTurnos] = useState(() => demoSnapshot?.turnos || mockTurnos)
   const [conversaciones, setConversaciones] = useState(() => demoSnapshot?.conversaciones || mockConversaciones)
   const [pacientes, setPacientes] = useState(() => demoSnapshot?.pacientes || mockPacientes)
@@ -155,6 +170,15 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [zonaHoraria, setZonaHoraria] = useState(() => demoSnapshot?.zonaHoraria || TZ)
   const [dbError, setDbError] = useState('')
   const barberoWritesRef = useRef({})
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setNotasFiltro('')
+      setView(workspaceViewFromUrl())
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   const reportError = (mensaje, error) => {
     console.error(mensaje, error)
@@ -236,12 +260,14 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   }
 
   const verNotasDePaciente = (nombre) => {
+    navigateFromMenu('notas')
     setNotasFiltro(nombre)
-    setView('notas')
   }
 
-  const navigateFromMenu = (v) => {
+  const navigateFromMenu = (v, { replace = false } = {}) => {
+    if (!WORKSPACE_VIEWS.has(v)) return
     setNotasFiltro('')
+    updateWorkspaceViewUrl(v, replace)
     setView(v)
   }
 
@@ -611,7 +637,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const openConversation = async (convId) => {
     setSelectedConversationId(convId)
-    setView('mensajes')
+    navigateFromMenu('mensajes')
 
     const conv = conversaciones.find((c) => c.id === convId)
 

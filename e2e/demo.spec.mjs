@@ -1,7 +1,17 @@
 import { test, expect } from '@playwright/test'
 
 async function clickWorkspaceButton(page, view) {
-  await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible({ timeout: 10_000 })
+  const titles = { Agenda: 'Agenda', Equipo: 'Equipo', Mensajes: 'Mensajes', Clientes: 'Clientes', Notas: 'Notas', Estadísticas: 'Estadísticas', Operacion: 'Operacion', Configuración: 'Configuración del negocio', Facturacion: 'Facturación' }
+  const targetHeading = titles[view] ? page.getByRole('heading', { name: titles[view], exact: true }) : null
+  if (targetHeading) {
+    try {
+      await expect(targetHeading).toBeVisible({ timeout: 1_000 })
+      return
+    } catch {
+      // The workspace is still on its default summary view; navigate below.
+    }
+  }
+  await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible({ timeout: 30_000 })
   const directButton = page.getByRole('button', { name: view, exact: true }).filter({ visible: true })
   if (await directButton.count()) return directButton.first().click()
   const desktopSidebar = page.locator('.sidebar')
@@ -27,7 +37,7 @@ async function openDemo(page, view = null) {
 async function resetDemo(page) {
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: /reiniciar demo/i }).click()
-  await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible()
+  await expect(page.getByText('Modo demostración')).toBeVisible({ timeout: 30_000 })
 }
 
 async function selectFirstAvailableTime(page) {
@@ -242,5 +252,15 @@ test.describe('experiencia de producto demo', () => {
     await expect(pageB.getByLabel('Nombre comercial')).toHaveValue('Barbería Demo Austral')
     await contextA.close()
     await contextB.close()
+  })
+
+  test('DEMO-22 conserva la vista al recargar y permite volver con el navegador', async ({ page }) => {
+    await openDemo(page, 'Agenda')
+    await expect(page).toHaveURL(/\/demo\?view=agenda$/)
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible()
+    await page.goBack()
+    await expect(page).toHaveURL(/\/demo$/)
+    await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible()
   })
 })

@@ -9,7 +9,10 @@ test.describe('superficies públicas sin efectos externos', () => {
   })
 
   test('el hero crítico permanece visible durante el ciclo de vida', async ({ page }) => {
-    test.setTimeout(45_000)
+    // This scenario intentionally observes the page for 30 seconds. Keep
+    // enough budget for the lazy route/server startup under parallel CI
+    // without masking a real visibility failure.
+    test.setTimeout(75_000)
     await page.route('**/assets/Landing-*.js', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1200))
       await route.abort()
@@ -56,10 +59,10 @@ test.describe('superficies públicas sin efectos externos', () => {
     await page.getByRole('button', { name: 'Agenda' }).click()
     await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible()
     await page.reload()
-    await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible()
     page.once('dialog', (dialog) => dialog.accept())
     await page.getByRole('button', { name: /reiniciar demo/i }).click()
-    await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible()
   })
 
   test('rutas de reserva e invitación fallan de forma controlada', async ({ page }) => {

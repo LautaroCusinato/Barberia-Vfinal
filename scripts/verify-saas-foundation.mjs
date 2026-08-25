@@ -92,8 +92,8 @@ for (const required of ['idx_crm_negocios_barberia_id_unique', 'barberias_sync',
   assert.match(crmSyncMigration, new RegExp(required), `${required} missing`)
 }
 
-assert.match(platformCrm, /setView\('businesses'\)/, 'business navigation missing')
-assert.match(platformCrm, /setView\('leads'\)/, 'lead navigation missing')
+assert.match(platformCrm, /(?:setView|navigatePlatformView)\('businesses'\)/, 'business navigation missing')
+assert.match(platformCrm, /(?:setView|navigatePlatformView)\('leads'\)/, 'lead navigation missing')
 assert.match(appEntry, /SelectorWorkspace/, 'platform/business workspace selector missing')
 assert.match(appEntry, /platformMember && \(platformPath/, 'platform route must take priority')
 assert.match(appEntry, /workspace !== 'business'/, 'platform members must choose a workspace before opening the tenant')

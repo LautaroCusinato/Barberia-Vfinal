@@ -12,6 +12,9 @@ if (qaRequested) {
 }
 
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:4173'
+const localServerCommand = process.env.CI
+  ? 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173'
+  : 'npm run dev -- --host 127.0.0.1 --port 4173'
 const publicTestEnv = {
   ...process.env,
   // Deterministic public tests use route mocks; these placeholders never
@@ -41,7 +44,7 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
   },
   webServer: process.env.E2E_BASE_URL ? undefined : {
-    command: 'npm run dev -- --host 127.0.0.1 --port 4173',
+    command: localServerCommand,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
