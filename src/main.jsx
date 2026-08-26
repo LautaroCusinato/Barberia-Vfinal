@@ -208,16 +208,15 @@ function Root() {
         .from('barberia_members')
         .select('barberia_id, role, barberias(nombre, onboarding_completed)')
         .eq('user_id', userId),
-      supabase
-        .from('platform_members')
-        .select('role')
-        .eq('user_id', userId)
-        .maybeSingle(),
+      // platform_role() is SECURITY DEFINER and returns null for tenant-only
+      // users, avoiding a direct platform_members read that is correctly
+      // denied by RLS outside the platform boundary.
+      supabase.rpc('platform_role'),
     ])
 
     const { data, error } = tenantResult
     const hasPlatformMembership = Boolean(platformResult.data)
-    const nextPlatformRole = platformResult.data?.role || null
+    const nextPlatformRole = platformResult.data || null
     if (error || platformResult.error) {
       // Mobile resume can be temporarily offline. Keep the authorized UI
       // mounted and retry in background instead of showing WorkspacePreparing.
@@ -341,7 +340,11 @@ function Root() {
       }
     }
 
-    supabase.auth.getSession().then(({ data }) => resolveSession(data.session))
+    supabase.auth.getSession().then(({ data }) => {
+      if (!sessionResolutionRef.current) {
+        sessionResolutionRef.current = resolveSession(data.session).finally(() => { sessionResolutionRef.current = null })
+      }
+    })
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthed(Boolean(session))
