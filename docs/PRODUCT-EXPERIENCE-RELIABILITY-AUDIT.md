@@ -1,6 +1,6 @@
 # Austral Product Experience & Reliability Audit
 
-Fecha: 2026-08-25
+Fecha: 2026-08-26
 Alcance: frontend público, demo y navegación del workspace. WhatsApp backend, Evolution, n8n, billing y Supabase quedaron fuera de cambios y operaciones.
 
 ## Método
@@ -22,6 +22,14 @@ La carga de Google Fonts dejó de bloquear `DOMContentLoaded`: es progresiva (`m
 
 Las vistas se mantenían únicamente en React state. Ahora el workspace usa `?view=` y plataforma `?section=`; refrescar conserva la vista, Back/Forward la recupera y los guards de rol siguen bloqueando billing para roles no autorizados. No se acepta tenant, entorno ni permiso desde esos parámetros.
 
+### P1 — resolución autenticada duplicada y lectura fuera del límite de plataforma
+
+La auditoría QA autenticada detectó dos lecturas repetidas de `barberia_members` y `platform_members`, además de un `401` para usuarios tenant-only. La causa era una lectura directa de `platform_members` (bloqueada correctamente por RLS) y una carrera entre `getSession()` y `onAuthStateChange`.
+
+La corrección mínima en `src/main.jsx` usa el RPC autorizado `platform_role()` (SECURITY DEFINER, sin exponer la tabla de plataforma) y deduplica la resolución inicial de sesión. No cambia RLS, RPC, datos ni contratos backend.
+
+Resultado posterior en build real servido por `vite preview`: 0 requests duplicadas, 0 errores de consola, 0 respuestas 4xx/5xx y 0 requests fallidas en Dashboard autenticado QA.
+
 ## Evidencia visual
 
 - [390px light](../artifacts/ui-audit/after-390-light.png)
@@ -38,10 +46,24 @@ Medición sobre el build estático (`vite preview`), Chromium headless, viewport
 | `/` | 16 ms | 63 ms | 833 ms | 1.672 s | 0 | 10 | 0 |
 | `/demo` | 5 ms | 42 ms | 257 ms | 168 ms | 0,006 | 16 | 0 |
 
+### Baseline autenticado QA posterior a la corrección
+
+Proyecto validado exclusivamente: `cmsymmszlzikqpvfqjre`, viewport 390×844, build real servido por `vite preview`, sesión `E2E_QA_`.
+
+| Ruta | TTFB | DOMContentLoaded | Load | LCP | CLS | Requests | Duplicadas |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `/para/barberia` | 11 ms | 55 ms | 163 ms | n/d | 0 | 10 | 0 |
+| `/reservar/e2e-qa-barberia-a` | 11 ms | 72 ms | 151 ms | 280 ms | 0,001 | 11 | 0 |
+| `/ingresar` | 13 ms | 145 ms | 303 ms | 340 ms | 0 | 10 | 0 |
+| `/` autenticado | 39 ms | 178 ms | 555 ms | 280 ms | n/d | 16 | 0 |
+
+La suite autenticada QA completa pasó `200/200` después de refrescar únicamente los fixtures QA del próximo lunes; la primera corrida falló en ocho viewport por fixture de fecha obsoleto, no por lógica de producto. El refresh creó/reutilizó sólo datos con prefijo `E2E_QA_` y no contactó proveedores externos.
+
 No hubo errores de consola ni requests fallidas. La carga de fuentes externas quedó fuera del camino crítico mediante carga progresiva y fallback local.
 
 ## Fuera de alcance / pendientes
 
 - No se inició pairing, outbound, migración WhatsApp ni operación financiera.
-- La validación autenticada QA requiere sesión/credenciales disponibles; no se introdujeron credenciales en el navegador.
+- La validación autenticada QA se ejecutó localmente contra el proyecto permitido `cmsymmszlzikqpvfqjre`: `200/200`, con aislamiento Tenant A/B y sin efectos productivos.
+- El smoke remoto autenticado aún requiere una sesión QA en el navegador; la sesión pública disponible no permite demostrar ese último paso.
 - No se modificó el Worker antiguo ni ningún deploy productivo.
