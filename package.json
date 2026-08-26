@@ -9,7 +9,6 @@
   },
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/diagnose-qa-build.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{js,jsx}\" \"scripts/**/*.mjs\" \"e2e/**/*.mjs\" vite.config.js eslint.config.js playwright.config.mjs",
