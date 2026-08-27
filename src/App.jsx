@@ -1291,7 +1291,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
               </>
             ) : (
               <>
-                <OnboardingChecklist barberiaId={barberiaId} demoMode={demoMode} onNavigate={navigateFromMenu} />
+                <OnboardingChecklist barberiaId={barberiaId} demoMode={demoMode} onNavigate={navigateFromMenu} whatsappStatus={{ ...whatsappIntegration, ...whatsappEntitlement }} />
                 <StatsCards turnos={turnosHoy} conversaciones={conversaciones} todayKey={todayKey} />
                 <div className="two-col">
                   <div className="panel resumen-agenda-panel">
