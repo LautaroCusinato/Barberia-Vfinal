@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2.45.0'
 import { mergeEvolutionConnectionMetadata, normalizeEvolutionState, resolveEvolutionState, shouldPersistEvolutionStatus } from '../_shared/evolutionState.mjs'
+import { qaCorsOrigin } from '../_shared/qaCors.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -385,8 +386,7 @@ async function refreshStatus(admin: SupabaseClient, tenantId: number) {
 
 const headers = (request: Request): HeadersInit => {
   const origin = request.headers.get('origin') || ''
-  const allowed = new Set([Deno.env.get('APP_BASE_URL') || '', `https://${QA_PROJECT_REF}.supabase.co`])
-  const corsOrigin = allowed.has(origin) && origin ? origin : null
+  const corsOrigin = qaCorsOrigin(origin, projectRef() === QA_PROJECT_REF)
   return { ...(corsOrigin ? { 'Access-Control-Allow-Origin': corsOrigin } : {}), 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', Vary: 'Origin', 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' }
 }
 
