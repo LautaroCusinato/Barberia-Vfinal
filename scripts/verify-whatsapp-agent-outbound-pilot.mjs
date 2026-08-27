@@ -84,6 +84,7 @@ assert.match(oneShotSource, /buildEvolutionSendTextPath/)
 assert.match(oneShotSource, /JSON\.stringify\(\{ number: recipient, text: proposedReply \}\)/)
 assert.doesNotMatch(oneShotSource, /textMessage\s*:/)
 assert.doesNotMatch(oneShotSource, /setTimeout|retryFetch|fetchWithRetry/i)
+assert.match(oneShotSource, /qa_recipient_not_configured/)
 assert.match(oneShotSource, /WHATSAPP_AGENT_OUTBOUND_PILOT_ENABLED/)
 assert.match(oneShotSource, /PROTECTED_WHATSAPP_INSTANCE/)
 

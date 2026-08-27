@@ -10,7 +10,6 @@ import {
 } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { buildEvolutionSendTextPath, normalizeRecipient, sanitizeProviderResult } from '../_shared/whatsappOutboundPilot.mjs'
 
-const APPROVAL_HEADER = 'X-Austral-Agent-Outbound-Approval'
 const MAX_EVENT_AGE_MS = 30 * 60 * 1000
 
 function safeString(value: unknown) { return String(value || '').trim() }
@@ -104,10 +103,9 @@ Deno.serve(async (request) => {
     if (!sourceEventReal) return json({ error: 'fresh_source_event_required', outbound_allowed: false }, 409)
 
     const recipient = normalizeRecipient(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
+    if (!recipient) return json({ error: 'qa_recipient_not_configured', outbound_allowed: false }, 503)
     const recipientHash = safeString(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
     const pilotEnabled = safeString(Deno.env.get('WHATSAPP_AGENT_OUTBOUND_PILOT_ENABLED')) === '1'
-    const approval = safeString(Deno.env.get('WHATSAPP_AGENT_OUTBOUND_PILOT_APPROVAL'))
-    const approvalMatches = constantTimeEqual(safeString(request.headers.get(APPROVAL_HEADER)), approval)
     const sourceHash = safeString(metadata.sender_hash)
     const senderMatches = constantTimeEqual(sourceHash, recipientHash)
     const guard = agentOutboundGuard({
@@ -133,7 +131,6 @@ Deno.serve(async (request) => {
       operationAcquired: true,
     })
     if (!guard.allowed) return json({ error: guard.reason, outbound_allowed: false }, 403)
-    if (!approval || !approvalMatches) return json({ error: 'agent_outbound_approval_required', outbound_allowed: false }, 403)
 
     const { data: claim, error: claimError } = await admin.rpc('claim_whatsapp_event', {
       p_integration_id: connection.integration_id,
