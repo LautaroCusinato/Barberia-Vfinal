@@ -51,6 +51,9 @@ assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'La reserva
 assert.equal(isSafePersistedReply({ intent: 'services_query', reply: 'Usá el service_role token.', metadata }), false)
 assert.equal(isSafePersistedReply({ intent: 'services_query', reply: 'INSERT INTO clientes...', metadata }), false)
 assert.equal(agentOutboundGuard(base).allowed, true)
+assert.equal(agentOutboundGuard({ ...base, sourceMetadata: { ...metadata, mutation_allowed: true } }).reason, 'real_persisted_source_required')
+assert.equal(agentOutboundGuard({ ...base, sourceMetadata: { ...metadata, outbound_send: true } }).reason, 'real_persisted_source_required')
+assert.equal(agentOutboundGuard({ ...base, sourceMetadata: { ...metadata, environment: 'production' } }).reason, 'real_persisted_source_required')
 
 for (const [key, value, reason] of [
   ['enabled', false, 'agent_outbound_pilot_disabled'],
@@ -78,12 +81,16 @@ for (const [key, value, reason] of [
 const oneShotSource = fs.readFileSync(new URL('../supabase/functions/whatsapp-agent-outbound-pilot/index.ts', import.meta.url), 'utf8')
 assert.match(oneShotSource, /event_id_only/)
 assert.match(oneShotSource, /saas_automation_shadow_runs/)
+assert.match(oneShotSource, /\.eq\('tenant_id', QA_AGENT_OUTBOUND_TENANT_ID\)/)
+assert.match(oneShotSource, /\.eq\('integration_id', connection\.integration_id\)/)
+assert.match(oneShotSource, /\.eq\('event_id', eventId\)/)
 assert.match(oneShotSource, /claim_whatsapp_event/)
 assert.match(oneShotSource, /finish_whatsapp_event/)
 assert.match(oneShotSource, /buildEvolutionSendTextPath/)
 assert.match(oneShotSource, /JSON\.stringify\(\{ number: recipient, text: proposedReply \}\)/)
 assert.doesNotMatch(oneShotSource, /textMessage\s*:/)
 assert.doesNotMatch(oneShotSource, /setTimeout|retryFetch|fetchWithRetry/i)
+assert.doesNotMatch(oneShotSource, /number\s*:\s*body|remoteJid|tenant_id\s*:\s*body|instance\s*:\s*body/i)
 assert.match(oneShotSource, /qa_recipient_not_configured/)
 assert.match(oneShotSource, /WHATSAPP_AGENT_OUTBOUND_PILOT_ENABLED/)
 assert.match(oneShotSource, /PROTECTED_WHATSAPP_INSTANCE/)
