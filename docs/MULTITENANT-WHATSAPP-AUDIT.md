@@ -167,3 +167,62 @@ PASS. `npm test`, lint, build, diff-check y secret scan siguen verdes.
 Mientras el historial no sea reconciliado, no se desplegó
 `whatsapp-provision`, no se ejecutó la matriz live Tenant A/B y no se publicó
 ningún commit en `main`.
+
+## Actualización de cierre técnico — 2026-08-27
+
+Esta actualización sustituye cualquier referencia histórica anterior cuando
+entra en conflicto con la verificación actual.
+
+- El host `servidor-barberia` fue comprobado en modo read-only: Docker 29.5.0,
+  n8n healthy y Evolution respondió HTTP 200. Las únicas instancias observadas
+  son `austral-qa-tenant-1` y `miwsp`; ambas están `open`. No se reinició ni
+  modificó ningún contenedor.
+- La instancia QA conserva exclusivamente los eventos configurados
+  `QRCODE_UPDATED`, `CONNECTION_UPDATE` y `MESSAGES_UPSERT`, con endpoint en el
+  proyecto QA. No se tocaron `miwsp`, n8n ni workflows legacy.
+- En Supabase QA (`cmsymmszlzikqpvfqjre`), Tenant A (1) tiene la conexión
+  autoritativa `evolution/qa/shadow/CONNECTED` asociada a
+  `austral-qa-tenant-1`. La proyección `saas_integraciones.estado` aún figura
+  `desactivado`; la migración de sincronización preparada corrige únicamente
+  esa proyección y refuerza el claim con la conexión autoritativa.
+- `supabase db push --dry-run --skip-vault` se detuvo antes de aplicar SQL por
+  dos migraciones locales deliberadamente diferidas que faltan en el history
+  QA: `20260806163000_link_barberia_central_evolution.sql` y
+  `20260807070000_mercadopago_sandbox_tenant.sql`. La migración
+  `20260824150000_whatsapp_integration_state_sync.sql` no se aplicó ni se
+  marcó como aplicada. No se utilizó `--include-all`.
+- La corrección quedó preservada localmente en la rama `qa-whatsapp-hardening`,
+  commit `f914dcd`, sin push ni deploy. `main` no fue alterada.
+- El preflight outbound no fue consumido: hay cero claims `qa-outbound:*`, cero
+  envíos registrados y cero operaciones sobre reservas/clientes. Los shadow
+  runs QA observados mantienen `outbound_allowed=false` y
+  `mutation_allowed=false`. Los nombres de los cuatro secrets outbound QA se
+  verificaron sin leer ni registrar sus valores.
+- El contrato de outbound continúa QA-only, Tenant A-only,
+  `austral-qa-tenant-1`-only, `fromMe=false`, allowlist por hash,
+  idempotencia determinística y sin retry automático después de alcanzar
+  Evolution. No se ejecutó `sendText`.
+- El esquema actual no contiene una entidad persistente de conversación
+  multipaso para servicio/fecha/hora/confirmación; el shadow agent conserva
+  propuestas por evento en `saas_automation_shadow_runs.metadata`. La futura
+  reserva debe seguir el flujo inbound → datos faltantes → disponibilidad →
+  confirmación inequívoca → RPC autoritativa → idempotencia, manteniendo la
+  mutación deshabilitada mientras no exista esa confirmación.
+
+### Verificación local
+
+- `npm test`: PASS (incluye state-sync, shadow, outbound, aislamiento e
+  idempotencia).
+- `npm run lint`: PASS.
+- `npm run build`: PASS.
+- `git diff --check`: PASS.
+- `node scripts/scan-secrets.mjs`: PASS.
+
+### Bloqueo operativo
+
+No se puede aplicar de forma segura la migración de sincronización ni ejecutar
+el único outbound autorizado mientras el history QA siga requiriendo las dos
+migraciones diferidas. Se necesita una decisión explícita para resolver ese
+drift (sin aplicar SQL ni marcar esas versiones automáticamente). Hasta
+entonces: producción sin contacto, `miwsp` intacta, outbound cerrado y sin
+reservas/clientes modificados.
