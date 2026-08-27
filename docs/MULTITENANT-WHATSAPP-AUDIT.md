@@ -264,3 +264,96 @@ por lo que cualquier nueva ejecución falla cerrado. Los cuatro nombres de
 secrets QA siguen presentes; sus valores no se registran aquí. La evidencia
 privada de aprobación temporal se conserva fuera del repositorio hasta el
 cierre administrativo del piloto.
+
+## Agent outbound y estado conversacional determinista — 2026-08-27
+
+Esta sección aplica explícitamente Austral SaaS Architecture a la frontera de
+tenant y Austral Design System a los estados que eventualmente se comunicarán
+en el panel. La implementación es local, pura y no está desplegada.
+
+### Frontera de confianza del agente
+
+- `whatsapp-agent-outbound-pilot` acepta únicamente `event_id`. No acepta desde
+  el navegador número, `remoteJid`, texto, tenant o instancia.
+- El servidor debe resolver la conexión por la integración Evolution y exigir
+  proyecto QA `cmsymmszlzikqpvfqjre`, entorno `qa`, modo `shadow`, Tenant A y
+  `austral-qa-tenant-1`; `miwsp`, producción, Tenant B y cualquier instancia
+  distinta fallan cerrado.
+- La fuente debe ser un shadow run real, reciente, `from_me=false`, con
+  `mutation_allowed=false`, `outbound_allowed=false`,
+  `mutation_blocked=true` y `outbound_send=false`. La respuesta propuesta debe
+  pertenecer al mismo evento/tenant y estar sanitizada.
+- La operación usa una clave idempotente derivada de `event_id`, un único POST
+  con el contrato Evolution v2.3.7 `{ number, text }` y ningún retry después de
+  alcanzar Evolution. El flag del piloto permanece deshabilitado y no se hizo
+  ningún envío en esta sesión.
+
+### Estado conversacional preparado
+
+No existe actualmente una entidad persistente de conversación en Supabase. El
+helper `supabase/functions/_shared/whatsappConversationState.mjs` define el
+contrato sin conectarlo al webhook ni a una RPC. Si se integra posteriormente,
+la persistencia debe ser estructurada y tenant-scoped (por ejemplo, una
+extensión aditiva de `saas_automation_shadow_runs.metadata` o una tabla nueva
+tras un preflight separado), nunca memoria libre del LLM ni un identificador
+controlado por el cliente.
+
+Cada estado contiene, como mínimo: `conversation_id`, `tenant_id`,
+`integration_id`, `instance`, `environment`, `sender_hash`, `pending_intent`,
+`service_id`, `requested_date`, `requested_time`, `daypart`, `barber_id`,
+`confirmation_required`, `confirmation_state`, `last_event_id`, `expires_at`,
+`version` y los datos de la propuesta de disponibilidad. La identidad queda
+ligada a la integración/instancia y al hash del sender; nunca se deriva tenant
+desde un teléfono.
+
+Las operaciones de transición reciben además el scope resuelto por servidor y
+lo comparan con el estado persistido; sin ese scope, o ante cualquier cambio
+de tenant, integración, entorno, instancia o hash, la transición se rechaza.
+
+La máquina de estados es `collecting` → `awaiting_confirmation` → `confirmed`.
+Un estado vencido pasa a `expired` y borra los campos de la propuesta; un “sí”
+posterior no puede confirmar contexto antiguo. El TTL es de 30 minutos,
+coherente con la ventana de frescura del evento outbound actual. Los campos
+faltantes se solicitan en orden determinista: servicio, fecha y hora; cuando
+están completos se consulta disponibilidad, sin repetir preguntas ya resueltas.
+
+La disponibilidad sólo puede registrarse con la fuente autoritativa
+`horarios_disponibles_reserva_publica`, junto a un `availability_snapshot_id`.
+Un slot libre genera una propuesta vinculada a tenant, conversación, sender,
+servicio, fecha, hora, barbero (si aplica), snapshot y versión. La confirmación
+acepta únicamente frases inequívocas (`sí`, `confirmo`, `confirmar turno` y
+equivalentes normalizados), la versión y propuesta vigentes. Expresiones
+ambiguas como “dale”, “ok”, “puede ser” o “creo que sí” no confirman.
+
+Antes de una futura mutación se exige una nueva consulta autoritativa. Si el
+slot cambió, el resultado es `slot_changed` y no se crea turno. Incluso cuando
+la revalidación es positiva, el contrato preparado devuelve
+`ready_for_booking_mutation=true` pero `mutation_allowed=false` y
+`booking_mutation_executed=false` en este estado del proyecto.
+
+El contrato futuro queda secuenciado como: claim de mutación,
+revalidación autoritativa, RPC centralizada de reserva, resultado idempotente y
+respuesta. La clave sería `conversation_id + version`; duplicados de webhook,
+mensaje, confirmación o retry deben producir como máximo una reserva. No se
+ejecutó la RPC ni se creó ninguna reserva o cliente.
+
+Los mensajes no textuales (audio, imagen, documento, sticker), vacíos, grupos,
+broadcasts y eventos malformados se rechazan explícitamente; no se agrega STT
+ni visión. Timeouts del LLM, JSON inválido, errores de Supabase/RPC,
+conexiones obsoletas, tenant ausente y eventos duplicados deben fallar cerrado.
+La observabilidad permitida se limita a `event_id`, `conversation_id`, tenant,
+instancia, intent, campos faltantes, estado, latencia y clase de error; nunca
+teléfono crudo, mensajes innecesarios, tokens o secretos.
+
+### Verificación de esta entrega
+
+- `npm test` incorpora `verify-whatsapp-conversation-state.mjs`, que cubre
+  campos faltantes, confirmación estricta, TTL, revalidación/race de slot,
+  duplicados, aislamiento A/B, tipos de mensaje no soportados y la bandera de
+  mutación permanentemente falsa.
+- CI #117 sobre `cebb93b` quedó `success` en quality, e2e-public, e2e-demo y
+  authenticated-qa antes de este trabajo.
+- No se creó migración y no se modificó ninguna tabla, secreto, Edge Function
+  desplegada, Evolution, n8n o producción.
+
+**AGENT OUTBOUND CODE READY BUT NOT DEPLOYED**
