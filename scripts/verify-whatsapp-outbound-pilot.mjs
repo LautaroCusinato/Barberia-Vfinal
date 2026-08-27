@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import {
   PROTECTED_INSTANCE,
   QA_OUTBOUND_INSTANCE,
   QA_OUTBOUND_MESSAGE,
   QA_OUTBOUND_TENANT_ID,
   buildEvolutionSendTextPath,
+  buildEvolutionTextPayload,
   buildOutboundOperationId,
   isQaOutboundRuntime,
   normalizeRecipient,
   outboundPilotGuard,
+  sanitizeProviderResult,
 } from '../supabase/functions/_shared/whatsappOutboundPilot.mjs'
 
 assert.equal(normalizeRecipient('5491100000001@s.whatsapp.net'), '5491100000001')
@@ -23,6 +26,21 @@ assert.equal(buildOutboundOperationId(''), null)
 assert.equal(buildEvolutionSendTextPath('https://evolution.cuchitron.lat', QA_OUTBOUND_INSTANCE), 'https://evolution.cuchitron.lat/message/sendText/austral-qa-tenant-1')
 assert.equal(buildEvolutionSendTextPath('https://evolution.cuchitron.lat', PROTECTED_INSTANCE), null)
 assert.equal(buildEvolutionSendTextPath('http://evolution.cuchitron.lat', QA_OUTBOUND_INSTANCE), null)
+assert.deepEqual(buildEvolutionTextPayload('5491100000001', QA_OUTBOUND_MESSAGE), {
+  number: '5491100000001',
+  text: QA_OUTBOUND_MESSAGE,
+})
+assert.deepEqual(sanitizeProviderResult({ status: 'PENDING', key: { id: '3EB0TESTMESSAGE' } }), {
+  provider_status: 'PENDING',
+  provider_message_id: '3EB0TESTMESSAGE',
+})
+assert.deepEqual(sanitizeProviderResult(null), { provider_status: null, provider_message_id: null })
+
+const oneShotSource = fs.readFileSync(new URL('../supabase/functions/whatsapp-qa-outbound-one-shot/index.ts', import.meta.url), 'utf8')
+assert.match(oneShotSource, /buildEvolutionTextPayload\(recipient, QA_OUTBOUND_MESSAGE\)/)
+assert.doesNotMatch(oneShotSource, /textMessage\s*:/)
+assert.match(oneShotSource, /evolution_send_failed_no_retry/)
+assert.doesNotMatch(oneShotSource, /setTimeout|retryFetch|fetchWithRetry/i)
 
 const baseGuard = {
   enabled: true,

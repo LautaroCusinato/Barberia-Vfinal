@@ -4,6 +4,7 @@ import {
   QA_OUTBOUND_MESSAGE,
   QA_OUTBOUND_TENANT_ID,
   buildEvolutionSendTextPath,
+  buildEvolutionTextPayload,
   buildOutboundOperationId,
   isQaOutboundRuntime,
   normalizeRecipient,
@@ -143,7 +144,7 @@ Deno.serve(async (request) => {
       response = await fetch(path, {
         method: 'POST',
         headers: { apikey: apiKey, 'content-type': 'application/json' },
-        body: JSON.stringify({ number: recipient, textMessage: { text: QA_OUTBOUND_MESSAGE } }),
+        body: JSON.stringify(buildEvolutionTextPayload(recipient, QA_OUTBOUND_MESSAGE)),
       })
     } catch {
       return json({ error: 'evolution_send_failed_no_retry', operation_id: operationId, outbound_allowed: true }, 502)

@@ -33,6 +33,10 @@ export function buildEvolutionSendTextPath(baseUrl, instance = QA_OUTBOUND_INSTA
   return `${url.toString().replace(/\/$/, '')}/message/sendText/${encodeURIComponent(instance)}`
 }
 
+export function buildEvolutionTextPayload(number, text) {
+  return { number, text }
+}
+
 export function outboundPilotGuard({
   enabled,
   approvalMatches,
