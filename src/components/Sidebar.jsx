@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { LayoutDashboard, Calendar, MessageCircle, Users, StickyNote, Sun, Moon, Bot, LogOut, BarChart3, Scissors, BriefcaseBusiness, Users2, MoreHorizontal, X, ShieldCheck, CreditCard, Settings2 } from 'lucide-react'
 import { FocusTrap } from './ui'
+import { getWhatsAppDisplayState } from '../utils/whatsappDisplay'
 
 const ITEMS = [
   { id: 'resumen', label: 'Resumen', Icon: LayoutDashboard },
@@ -28,58 +29,20 @@ const TABBAR_MAS = ITEMS.filter((i) => !TABBAR_PRINCIPAL.includes(i.id))
 
 export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onOpenBilling, onLogout, onAccountSecurity, branding, demoMode = false }) {
   const isDark = theme === 'dark'
-  const whatsappConfigured = Boolean(whatsappStatus.configured)
-  const whatsappConnected = Boolean(whatsappStatus.connected)
-  const entitlementLoading = whatsappStatus.entitlementLoading === true
-  const entitlementAllowed = whatsappStatus.entitled === true
-  const whatsappReady = whatsappConfigured && whatsappConnected && entitlementAllowed
-  const requiresPlan = whatsappStatus.entitlement === 'blocked'
-  const billingUnavailable = whatsappStatus.entitlement === 'unavailable'
-  const whatsappLabel = demoMode
-    ? 'WhatsApp en validación'
-    : requiresPlan
-    ? 'WhatsApp requiere un plan'
-    : billingUnavailable
-      ? 'WhatsApp no disponible'
-      : entitlementLoading
-        ? 'Verificando WhatsApp…'
-        : whatsappReady
-          ? 'Bot de WhatsApp'
-          : whatsappConfigured
-            ? 'WhatsApp desconectado'
-            : 'Conectar WhatsApp'
-  const whatsappStatusLabel = demoMode
-    ? 'Disponible próximamente · sin mensajes reales'
-    : requiresPlan
-    ? 'Plan no habilitado para esta función'
-    : billingUnavailable
-      ? 'No pudimos verificar el plan'
-      : whatsappReady
-        ? 'Conectado y listo para validar'
-          : whatsappConfigured
-            ? 'La integración necesita atención'
-            : 'Integración todavía no configurada'
-  const whatsappState = demoMode
-    ? 'requires-plan'
-    : entitlementLoading
-    ? 'checking'
-    : requiresPlan
-      ? 'requires-plan'
-      : billingUnavailable
-        ? 'unavailable'
-        : whatsappReady
-          ? 'connected'
-          : whatsappConfigured
-            ? 'disconnected'
-            : 'needs-config'
-  const whatsappStateShort = {
-    checking: 'Verificando',
-    'requires-plan': 'Requiere plan',
-    unavailable: 'No disponible',
-    connected: 'Listo',
-    disconnected: 'Desconectado',
-    'needs-config': 'Requiere configuración',
-  }[whatsappState]
+  const whatsappDisplay = getWhatsAppDisplayState({
+    configured: Boolean(whatsappStatus.configured),
+    connected: Boolean(whatsappStatus.connected),
+    connectionStatus: whatsappStatus.connectionStatus,
+    estado: whatsappStatus.estado,
+    entitlement: whatsappStatus.entitlement ?? (whatsappStatus.entitled === true ? 'allowed' : 'unknown'),
+    entitlementLoading: whatsappStatus.entitlementLoading === true,
+    demoMode,
+  })
+  const whatsappState = whatsappDisplay.connectionState
+  const requiresPlan = whatsappDisplay.requiresPlan
+  const billingUnavailable = whatsappDisplay.billingUnavailable
+  const whatsappReady = whatsappDisplay.whatsappReady
+  const whatsappStatusDescriptionId = whatsappDisplay.entitlementLabel ? 'whatsapp-entitlement-status' : undefined
   const [mostrarMas, setMostrarMas] = useState(false)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
 
@@ -123,18 +86,19 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
 
         <div className="sidebar-footer">
           <div className={`sidebar-whatsapp-status whatsapp-state-${whatsappState}`} aria-label="Estado de WhatsApp">
-            <button className="theme-toggle" type="button" aria-describedby="whatsapp-status" onClick={onToggleBot} aria-label="Abrir configuración de WhatsApp">
+            <button className="theme-toggle" type="button" aria-describedby={['whatsapp-status', whatsappStatusDescriptionId].filter(Boolean).join(' ')} onClick={onToggleBot} aria-label="Abrir configuración de WhatsApp">
               <span className="theme-toggle-label">
                 <Bot size={14} />
-                {whatsappLabel}
+                {demoMode ? 'WhatsApp en validación' : whatsappDisplay.connectionTitle}
               </span>
               <Settings2 size={14} aria-hidden="true" />
             </button>
             <div className="sidebar-status">
-              <span className={`live-dot ${whatsappReady ? '' : 'is-offline'}`} />
-              <span id="whatsapp-status">{whatsappStatusLabel}</span>
-              <span className="sidebar-status-badge">{whatsappStateShort}</span>
+              <span className={`live-dot ${whatsappState === 'connected' ? '' : 'is-offline'}`} />
+              <span id="whatsapp-status">{demoMode ? 'Disponible próximamente · sin mensajes reales' : whatsappDisplay.connectionLabel}</span>
+              <span className="sidebar-status-badge">{demoMode ? 'En validación' : whatsappDisplay.connectionBadge}</span>
             </div>
+            {whatsappDisplay.entitlementLabel && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-entitlement-status">{whatsappDisplay.entitlementLabel}</span>}
             {requiresPlan && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Ver facturación y planes</button>}
             {!requiresPlan && !billingUnavailable && !whatsappReady && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
             {billingUnavailable && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Revisar facturación</button>}
