@@ -427,8 +427,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   white-space: nowrap;
 }
 .whatsapp-state-connected .sidebar-status-badge { color: var(--green-text); background: var(--green-soft); border-color: color-mix(in srgb, var(--green-text) 25%, var(--border)); }
+.whatsapp-state-connecting .sidebar-status-badge,
+.whatsapp-state-qr-ready .sidebar-status-badge { color: var(--accent-strong); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent-strong) 25%, var(--border)); }
+.whatsapp-state-error .sidebar-status-badge { color: var(--rose-text); background: var(--rose-soft); border-color: color-mix(in srgb, var(--rose-text) 25%, var(--border)); }
 .whatsapp-state-requires-plan .sidebar-status-badge,
 .whatsapp-state-unavailable .sidebar-status-badge { color: var(--amber-text); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber-text) 25%, var(--border)); }
+.sidebar-status-entitlement { padding-left: 1.35rem; color: var(--amber-text); font-size: 11px; line-height: 1.35; }
 .invitation-status { font-size: 10px; }
 .invitation-status--pending { color: var(--accent-strong); background: var(--accent-soft); }
 .invitation-status--accepted { color: var(--green-text); background: var(--green-soft); }
