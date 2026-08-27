@@ -226,3 +226,41 @@ migraciones diferidas. Se necesita una decisión explícita para resolver ese
 drift (sin aplicar SQL ni marcar esas versiones automáticamente). Hasta
 entonces: producción sin contacto, `miwsp` intacta, outbound cerrado y sin
 reservas/clientes modificados.
+
+## Cierre del transporte outbound QA — 2026-08-27
+
+La ejecución autorizada se reanudó sólo después de corregir el contrato de
+Evolution API v2.3.7. El payload de `sendText` ahora usa exclusivamente los
+campos de nivel superior `{ number, text }`; no se reintentó la llamada fallida
+anterior ni se reutilizó su idempotency key. La corrección está en el commit
+`70ce267` de `qa-whatsapp-hardening`, con CI oficial completamente verde
+(quality, e2e-public, e2e-demo y authenticated-qa).
+
+Evidencia sanitizada del único intento nuevo:
+
+- La función QA respondió HTTP 200 y registró exactamente una fila de operación
+  `qa-outbound:*` nueva en estado `completed`. La operación anterior quedó en
+  `failed` con referencia `evolution_validation_rejected_pre_send`, sin volver a
+  invocarse.
+- Evolution v2.3.7 registró una única línea `Sending message` para
+  `austral-qa-tenant-1` y un acuse `DELIVERY_ACK`. No se expone el destinatario
+  ni el identificador del mensaje.
+- El evento de webhook posterior fue atendido por la función QA (HTTP 200). El
+  guard `fromMe` del webhook mantiene esos eventos fuera del agente; no apareció
+  un shadow run adicional atribuible al envío ni un segundo outbound.
+- La tabla de operaciones conserva exactamente dos filas QA outbound: una
+  fallida (pre-send) y una completada. No hay filas para otro tenant o
+  integración. El replay no se ejecutó contra Evolution: la unicidad de la
+  operación y la prueba del claim idempotente se verificaron sin producir otra
+  llamada externa.
+- En la ventana de la ejecución no hubo actualizaciones de `clientes`, `turnos`,
+  checkout, pagos ni facturas. n8n no registró actividad relacionada.
+- `austral-qa-tenant-1` y `miwsp` continuaron `open`; el inventario Evolution
+  permaneció en exactamente dos instancias. No se realizaron mutaciones sobre
+  `miwsp`, producción, billing ni Mercado Pago.
+
+El piloto outbound QA quedó cerrado nuevamente (`WHATSAPP_OUTBOUND_PILOT_ENABLED=0`),
+por lo que cualquier nueva ejecución falla cerrado. Los cuatro nombres de
+secrets QA siguen presentes; sus valores no se registran aquí. La evidencia
+privada de aprobación temporal se conserva fuera del repositorio hasta el
+cierre administrativo del piloto.
