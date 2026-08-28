@@ -17,6 +17,7 @@ export default function OnboardingChecklist({ barberiaId, onNavigate, demoMode =
     connected: Boolean(whatsappStatus.connected),
     connectionStatus: whatsappStatus.connectionStatus,
     estado: whatsappStatus.estado,
+    statusUnavailable: whatsappStatus.statusUnavailable === true,
     entitlement: whatsappStatus.entitlement ?? (whatsappStatus.entitled === true ? 'allowed' : 'unknown'),
     entitlementLoading: whatsappStatus.entitlementLoading === true,
     demoMode,
@@ -62,7 +63,9 @@ export default function OnboardingChecklist({ barberiaId, onNavigate, demoMode =
   if (dismissed) return null
 
   const labelForItem = (item) => {
-    if (item.key !== 'whatsapp' || whatsappDisplay.connectionState !== 'connected') return item.label
+    if (item.key !== 'whatsapp') return item.label
+    if (whatsappDisplay.connectionState === 'unavailable') return 'WhatsApp · estado no disponible'
+    if (whatsappDisplay.connectionState !== 'connected') return item.label
     return whatsappDisplay.entitlementLabel ? 'WhatsApp conectado · automatización requiere plan' : 'WhatsApp conectado'
   }
 
@@ -77,7 +80,7 @@ export default function OnboardingChecklist({ barberiaId, onNavigate, demoMode =
       <div className="checklist-heading"><div><p className="panel-kicker"><Sparkles size={13} /> Primeros pasos</p><h2>{status.progress >= 100 ? 'Tu negocio ya está listo' : 'Terminá de configurar tu negocio'}</h2></div><div className="checklist-heading-actions"><strong>{status.progress}%</strong><button className="btn-icon-plain" type="button" onClick={() => { const next = !collapsed; setCollapsed(next); persistPreference('collapsed', next) }} aria-label={collapsed ? 'Expandir primeros pasos' : 'Minimizar primeros pasos'} title={collapsed ? 'Expandir' : 'Minimizar'}>{collapsed ? <ChevronDown size={17} /> : <ChevronUp size={17} />}</button>{status.progress >= 100 && <button className="btn-icon-plain" type="button" onClick={() => { setDismissed(true); persistPreference('dismissed', true) }} aria-label="Ocultar primeros pasos" title="Ocultar"><X size={16} /></button>}</div></div>
       {!collapsed && <><div className="checklist-progress"><span style={{ width: `${status.progress}%` }} /></div>
       <div className="checklist-items">{status.items.map((item) => <button className={`checklist-item ${item.done ? 'done' : ''}`} key={item.key} onClick={() => openItem(item)}><span className="checklist-check">{item.done ? <Check size={14} /> : null}</span><span>{labelForItem(item)}</span>{!item.done && item.key === 'whatsapp' ? <MessageCircle size={15} /> : !item.done ? <ChevronRight size={15} /> : null}</button>)}</div></>}
-      {guideOpen && <div className="guide-panel"><div className="guide-heading"><MessageCircle size={17} /><strong>{whatsappDisplay.connectionState === 'connected' ? 'WhatsApp conectado' : 'Conectar WhatsApp'}</strong><button className="btn-icon-plain" onClick={() => setGuideOpen(false)} aria-label="Cerrar">×</button></div><p>{whatsappDisplay.connectionState === 'connected' ? 'La conexión está activa. La automatización permanece bloqueada hasta habilitar un plan.' : 'La conexión se prepara de forma aislada para este negocio y se valida antes de habilitar mensajes.'}</p><ol>{whatsappDisplay.connectionState === 'connected' ? <li>Revisá Facturación para conocer los planes disponibles.</li> : <><li>Entrá a Configuración y elegí “Preparar conexión”.</li><li>Revisá el estado y completá la vinculación desde el teléfono autorizado cuando esté disponible.</li><li>El canal permanece en modo de validación hasta que una persona autorizada lo habilite.</li></>}</ol><div className="guide-note"><CircleHelp size={15} /> Este asistente no envía mensajes ni modifica la configuración productiva.</div></div>}
+      {guideOpen && <div className="guide-panel"><div className="guide-heading"><MessageCircle size={17} /><strong>{whatsappDisplay.connectionState === 'connected' ? 'WhatsApp conectado' : whatsappDisplay.connectionState === 'unavailable' ? 'Estado no disponible' : 'Conectar WhatsApp'}</strong><button className="btn-icon-plain" onClick={() => setGuideOpen(false)} aria-label="Cerrar">×</button></div><p>{whatsappDisplay.connectionState === 'connected' ? 'La conexión está activa. La automatización permanece bloqueada hasta habilitar un plan.' : whatsappDisplay.connectionState === 'unavailable' ? 'No pudimos verificar la conexión. Reintentá desde Configuración antes de preparar o reconectar el canal.' : 'La conexión se prepara de forma aislada para este negocio y se valida antes de habilitar mensajes.'}</p><ol>{whatsappDisplay.connectionState === 'connected' ? <li>Revisá Facturación para conocer los planes disponibles.</li> : whatsappDisplay.connectionState === 'unavailable' ? <li>Actualizá el estado cuando la conexión vuelva a estar disponible.</li> : <><li>Entrá a Configuración y elegí “Preparar conexión”.</li><li>Revisá el estado y completá la vinculación desde el teléfono autorizado cuando esté disponible.</li><li>El canal permanece en modo de validación hasta que una persona autorizada lo habilite.</li></>}</ol><div className="guide-note"><CircleHelp size={15} /> Este asistente no envía mensajes ni modifica la configuración productiva.</div></div>}
     </div>
   )
 }

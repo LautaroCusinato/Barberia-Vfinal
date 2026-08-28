@@ -11,15 +11,15 @@ const ITEMS = [
   { id: 'pacientes', label: 'Clientes', Icon: Users },
   { id: 'notas', label: 'Notas', Icon: StickyNote },
   { id: 'estadisticas', label: 'Estadísticas', Icon: BarChart3 },
-  { id: 'operacion', label: 'Operacion', Icon: BriefcaseBusiness },
+  { id: 'operacion', label: 'Operación', Icon: BriefcaseBusiness },
   { id: 'configuracion', label: 'Configuración', Icon: Settings2 },
-  { id: 'facturacion', label: 'Facturacion', Icon: CreditCard },
+  { id: 'facturacion', label: 'Facturación', Icon: CreditCard },
 ]
 
 const GROUPS = [
   { label: 'Trabajo diario', items: ITEMS.slice(0, 4) },
   { label: 'Clientes', items: ITEMS.slice(4, 6) },
-  { label: 'Gestion', items: ITEMS.slice(6) },
+  { label: 'Gestión', items: ITEMS.slice(6) },
 ]
 
 // En el celular, abajo del todo, solo entran comodas 4 secciones + "Mas".
@@ -34,6 +34,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
     connected: Boolean(whatsappStatus.connected),
     connectionStatus: whatsappStatus.connectionStatus,
     estado: whatsappStatus.estado,
+    statusUnavailable: whatsappStatus.statusUnavailable === true,
     entitlement: whatsappStatus.entitlement ?? (whatsappStatus.entitled === true ? 'allowed' : 'unknown'),
     entitlementLoading: whatsappStatus.entitlementLoading === true,
     demoMode,
@@ -42,7 +43,10 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
   const requiresPlan = whatsappDisplay.requiresPlan
   const billingUnavailable = whatsappDisplay.billingUnavailable
   const whatsappReady = whatsappDisplay.whatsappReady
-  const whatsappStatusDescriptionId = whatsappDisplay.entitlementLabel ? 'whatsapp-entitlement-status' : undefined
+  const whatsappStatusDescriptionIds = [
+    whatsappDisplay.connectionNotice ? 'whatsapp-connection-notice' : null,
+    whatsappDisplay.entitlementLabel ? 'whatsapp-entitlement-status' : null,
+  ].filter(Boolean)
   const [mostrarMas, setMostrarMas] = useState(false)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
 
@@ -58,7 +62,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
           <div className="brand-mark" style={{ background: branding?.color_principal || undefined }}>{branding?.logo_url ? <img src={branding.logo_url} alt="" /> : <Scissors size={18} strokeWidth={2.4} />}</div>
           <div>
             <div className="brand-name">{clinicName}</div>
-            <div className="brand-sub">Panel de barberia</div>
+            <div className="brand-sub">Panel de barbería</div>
           </div>
         </div>
 
@@ -86,7 +90,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
 
         <div className="sidebar-footer">
           <div className={`sidebar-whatsapp-status whatsapp-state-${whatsappState}`} aria-label="Estado de WhatsApp">
-            <button className="theme-toggle" type="button" aria-describedby={['whatsapp-status', whatsappStatusDescriptionId].filter(Boolean).join(' ')} onClick={onToggleBot} aria-label="Abrir configuración de WhatsApp">
+            <button className="theme-toggle" type="button" aria-describedby={['whatsapp-status', ...whatsappStatusDescriptionIds].join(' ')} onClick={onToggleBot} aria-label="Abrir configuración de WhatsApp">
               <span className="theme-toggle-label">
                 <Bot size={14} />
                 {demoMode ? 'WhatsApp en validación' : whatsappDisplay.connectionTitle}
@@ -98,9 +102,10 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
               <span id="whatsapp-status">{demoMode ? 'Disponible próximamente · sin mensajes reales' : whatsappDisplay.connectionLabel}</span>
               <span className="sidebar-status-badge">{demoMode ? 'En validación' : whatsappDisplay.connectionBadge}</span>
             </div>
+            {whatsappDisplay.connectionNotice && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-connection-notice">{whatsappDisplay.connectionNotice}</span>}
             {whatsappDisplay.entitlementLabel && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-entitlement-status">{whatsappDisplay.entitlementLabel}</span>}
             {requiresPlan && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Ver facturación y planes</button>}
-            {!requiresPlan && !billingUnavailable && !whatsappReady && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
+            {!requiresPlan && !billingUnavailable && !whatsappReady && whatsappDisplay.canConfigure && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
             {billingUnavailable && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Revisar facturación</button>}
           </div>
           <button className="theme-toggle" type="button" aria-pressed={isDark} onClick={onToggleTheme}>
@@ -113,10 +118,10 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             </span>
           </button>
           {onAccountSecurity && <button className="theme-toggle" type="button" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
-          <button className="theme-toggle" type="button" aria-label="Cerrar sesion" onClick={onLogout}>
+          <button className="theme-toggle" type="button" aria-label="Cerrar sesión" onClick={onLogout}>
             <span className="theme-toggle-label">
               <LogOut size={14} />
-              Cerrar sesion
+              Cerrar sesión
             </span>
           </button>
         </div>
@@ -146,9 +151,9 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
               {isDark ? <Moon size={18} strokeWidth={2} /> : <Sun size={18} strokeWidth={2} />}
               Modo {isDark ? 'oscuro' : 'claro'}
             </button>
-            <button className="mobile-mas-item mobile-mas-item-danger" aria-label="Cerrar sesion" onClick={onLogout}>
+            <button className="mobile-mas-item mobile-mas-item-danger" aria-label="Cerrar sesión" onClick={onLogout}>
               <LogOut size={18} strokeWidth={2} />
-              Cerrar sesion
+              Cerrar sesión
             </button>
           </FocusTrap>
         </div>

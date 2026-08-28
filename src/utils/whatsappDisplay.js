@@ -6,11 +6,13 @@ const CONNECTION_COPY = {
   error: { label: 'Error de conexión', title: 'WhatsApp con error de conexión', badge: 'Error' },
   disconnected: { label: 'Desconectado', title: 'WhatsApp desconectado', badge: 'Desconectado' },
   'needs-config': { label: 'Requiere configuración', title: 'Conectar WhatsApp', badge: 'Requiere configuración' },
+  unavailable: { label: 'Estado no disponible', title: 'No pudimos verificar WhatsApp', badge: 'Sin verificar' },
 }
 
-function normalizeConnectionState({ connected, configured, connectionStatus, estado }) {
+function normalizeConnectionState({ connected, configured, connectionStatus, estado, statusUnavailable }) {
   const raw = String(connectionStatus || estado || '').trim().toLowerCase().replaceAll('_', '-')
   if (connected || raw === 'connected' || raw === 'conectado') return 'connected'
+  if (statusUnavailable || ['status-unavailable', 'unknown', 'unavailable'].includes(raw)) return 'unavailable'
   if (raw === 'connecting' || raw === 'conectando') return 'connecting'
   if (raw === 'qr-ready' || raw === 'qr listo' || raw === 'qr_ready') return 'qr-ready'
   if (raw === 'error' || raw === 'failed' || raw === 'fallido') return 'error'
@@ -23,6 +25,7 @@ export function getWhatsAppDisplayState({
   connected = false,
   connectionStatus,
   estado,
+  statusUnavailable = false,
   entitlement = 'allowed',
   entitlementLoading = false,
   demoMode = false,
@@ -36,18 +39,23 @@ export function getWhatsAppDisplayState({
       entitlementLabel: 'Disponible próximamente · sin mensajes reales',
       requiresPlan: true,
       billingUnavailable: false,
+      connectionUnavailable: false,
+      connectionNotice: null,
+      canConfigure: false,
       entitlementLoading: false,
       whatsappReady: false,
     }
   }
 
-  const technicalState = normalizeConnectionState({ connected, configured, connectionStatus, estado })
+  const technicalState = normalizeConnectionState({ connected, configured, connectionStatus, estado, statusUnavailable })
   const connectionState = entitlementLoading && technicalState === 'needs-config' ? 'checking' : technicalState
   const requiresPlan = entitlement === 'blocked'
   const billingUnavailable = entitlement === 'unavailable'
   const technicallyConnected = technicalState === 'connected'
-  const whatsappReady = technicallyConnected && configured && entitlement === 'allowed'
-  const copy = CONNECTION_COPY[connectionState]
+  const connectionUnavailable = technicalState === 'unavailable' || statusUnavailable
+  const whatsappReady = technicallyConnected && configured && entitlement === 'allowed' && !statusUnavailable
+  const canConfigure = !connectionUnavailable && !entitlementLoading && ['needs-config', 'disconnected', 'error'].includes(technicalState)
+  const copy = CONNECTION_COPY[connectionState] || CONNECTION_COPY.unavailable
   const entitlementLabel = requiresPlan
     ? technicallyConnected ? 'Automatización requiere plan' : 'Plan no habilitado para esta función'
       : billingUnavailable
@@ -61,6 +69,9 @@ export function getWhatsAppDisplayState({
     connectionLabel: copy.label,
     connectionTitle: copy.title,
     connectionBadge: copy.badge,
+    connectionUnavailable,
+    connectionNotice: statusUnavailable && technicallyConnected ? 'No pudimos verificar el estado más reciente.' : null,
+    canConfigure,
     entitlementLabel,
     requiresPlan,
     billingUnavailable,

@@ -16,4 +16,9 @@ export function shouldRevalidateInBackground({ now = Date.now(), lastRevalidated
   return now - Number(lastRevalidatedAt || 0) >= REVALIDATION_INTERVAL_MS
 }
 
+export function initialWorkspaceCollection({ demoMode = false, remoteConfigured = false, demoValue, fallbackValue = [] } = {}) {
+  if (demoMode) return demoValue ?? fallbackValue
+  return remoteConfigured ? [] : fallbackValue
+}
+
 export const RUNTIME_REVALIDATION_INTERVAL_MS = REVALIDATION_INTERVAL_MS

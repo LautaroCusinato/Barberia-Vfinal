@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './components/agenda.css'
 import './components/management.css'
 import { format } from 'date-fns'
@@ -37,6 +37,8 @@ import {
   mockTurnos,
 } from './data/mockData'
 import { getDemoSnapshot, resetDemoSession, saveDemoSnapshot } from './lib/demoStore.js'
+import { reportClientError } from './lib/observability.js'
+import { initialWorkspaceCollection } from './lib/runtimeStability.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
@@ -145,14 +147,14 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const demoSnapshot = demoMode ? getDemoSnapshot(demoSessionId) : null
   const themeKey = demoMode ? 'austral-demo-theme' : tenantStorageKey('theme', barberiaId)
   const [view, setView] = useState(workspaceViewFromUrl)
-  const [turnos, setTurnos] = useState(() => demoSnapshot?.turnos || mockTurnos)
-  const [conversaciones, setConversaciones] = useState(() => demoSnapshot?.conversaciones || mockConversaciones)
-  const [pacientes, setPacientes] = useState(() => demoSnapshot?.pacientes || mockPacientes)
-  const [notas, setNotas] = useState(() => demoSnapshot?.notas || mockNotas)
-  const [servicios, setServicios] = useState(() => demoSnapshot?.servicios || mockServicios)
-  const [barberos, setBarberos] = useState(() => demoSnapshot?.barberos || mockBarberos)
-  const [bloqueos, setBloqueos] = useState(() => demoSnapshot?.bloqueos || [])
-  const [pagos, setPagos] = useState(() => demoSnapshot?.pagos || [])
+  const [turnos, setTurnos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.turnos, fallbackValue: mockTurnos }))
+  const [conversaciones, setConversaciones] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.conversaciones, fallbackValue: mockConversaciones }))
+  const [pacientes, setPacientes] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.pacientes, fallbackValue: mockPacientes }))
+  const [notas, setNotas] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.notas, fallbackValue: mockNotas }))
+  const [servicios, setServicios] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.servicios, fallbackValue: mockServicios }))
+  const [barberos, setBarberos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.barberos, fallbackValue: mockBarberos }))
+  const [bloqueos, setBloqueos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.bloqueos, fallbackValue: [] }))
+  const [pagos, setPagos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.pagos, fallbackValue: [] }))
   const [cobroTurno, setCobroTurno] = useState(null)
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [loadedForTenant, setLoadedForTenant] = useState(null)
@@ -169,6 +171,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [horariosDefault, setHorariosDefault] = useState(() => demoSnapshot?.horariosDefault || ({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] }))
   const [zonaHoraria, setZonaHoraria] = useState(() => demoSnapshot?.zonaHoraria || TZ)
   const [dbError, setDbError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
   const barberoWritesRef = useRef({})
 
   useEffect(() => {
@@ -180,12 +183,12 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
-  const reportError = (mensaje, error) => {
-    console.error(mensaje, error)
+  const reportError = useCallback((mensaje, error) => {
+    reportClientError(error, { source: 'workspace', tenant_id: barberiaId, user_message: mensaje })
     // El detalle técnico queda sólo en observabilidad; el panel muestra una
     // instrucción comprensible y nunca expone códigos/RPC al usuario.
     setDbError(mensaje)
-  }
+  }, [barberiaId])
 
   useEffect(() => {
     if (!demoMode || !demoSessionId) return undefined
@@ -281,7 +284,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       const { data, error } = await supabase
         .from('turnos').select('*').eq('barberia_id', barberiaId).order('fecha').order('hora')
       if (cancelado) return
-      if (error) reportError('No se pudieron cargar los turnos', error)
+      if (error) { reportError('No se pudieron cargar los turnos', error); return }
       setTurnos((data ?? []).map(turnoFromDb))
     }
 
@@ -297,7 +300,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     async function cargarClientes() {
       const { data, error } = await supabase.from('clientes').select('*').eq('barberia_id', barberiaId)
       if (cancelado) return []
-      if (error) reportError('No se pudieron cargar los clientes', error)
+      if (error) { reportError('No se pudieron cargar los clientes', error); return null }
       setPacientes(data ?? [])
       return data ?? []
     }
@@ -306,7 +309,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       const { data, error } = await supabase
         .from('notas').select('*').eq('barberia_id', barberiaId).order('fecha', { ascending: false })
       if (cancelado) return
-      if (error) reportError('No se pudieron cargar las notas', error)
+      if (error) { reportError('No se pudieron cargar las notas', error); return }
       setNotas(data ?? [])
     }
 
@@ -365,8 +368,6 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       if (cancelado) return
       if (error) {
         reportError('No se pudo cargar la configuración inicial', error)
-        setWhatsappEntitlement({ loading: false, entitlementLoading: false, entitled: false, entitlement: 'unavailable' })
-        return
       }
       const botConfig = data?.find((item) => item.clave === 'bot_activo')
       if (botConfig) setBotActivo(botConfig.valor === 'true')
@@ -397,21 +398,30 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
 
     async function cargarIntegracionWhatsApp() {
-      const result = QA_PROVISIONING_RUNTIME
-        ? await supabase.functions.invoke('whatsapp-provision', { body: { action: 'status', tenant_id: barberiaId } })
-        : await supabase
-          .from('saas_integraciones')
-          .select('id, proveedor, estado, metadata')
-          .eq('barberia_id', barberiaId)
-          .eq('proveedor', 'evolution')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+      let result
+      try {
+        result = QA_PROVISIONING_RUNTIME
+          ? await supabase.functions.invoke('whatsapp-provision', { body: { action: 'status', tenant_id: barberiaId } })
+          : await supabase
+            .from('saas_integraciones')
+            .select('id, proveedor, estado, metadata')
+            .eq('barberia_id', barberiaId)
+            .eq('proveedor', 'evolution')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+      } catch (error) {
+        if (cancelado) return
+        reportError('No se pudo verificar la integración de WhatsApp', error)
+        setWhatsappIntegration((previous) => ({ ...previous, loading: false, statusUnavailable: true, connectionStatus: previous.connected ? 'CONNECTED' : 'STATUS_UNAVAILABLE' }))
+        setBotActivo(false)
+        return
+      }
       const { data, error } = result
       if (cancelado) return
       if (error) {
         reportError('No se pudo verificar la integración de WhatsApp', error)
-        setWhatsappIntegration({ loading: false, configured: false, connected: false })
+        setWhatsappIntegration((previous) => ({ ...previous, loading: false, statusUnavailable: true, connectionStatus: previous.connected ? 'CONNECTED' : 'STATUS_UNAVAILABLE' }))
         setBotActivo(false)
         return
       }
@@ -420,13 +430,13 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         const state = String(connection?.state || 'NOT_CONFIGURED')
         const configured = state !== 'NOT_CONFIGURED'
         const connected = state === 'CONNECTED'
-        setWhatsappIntegration({ loading: false, configured, connected, estado: connected ? 'conectado' : state.toLowerCase() })
+        setWhatsappIntegration({ loading: false, configured, connected, estado: connected ? 'conectado' : state.toLowerCase(), connectionStatus: state, statusUnavailable: false })
         if (!connected) setBotActivo(false)
         return
       }
       const configured = Boolean(data)
       const connected = data?.estado === 'conectado'
-      setWhatsappIntegration({ loading: false, configured, connected, estado: data?.estado || 'pendiente' })
+      setWhatsappIntegration({ loading: false, configured, connected, estado: data?.estado || 'pendiente', connectionStatus: data?.estado || 'NOT_CONFIGURED', statusUnavailable: false })
       if (!connected) setBotActivo(false)
     }
 
@@ -434,7 +444,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       const { data, error } = await supabase
         .from('bloqueos_agenda').select('*').eq('barberia_id', barberiaId).order('fecha')
       if (cancelado) return
-      if (error) reportError('No se pudieron cargar los días libres', error)
+      if (error) { reportError('No se pudieron cargar los días libres', error); return }
       setBloqueos(data ?? [])
     }
 
@@ -442,7 +452,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       const { data, error } = await supabase
         .from('pagos').select('*').eq('barberia_id', barberiaId).order('created_at', { ascending: false })
       if (cancelado) return
-      if (error) reportError('No se pudieron cargar los pagos', error)
+      if (error) { reportError('No se pudieron cargar los pagos', error); return }
       setPagos(data ?? [])
     }
 
@@ -453,7 +463,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         clientesPromise || supabase.from('clientes').select('id, nombre').eq('barberia_id', barberiaId).then(({ data }) => data ?? []),
       ])
       if (cancelado) return
-      const { data } = mensajesResult
+      const { data, error } = mensajesResult
+      if (error) { reportError('No se pudieron cargar los mensajes', error); return }
 
       // Agrupamos por cliente_id, NO por nombre. Si agrupáramos por nombre,
       // un mismo cliente puede aparecer duplicado apenas el texto no calza
@@ -618,7 +629,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       if (channel) supabase.removeChannel(channel)
       detenerFallback()
     }
-  }, [barberiaId, isSupabaseConfigured])
+  }, [barberiaId, isSupabaseConfigured, reloadKey, reportError])
 
   if (isSupabaseConfigured && (loading || loadedForTenant !== barberiaId)) {
     return <WorkspacePreparing businessName={barberiaNombre || DEFAULT_BUSINESS_NAME} />
@@ -1248,14 +1259,15 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         ) : !isSupabaseConfigured && (
           <div className="demo-banner">
             <Info size={15} />
-            Mostrando datos de ejemplo. Conecta Supabase en <code>.env</code> para ver datos reales de la barberia.
+            Mostrando datos de ejemplo porque no pudimos conectar con la información del negocio.
           </div>
         )}
 
         {dbError && (
           <div className="error-banner" role="alert" aria-live="assertive">
             <AlertTriangle size={15} />
-            <span>{dbError}. Podés reintentar o cerrar este aviso.</span>
+            <span>{dbError}. Podés reintentar sin perder los datos visibles.</span>
+            {isSupabaseConfigured && <button className="btn btn-ghost" type="button" onClick={() => { setDbError(''); setReloadKey((value) => value + 1) }}>Reintentar</button>}
             <button className="btn-icon-plain" type="button" onClick={() => setDbError('')} aria-label="Cerrar aviso de error" title="Cerrar aviso">
               <X size={14} />
             </button>
@@ -1265,7 +1277,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         {!demoMode && !botActivo && (
           <div className="demo-banner" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
             <Bot size={15} />
-            El bot de WhatsApp esta desactivado. Estas atendiendo los mensajes manualmente. Lo reactivas desde el interruptor del menu.
+            La automatización de WhatsApp está desactivada. Podés revisar su estado desde Configuración; la atención manual permanece disponible.
           </div>
         )}
 
@@ -1484,7 +1496,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
             <div className="page-header">
               <div>
                 <p className="page-kicker">Configuracion comercial</p>
-                <h1 className="page-title">Operacion</h1>
+                <h1 className="page-title">Operación</h1>
               </div>
               <span className="page-date">Precios, duracion y barberos disponibles</span>
             </div>
