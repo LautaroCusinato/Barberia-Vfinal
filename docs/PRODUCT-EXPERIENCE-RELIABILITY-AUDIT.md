@@ -67,3 +67,37 @@ No hubo errores de consola ni requests fallidas. La carga de fuentes externas qu
 - La validación autenticada QA se ejecutó localmente contra el proyecto permitido `cmsymmszlzikqpvfqjre`: `200/200`, con aislamiento Tenant A/B y sin efectos productivos.
 - El smoke remoto autenticado aún requiere una sesión QA en el navegador; la sesión pública disponible no permite demostrar ese último paso.
 - No se modificó el Worker antiguo ni ningún deploy productivo.
+
+## Final UI hardening pass — 2026-08-27
+
+Rama auditada: `qa-whatsapp-hardening`. Se aplicaron únicamente correcciones de frontend, tests y documentación; no hubo deploy, migración ni escritura remota.
+
+### Hallazgos y correcciones
+
+- **P1 — estado WhatsApp ambiguo:** un fallo de lectura podía representarse como “no configurado”. `whatsappDisplay` ahora separa estado técnico y entitlement: un último `CONNECTED` se conserva con aviso de verificación pendiente, y `STATUS_UNAVAILABLE` nunca habilita preparar/reconectar/desconectar.
+- **P1 — degradación engañosa ante red:** las colecciones remotas ya no arrancan con datos demo ni se vacían ante un error parcial; se conserva el último estado y se ofrece `Reintentar` explícito.
+- **P1 — acciones duplicables:** provisioning, guardado de CRM y acciones de outreach tienen guardas síncronas, feedback de busy y `try/finally`; no hay doble submit por doble click.
+- **P2 — Agenda estrecha:** la grilla usa columnas `minmax(0, …)` y un breakpoint intermedio para evitar cortes de nombres/servicios a 1440px y tablet.
+- **P3 — claridad y semántica:** se corrigieron acentos, títulos de página, marca semántica del login y copys técnicos/comerciales; los estados de facturación y WhatsApp no exponen detalles internos.
+
+### Auditoría visual y de interacción
+
+Se revisaron landing, auth, registro, recuperación, reserva pública, demo, workspace (Resumen, Agenda, Clientes, Operación, Equipo, Mensajes, Configuración, Facturación, Notas, Estadísticas), plataforma CRM, modales, navegación desktop/mobile, estados vacíos, error y carga. En 390px y 1440px todos los views conservaron encabezado y no presentaron overflow horizontal; la revisión incluyó light/dark y safe-area del bottom navigation. Las capturas de referencia siguen en [390px light](../artifacts/ui-audit/after-390-light.png) y [390px dark](../artifacts/ui-audit/after-390-dark.png).
+
+### Validación automatizada
+
+- `npm test`: PASS (todas las verificaciones estáticas, billing/WhatsApp fail-closed y regresiones UI).
+- `npm run lint`: PASS.
+- `npm run build`: PASS (`vite 8.2.0`).
+- `git diff --check`: PASS.
+- `node scripts/scan-secrets.mjs`: PASS (395 archivos, sin secretos detectados).
+- Playwright público: **72/72 PASS**.
+- Playwright demo: **168 PASS, 8 SKIPPED esperados** (176 escenarios, 8 perfiles). No quedó el estado “Cargando pantalla…” de forma permanente.
+
+La corrida autenticada local se detuvo de forma segura en el guard: el `.env.e2e.local` tiene `E2E_QA_PASSWORD` no operativo y el checkout contiene una URL Vite productiva, por lo que no se usó ninguna credencial ni se contactó producción. Al inyectar únicamente la URL QA en el proceso, el guard permitió la suite pero el fixture `unassigned` no autenticó; el error fue `Email o contraseña incorrectos` y no un fallo de UI. La validación autenticada requiere una contraseña QA real en el entorno de ejecución (GitHub Secret/CI o archivo local QA), sin imprimirla.
+
+### Runtime y límites de seguridad
+
+La inspección SSH fue sólo de lectura: n8n respondió `200` en healthz, Evolution respondió `200`, y las dos instancias `austral-qa-tenant-1` y `miwsp` figuraron `open`. No se enviaron mensajes ni se modificaron reservas/clientes, billing o producción. El webhook de `austral-qa-tenant-1` todavía declara `MESSAGES_UPSERT` además de `QRCODE_UPDATED` y `CONNECTION_UPDATE`; queda documentado como blocker backend separado y no fue modificado durante este hardening.
+
+Pendientes reales: ejecutar la suite autenticada con credenciales QA operativas y revisar, en una tarea backend separada, la suscripción de `MESSAGES_UPSERT` si el contrato de shadow exige sólo eventos de QR/connection. No se alteró main, producción, Evolution, n8n ni ningún deploy.
