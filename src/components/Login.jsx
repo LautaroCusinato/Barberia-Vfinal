@@ -41,7 +41,7 @@ export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME 
         <div className="brand" style={{ justifyContent: 'center', marginBottom: 22 }}>
           <div className="brand-mark"><Scissors size={20} strokeWidth={2.4} /></div>
           <div style={{ textAlign: 'left' }}>
-            <div className="brand-name">{businessName}</div>
+            <h1 className="brand-name">{businessName}</h1>
             <div className="brand-sub">Panel de gestión</div>
           </div>
         </div>

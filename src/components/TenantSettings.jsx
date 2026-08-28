@@ -144,7 +144,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange, demoMode 
   if (!isSupabaseConfigured && !demoMode) return <div className="panel empty-state">Configurá Supabase para editar el negocio.</div>
 
   return <div className="management-screen management-settings settings-page fade-in">
-    <div className="page-header"><div><p className="page-kicker">Tenant y marca</p><h1 className="page-title">Configuración del negocio</h1><p className="page-date">{demoMode ? 'Probá branding y preferencias sin modificar ningún negocio real.' : 'Los cambios se validan en Supabase y afectan sólo a este negocio.'}</p></div><span className="billing-security"><ShieldCheck size={14} /> {demoMode ? 'Sesión aislada' : 'RLS activo'}</span></div>
+    <div className="page-header"><div><p className="page-kicker">Negocio y marca</p><h1 className="page-title">Configuración del negocio</h1><p className="page-date">{demoMode ? 'Probá branding y preferencias sin modificar ningún negocio real.' : 'Los cambios se validan y afectan sólo a este negocio.'}</p></div><span className="billing-security"><ShieldCheck size={14} /> {demoMode ? 'Sesión aislada' : 'Acceso protegido'}</span></div>
     {error && <div className="error-banner" role="alert">{error}</div>}{notice && <div className="settings-notice" role="status"><Check size={15} /> {notice}</div>}
     <WhatsAppConnectionPanel barberiaId={barberiaId} demoMode={demoMode} />
     <form className="settings-grid" onSubmit={save}>

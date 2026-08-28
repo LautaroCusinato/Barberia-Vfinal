@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
 
 async function clickWorkspaceButton(page, view) {
-  const titles = { Agenda: 'Agenda', Equipo: 'Equipo', Mensajes: 'Mensajes', Clientes: 'Clientes', Notas: 'Notas', Estadísticas: 'Estadísticas', Operacion: 'Operacion', Configuración: 'Configuración del negocio', Facturacion: 'Facturación' }
+  const labels = { Operacion: 'Operación', Facturacion: 'Facturación' }
+  const visibleLabel = labels[view] || view
+  const titles = { Agenda: 'Agenda', Equipo: 'Equipo', Mensajes: 'Mensajes', Clientes: 'Clientes', Notas: 'Notas', Estadísticas: 'Estadísticas', Operacion: 'Operación', Configuración: 'Configuración del negocio', Facturacion: 'Facturación' }
   const targetHeading = titles[view] ? page.getByRole('heading', { name: titles[view], exact: true }) : null
   if (targetHeading) {
     try {
@@ -12,16 +14,16 @@ async function clickWorkspaceButton(page, view) {
     }
   }
   await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible({ timeout: 30_000 })
-  const directButton = page.getByRole('button', { name: view, exact: true }).filter({ visible: true })
+  const directButton = page.getByRole('button', { name: visibleLabel, exact: true }).filter({ visible: true })
   if (await directButton.count()) return directButton.first().click()
   const desktopSidebar = page.locator('.sidebar')
   if (await desktopSidebar.isVisible().catch(() => false)) {
-    const directButton = desktopSidebar.locator('.nav-item').filter({ hasText: view }).first()
+    const directButton = desktopSidebar.locator('.nav-item').filter({ hasText: visibleLabel }).first()
     await directButton.scrollIntoViewIfNeeded()
     return directButton.click()
   }
   await page.getByRole('button', { name: 'Más', exact: true }).click()
-  return page.locator('.mobile-mas-sheet').getByRole('button', { name: view, exact: true }).click()
+  return page.locator('.mobile-mas-sheet').getByRole('button', { name: visibleLabel, exact: true }).click()
 }
 
 async function openDemo(page, view = null) {

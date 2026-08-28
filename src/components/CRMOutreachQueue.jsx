@@ -18,6 +18,7 @@ export default function CRMOutreachQueue({ role = 'owner' }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState(null)
   const [form, setForm] = useState({ type: 'initial_contact', channel: 'manual', result: '', notes: '' })
   const canWrite = ['owner', 'admin', 'sales', 'automation'].includes(role)
@@ -27,7 +28,7 @@ export default function CRMOutreachQueue({ role = 'owner' }) {
     setError('')
     const { data, error: loadError } = await supabase.rpc('get_crm_outreach_queue', { p_environment: environment, p_limit: 100 })
     if (loadError) setError(loadError.message || 'No se pudo cargar la cola comercial.')
-    setItems(Array.isArray(data) ? data : [])
+    else { setError(''); setItems(Array.isArray(data) ? data : []) }
     setLoading(false)
   }, [environment])
 
@@ -35,20 +36,25 @@ export default function CRMOutreachQueue({ role = 'owner' }) {
 
   const registerActivity = async (event) => {
     event.preventDefault()
-    if (!selected || !canWrite) return
-    const { data, error: activityError } = await supabase.rpc('record_crm_outreach_activity', {
-      p_lead_id: selected.lead_id,
-      p_type: form.type,
-      p_channel: form.channel,
-      p_result: form.result.trim() || null,
-      p_notes: form.notes.trim() || null,
-    })
-    if (activityError) setError(activityError.message || 'No se pudo registrar la actividad.')
-    else {
-      setNotice(data?.external_send_performed === false ? 'Actividad registrada. No se envió ningún mensaje.' : 'Actividad registrada.')
-      setSelected(null)
-      setForm({ type: 'initial_contact', channel: 'manual', result: '', notes: '' })
-      load()
+    if (!selected || !canWrite || saving) return
+    setSaving(true)
+    try {
+      const { data, error: activityError } = await supabase.rpc('record_crm_outreach_activity', {
+        p_lead_id: selected.lead_id,
+        p_type: form.type,
+        p_channel: form.channel,
+        p_result: form.result.trim() || null,
+        p_notes: form.notes.trim() || null,
+      })
+      if (activityError) setError(activityError.message || 'No se pudo registrar la actividad.')
+      else {
+        setNotice(data?.external_send_performed === false ? 'Actividad registrada. No se envió ningún mensaje.' : 'Actividad registrada.')
+        setSelected(null)
+        setForm({ type: 'initial_contact', channel: 'manual', result: '', notes: '' })
+        await load()
+      }
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -66,13 +72,13 @@ export default function CRMOutreachQueue({ role = 'owner' }) {
       <p>{item.message_prepared}</p>
       <div className="crm-outreach-card__footer"><span>{item.contacto || 'Contacto pendiente'}</span><span className="status-pill">{item.verification_quality || 'unknown'}</span>{canWrite && <button className="btn btn-primary" type="button" onClick={() => setSelected(item)}>Registrar actividad</button>}</div>
     </article>)}</div>}
-    {selected && <div className="modal-overlay" onClick={() => setSelected(null)}><form className="modal-box" onSubmit={registerActivity} onClick={(event) => event.stopPropagation()}>
+    {selected && <div className="modal-overlay" onClick={() => { if (!saving) setSelected(null) }}><form className="modal-box" onSubmit={registerActivity} onClick={(event) => event.stopPropagation()} aria-busy={saving}>
       <div className="modal-header"><div><h2 className="panel-title">Registrar actividad</h2><p className="panel-subtitle">{selected.negocio}. Sólo se registra en el CRM; no se envía nada.</p></div><button type="button" className="btn-icon-plain" onClick={() => setSelected(null)} aria-label="Cerrar">×</button></div>
       <label className="modal-label">Tipo<select className="text-input" value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>{OUTREACH_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="modal-label">Canal<input className="text-input" value={form.channel} onChange={(event) => setForm({ ...form, channel: event.target.value })} maxLength={40} /></label>
       <label className="modal-label">Resultado<input className="text-input" value={form.result} onChange={(event) => setForm({ ...form, result: event.target.value })} maxLength={160} /></label>
       <label className="modal-label">Notas<textarea className="text-input" rows="3" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} maxLength={1000} /></label>
-      <div className="modal-actions"><button type="button" className="btn" onClick={() => setSelected(null)}>Cancelar</button><button type="submit" className="btn btn-primary">Guardar registro</button></div>
+      <div className="modal-actions"><button type="button" className="btn" onClick={() => setSelected(null)} disabled={saving}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando…' : 'Guardar registro'}</button></div>
     </form></div>}
   </section>
 }

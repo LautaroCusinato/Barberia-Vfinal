@@ -247,7 +247,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
       </section>
 
       <section className="panel billing-plans-panel">
-        <div className="panel-header"><div><h2 className="panel-title">Cambiar de plan</h2><p className="panel-subtitle">El precio se toma de Supabase; no se acepta desde el cliente.</p><p className="billing-currency-note">Cuando el proveedor no tiene un precio configurado, mostramos sólo la referencia base del catálogo y el checkout permanece bloqueado.</p></div></div>
+        <div className="panel-header"><div><h2 className="panel-title">Cambiar de plan</h2><p className="panel-subtitle">El precio se valida de forma segura antes de iniciar el pago.</p><p className="billing-currency-note">Cuando el proveedor no tiene un precio configurado, mostramos sólo la referencia base del catálogo y el checkout permanece bloqueado.</p></div></div>
         <div className="billing-plans-grid">{catalog.map((item) => {
           const externalPrice = findExternalPrice(item)
           const providerUnavailable = !selectedProvider?.activo && !sandboxCheckoutReady && !productionCheckoutReady

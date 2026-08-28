@@ -127,7 +127,7 @@ async function selectTenantView(page, label) {
 }
 
 async function logoutUi(page) {
-  const buttons = page.getByRole('button', { name: 'Cerrar sesion', exact: true })
+  const buttons = page.getByRole('button', { name: 'Cerrar sesión', exact: true })
   for (let index = 0; index < await buttons.count(); index += 1) {
     const button = buttons.nth(index)
     if (await button.isVisible()) {
@@ -140,7 +140,7 @@ async function logoutUi(page) {
   await more.click()
   const sheet = page.getByRole('dialog', { name: 'Más secciones' })
   await expect(sheet).toBeVisible()
-    await sheet.getByRole('button', { name: 'Cerrar sesion', exact: true }).click()
+    await sheet.getByRole('button', { name: 'Cerrar sesión', exact: true }).click()
 }
 
 function nextMondayKey() {

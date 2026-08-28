@@ -498,7 +498,7 @@ export default function PlatformCRM({ role = 'owner' }) {
           <div className="brand-mark"><BriefcaseBusiness size={18} strokeWidth={2.4} /></div>
           <div>
             <div className="brand-name">Austral SaaS</div>
-            <div className="brand-sub">Operacion de plataforma</div>
+            <div className="brand-sub">Operación de plataforma</div>
           </div>
         </div>
         <nav className="nav platform-nav" aria-label="Navegación de plataforma">
@@ -510,13 +510,13 @@ export default function PlatformCRM({ role = 'owner' }) {
             <button type="button" className={`nav-item ${view === 'pilot' ? 'active' : ''}`} onClick={() => navigatePlatformView('pilot')}><CheckSquare size={17} /><span>Piloto comercial</span></button>
             <button type="button" className={`nav-item ${view === 'queue' ? 'active' : ''}`} onClick={() => navigatePlatformView('queue')}><Search size={17} /><span>Listos para contactar</span></button>
             <button type="button" className={`nav-item ${view === 'actions' ? 'active' : ''}`} onClick={() => navigatePlatformView('actions')}><Bell size={17} /><span>Seguimientos</span></button>
-            {['owner', 'admin'].includes(role) && <button type="button" className={`nav-item ${view === 'billing' ? 'active' : ''}`} onClick={() => navigatePlatformView('billing')}><CreditCard size={17} /><span>Facturacion SaaS</span></button>}
+            {['owner', 'admin'].includes(role) && <button type="button" className={`nav-item ${view === 'billing' ? 'active' : ''}`} onClick={() => navigatePlatformView('billing')}><CreditCard size={17} /><span>Facturación SaaS</span></button>}
           </div>
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-status"><span className="live-dot" /> Rol: {role}</div>
           <button className="theme-toggle" onClick={logout}>
-            <span className="theme-toggle-label"><LogOut size={14} /> Cerrar sesion</span>
+            <span className="theme-toggle-label"><LogOut size={14} /> Cerrar sesión</span>
           </button>
         </div>
       </aside>
@@ -525,7 +525,7 @@ export default function PlatformCRM({ role = 'owner' }) {
         <div className="page-header platform-page-header">
           <div>
             <p className="page-kicker">Workspace interno</p>
-            <h1 className="page-title">{view === 'billing' ? 'Facturacion SaaS' : view === 'agent' ? 'Agente comercial' : view === 'pilot' ? 'Piloto comercial' : view === 'actions' ? 'Seguimientos' : view === 'queue' ? 'Listos para contactar' : 'CRM comercial'}</h1>
+            <h1 className="page-title">{view === 'billing' ? 'Facturación SaaS' : view === 'agent' ? 'Agente comercial' : view === 'pilot' ? 'Piloto comercial' : view === 'actions' ? 'Seguimientos' : view === 'queue' ? 'Listos para contactar' : 'CRM comercial'}</h1>
             <p className="page-date">{view === 'billing' ? 'Estado de suscripciones, trials y eventos del billing.' : view === 'agent' ? 'Borradores comerciales con aprobación humana.' : view === 'pilot' ? 'Preparación local para cinco leads, sin contacto externo.' : view === 'actions' ? 'Próximas acciones y alertas internas del equipo.' : view === 'queue' ? 'Leads verificados y preparados para una revisión humana.' : 'Prospectos, pruebas y negocios convertidos en un solo lugar.'}</p>
           </div>
           <div className="page-actions">
