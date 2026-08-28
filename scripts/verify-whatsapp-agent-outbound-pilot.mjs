@@ -6,6 +6,7 @@ import {
   agentOutboundGuard,
   buildAgentOutboundOperationId,
   isAllowedAgentIntent,
+  isPersistedConversationScope,
   isRealPersistedSourceMetadata,
   isQaAgentOutboundRuntime,
   isSafePersistedReply,
@@ -35,7 +36,7 @@ const base = {
   operationAcquired: true,
 }
 
-assert.deepEqual(QA_AGENT_OUTBOUND_ALLOWED_INTENTS, ['services_query', 'availability_query', 'general_query'])
+assert.deepEqual(QA_AGENT_OUTBOUND_ALLOWED_INTENTS, ['services_query', 'availability_query', 'general_query', 'booking_intent'])
 assert.equal(buildAgentOutboundOperationId('evt-1'), 'agent-outbound:evt-1')
 assert.equal(isQaAgentOutboundRuntime({ projectRef: 'cmsymmszlzikqpvfqjre', provisioningEnv: 'qa', whatsappMode: 'shadow', pilotMode: 'shadow' }), true)
 assert.equal(isQaAgentOutboundRuntime({ projectRef: 'ssagttjdgtypxjcgdnrw', provisioningEnv: 'qa', whatsappMode: 'shadow', pilotMode: 'shadow' }), false)
@@ -43,13 +44,24 @@ assert.equal(isRealPersistedSourceMetadata(metadata), true)
 assert.equal(isRealPersistedSourceMetadata({ ...metadata, from_me: true }), false)
 
 for (const intent of QA_AGENT_OUTBOUND_ALLOWED_INTENTS) assert.equal(isAllowedAgentIntent(intent), true)
-for (const intent of ['booking_intent', 'booking_change_request', 'price_query', '']) assert.equal(isAllowedAgentIntent(intent), false)
+for (const intent of ['booking_change_request', 'price_query', '']) assert.equal(isAllowedAgentIntent(intent), false)
 assert.equal(isSafePersistedReply({ intent: 'services_query', reply: 'Tenemos corte y barba.', metadata }), true)
 assert.equal(isSafePersistedReply({ intent: 'availability_query', reply: 'Sí, el jueves hay horarios disponibles.', metadata }), true)
 assert.equal(isSafePersistedReply({ intent: 'general_query', reply: 'Hola. ¿En qué te ayudo?', metadata }), true)
 assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'La reserva fue creada.', metadata }), false)
 assert.equal(isSafePersistedReply({ intent: 'services_query', reply: 'Usá el service_role token.', metadata }), false)
 assert.equal(isSafePersistedReply({ intent: 'services_query', reply: 'INSERT INTO clientes...', metadata }), false)
+assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: '¿Qué servicio querés reservar? No se creó ningún turno.', metadata }), true)
+assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'Perfecto, tengo los datos confirmados. El siguiente paso permanece bloqueado.', metadata }), true)
+assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'Tu turno fue confirmado.', metadata }), false)
+const conversationMetadata = {
+  ...metadata,
+  instance: QA_AGENT_OUTBOUND_INSTANCE,
+  conversation_scope: { tenant_id: 1, integration_id: 1, instance: QA_AGENT_OUTBOUND_INSTANCE, sender_hash: 'sha256:0123456789ab', environment: 'qa' },
+  conversation_state: { tenant_id: 1, integration_id: 1, instance: QA_AGENT_OUTBOUND_INSTANCE, sender_hash: 'sha256:0123456789ab', environment: 'qa' },
+}
+assert.equal(isPersistedConversationScope(conversationMetadata, { tenantId: 1, integrationId: 1, instance: QA_AGENT_OUTBOUND_INSTANCE, senderHash: 'sha256:0123456789ab' }), true)
+assert.equal(isPersistedConversationScope(conversationMetadata, { tenantId: 2, integrationId: 1, instance: QA_AGENT_OUTBOUND_INSTANCE, senderHash: 'sha256:0123456789ab' }), false)
 assert.equal(agentOutboundGuard(base).allowed, true)
 assert.equal(agentOutboundGuard({ ...base, sourceMetadata: { ...metadata, mutation_allowed: true } }).reason, 'real_persisted_source_required')
 assert.equal(agentOutboundGuard({ ...base, sourceMetadata: { ...metadata, outbound_send: true } }).reason, 'real_persisted_source_required')
@@ -71,7 +83,7 @@ for (const [key, value, reason] of [
   ['sourceMetadata', { ...metadata, event: 'OTHER' }, 'real_persisted_source_required'],
   ['sourceEnvironment', 'production', 'qa_environment_required'],
   ['senderHashMatches', false, 'sender_not_allowlisted'],
-  ['intent', 'booking_intent', 'unsafe_or_missing_proposed_reply'],
+  ['intent', 'booking_change_request', 'unsafe_or_missing_proposed_reply'],
   ['proposedReply', '', 'unsafe_or_missing_proposed_reply'],
   ['operationAcquired', false, 'operation_already_claimed'],
 ]) {

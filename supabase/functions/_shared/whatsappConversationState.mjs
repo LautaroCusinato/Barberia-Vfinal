@@ -1,8 +1,8 @@
 /**
  * Deterministic, tenant-scoped conversation state for the future WhatsApp
  * booking flow. This module is deliberately pure: it performs no Supabase,
- * Evolution, LLM or booking calls. Runtime wiring remains disabled until a
- * separate server preflight authorizes it.
+ * Evolution, LLM or booking calls. The QA webhook persists its returned state
+ * in the existing shadow-run metadata after server-side scope validation.
  */
 
 export const CONVERSATION_TTL_MS = 30 * 60 * 1000

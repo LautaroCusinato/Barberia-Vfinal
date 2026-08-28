@@ -5,6 +5,7 @@ import {
   PROTECTED_WHATSAPP_INSTANCE,
   agentOutboundGuard,
   buildAgentOutboundOperationId,
+  isPersistedConversationScope,
   isRealPersistedSourceMetadata,
   isQaAgentOutboundRuntime,
 } from '../_shared/whatsappAgentOutboundPilot.mjs'
@@ -108,6 +109,12 @@ Deno.serve(async (request) => {
     const pilotEnabled = safeString(Deno.env.get('WHATSAPP_AGENT_OUTBOUND_PILOT_ENABLED')) === '1'
     const sourceHash = safeString(metadata.sender_hash)
     const senderMatches = constantTimeEqual(sourceHash, recipientHash)
+    if (sourceRun.intent === 'booking_intent' && !isPersistedConversationScope(metadata, {
+      tenantId: connection.barberia_id,
+      integrationId: connection.integration_id,
+      instance: connection.instance_name,
+      senderHash: sourceHash,
+    })) return json({ error: 'conversation_scope_required', outbound_allowed: false }, 403)
     const guard = agentOutboundGuard({
       enabled: pilotEnabled,
       runtimeValid,

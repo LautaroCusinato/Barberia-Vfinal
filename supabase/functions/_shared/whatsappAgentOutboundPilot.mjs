@@ -1,6 +1,6 @@
 export const QA_AGENT_OUTBOUND_TENANT_ID = 1
 export const QA_AGENT_OUTBOUND_INSTANCE = 'austral-qa-tenant-1'
-export const QA_AGENT_OUTBOUND_ALLOWED_INTENTS = Object.freeze(['services_query', 'availability_query', 'general_query'])
+export const QA_AGENT_OUTBOUND_ALLOWED_INTENTS = Object.freeze(['services_query', 'availability_query', 'general_query', 'booking_intent'])
 export const PROTECTED_WHATSAPP_INSTANCE = 'miwsp'
 
 const textFrom = (value) => String(value ?? '').trim()
@@ -33,13 +33,36 @@ export function isRealPersistedSourceMetadata(metadata = {}) {
     && metadata.outbound_send === false
 }
 
+export function isPersistedConversationScope(metadata = {}, { tenantId, integrationId, instance, senderHash } = {}) {
+  const scope = metadata.conversation_scope
+  const state = metadata.conversation_state
+  if (!scope || typeof scope !== 'object' || !state || typeof state !== 'object') return false
+  return Number(scope.tenant_id) === Number(tenantId)
+    && Number(scope.integration_id) === Number(integrationId)
+    && textFrom(scope.instance) === textFrom(instance)
+    && textFrom(scope.sender_hash) === textFrom(senderHash)
+    && textFrom(scope.environment).toLowerCase() === 'qa'
+    && Number(state.tenant_id) === Number(tenantId)
+    && Number(state.integration_id) === Number(integrationId)
+    && textFrom(state.instance) === textFrom(instance)
+    && textFrom(state.sender_hash) === textFrom(senderHash)
+    && textFrom(state.environment).toLowerCase() === 'qa'
+}
+
 export function isSafePersistedReply({ intent, reply, metadata = {} }) {
   const value = textFrom(reply)
   if (!isAllowedAgentIntent(intent) || !value || value.length > 1000) return false
   if (metadata.mutation_allowed !== false || metadata.outbound_allowed !== false || metadata.mutation_blocked !== true || metadata.outbound_send !== false) return false
   if (/service_role|access_token|webhook_secret|authorization|api[_ -]?key|card[_ -]?token|password|secret/i.test(value)) return false
   if (/\b(insert|update|delete|drop|alter|truncate|create table|grant|revoke)\b/i.test(value)) return false
-  if (/\b(reserv(ar|a)|cre(ar|ó)|modific|cancel|cobr|pag(ar|o)|invoice|preapproval|suscripci[oó]n)\b/i.test(value)) return false
+  // Reservation language is allowed for questions, availability and the
+  // explicit-confirmation acknowledgement. Reject only a claim that a
+  // booking mutation already happened (including equivalent verb forms).
+  const mutationVerb = 'cread[oa]|creó|agendad[oa]|reservad[oa]|confirmad[oa]|modificad[oa]|cancelad[oa]|realizad[oa]'
+  const bookingClaim = new RegExp(`\\b(reserva|turno)\\b.{0,48}\\b(${mutationVerb})\\b`, 'i').test(value)
+    || new RegExp(`\\b(${mutationVerb})\\b.{0,48}\\b(reserva|turno)\\b`, 'i').test(value)
+  const explicitNoMutation = new RegExp(`\\b(no|nunca|todavia no|aun no)\\b.{0,24}\\b(${mutationVerb})\\b`, 'i').test(value)
+  if ((bookingClaim && !explicitNoMutation) || /\b(cobr|pag(ar|o)|invoice|preapproval|suscripci[oó]n)\b/i.test(value)) return false
   return true
 }
 

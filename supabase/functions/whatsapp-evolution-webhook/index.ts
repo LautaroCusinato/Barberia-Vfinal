@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
 import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate, resolveRequestedServices } from '../_shared/whatsappAgentShadow.mjs'
+import { advanceConversationTurn, buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
+import { nextConversationAction, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -74,8 +76,18 @@ function messageData(payload: Record<string, unknown>) {
   const eventId = safeString(key.id || data.messageId || payload.message_id || payload.event_id || payload.id).slice(0, 200)
   const remoteJid = safeString(key.remoteJid || key.participant || data.remoteJid || payload.sender)
   const fromMe = key.fromMe === true || data.fromMe === true || payload.fromMe === true
-  const messageType = safeString(data.messageType || payload.messageType || Object.keys(message)[0]).slice(0, 80) || null
-  return { eventId, remoteJid, fromMe, messageType, text: extractInboundText(payload) }
+  const rawMessageType = safeString(data.messageType || payload.messageType || Object.keys(message)[0]).slice(0, 80).toLowerCase()
+  const messageType = rawMessageType === 'conversation' || rawMessageType === 'extendedtextmessage' ? 'text' : rawMessageType || null
+  const normalizedJid = remoteJid.toLowerCase()
+  return {
+    eventId,
+    remoteJid,
+    fromMe,
+    messageType,
+    isGroup: normalizedJid.endsWith('@g.us'),
+    isBroadcast: normalizedJid.endsWith('@broadcast'),
+    text: extractInboundText(payload),
+  }
 }
 
 async function senderHash(value: string) {
@@ -152,6 +164,72 @@ async function loadAvailability(admin: ReturnType<typeof adminClient>, context: 
   return { status: 'ready', request, slots, requested_slot_available: requestedSlotAvailable, rpc_executed: true, service_resolution: serviceResolution }
 }
 
+async function loadConversationAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, state: Record<string, unknown>) {
+  const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
+  const request = {
+    date_key: safeString(state.requested_date) || null,
+    date_phrase: null,
+    time_period: safeString(state.daypart) || null,
+    requested_date: safeString(state.requested_date) || null,
+    requested_time: safeString(state.requested_time) || null,
+    requested_daypart: safeString(state.daypart) || null,
+    time_ambiguous: false,
+    time_candidate: null,
+    timezone,
+  }
+  const service = context.services.find((candidate: Record<string, unknown>) => Number(candidate.id) === Number(state.service_id))
+  if (!service) return { status: 'service_required', request, slots: [], rpc_executed: false }
+  if (!request.date_key || !request.requested_time) return { status: 'date_or_time_required', request, slots: [], rpc_executed: false }
+  if (!context.business.slug) return { status: 'error', request, slots: [], rpc_executed: false }
+  const { data, error } = await admin.rpc('horarios_disponibles_reserva_publica', {
+    p_slug: context.business.slug,
+    p_servicio_id: service.id,
+    p_fecha: request.date_key,
+  })
+  if (error) throw new Error('availability_rpc_failed')
+  const slots = (data || [])
+    .filter((slot: Record<string, unknown>) => matchesTimePeriod(slot.hora, request.time_period))
+    .map((slot: Record<string, unknown>) => ({
+      service_id: service.id,
+      service_name: service.nombre,
+      barbero_id: slot.barbero_id,
+      barbero_nombre: slot.barbero_nombre,
+      duracion_min: slot.duracion_min,
+      hora: slot.hora,
+    }))
+  return {
+    status: 'ready',
+    request,
+    slots,
+    requested_slot_available: slots.some((slot: Record<string, unknown>) => safeString(slot.hora).slice(0, 5) === request.requested_time),
+    rpc_executed: true,
+    service_resolution: { status: 'matched', match_type: 'conversation_state', matches: [service] },
+  }
+}
+
+async function loadConversationState(admin: ReturnType<typeof adminClient>, connection: Record<string, unknown>, instance: string, senderHashValue: string) {
+  const { data, error } = await admin.from('saas_automation_shadow_runs')
+    .select('metadata,observed_at')
+    .eq('tenant_id', connection.barberia_id)
+    .eq('integration_id', connection.integration_id)
+    .order('observed_at', { ascending: false })
+    .limit(100)
+  if (error) throw new Error('conversation_lookup_failed')
+  const row = (data || []).find((candidate: Record<string, unknown>) => {
+    const metadata = candidate.metadata && typeof candidate.metadata === 'object' ? candidate.metadata as Record<string, unknown> : {}
+    const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
+    return metadata.environment === 'qa'
+      && metadata.instance === instance
+      && metadata.sender_hash === senderHashValue
+      && state?.environment === 'qa'
+      && state?.instance === instance
+      && state?.sender_hash === senderHashValue
+  })
+  if (!row) return null
+  const metadata = row.metadata as Record<string, unknown>
+  return metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
   try {
@@ -179,21 +257,59 @@ Deno.serve(async (request) => {
       if (existingError) return json({ error: 'shadow_lookup_failed', mutation_blocked: true }, 502)
       if (existing) return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, 202)
       const context = await loadTenantContext(admin, connection.barberia_id)
+      const senderHashValue = await senderHash(inbound.remoteJid)
+      const previousConversation = await loadConversationState(admin, connection, instance, senderHashValue)
+      const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
+      const conversation = advanceConversationTurn({
+        state: previousConversation,
+        scope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' },
+        eventId: inbound.eventId,
+        text: inbound.text,
+        messageType: inbound.messageType || 'text',
+        fromMe: inbound.fromMe,
+        isGroup: inbound.isGroup,
+        isBroadcast: inbound.isBroadcast,
+        services: context.services,
+        timezone,
+      })
+      if (!conversation.accepted) return json({ received: true, accepted: false, event, reason: conversation.reason, duplicate: conversation.duplicate === true, mutation_blocked: true, outbound_send: false }, conversation.duplicate ? 202 : 422)
+
+      const bookingFlow = conversation.intent === 'booking_intent' || conversation.state?.pending_intent === 'booking_intent'
       let availability = null
-      const initialIntent = classifyShadowIntent(inbound.text)
-      if (initialIntent === 'availability_query' || initialIntent === 'booking_intent') {
+      let conversationState = conversation.state
+      if (bookingFlow && conversation.action?.action === 'check_availability') {
         try {
-          availability = await loadAvailability(admin, context, inbound.text, initialIntent)
+          availability = await loadConversationAvailability(admin, context, conversationState)
+          if (availability.rpc_executed === true) {
+            const availabilityResult = recordAvailabilityResult({
+              state: conversationState,
+              expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' },
+              source: 'authoritative_rpc',
+              available: availability.requested_slot_available === true,
+              snapshotId: `rpc:${inbound.eventId}`,
+              proposalId: `proposal:${conversationState.conversation_id}:${conversationState.version}`,
+            })
+            if (availabilityResult.accepted) conversationState = availabilityResult.state
+          }
         } catch {
-          availability = { status: 'error', request: interpretRequestedDate(inbound.text, safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'), slots: [], rpc_executed: false }
+          availability = { status: 'error', request: { requested_date: conversationState.requested_date, requested_time: conversationState.requested_time, requested_daypart: conversationState.daypart, timezone }, slots: [], rpc_executed: false }
         }
       }
-      const proposal = await generateShadowProposal({
-        text: inbound.text,
-        context: { ...context, availability },
-        apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
-        model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
-      })
+      const proposal = bookingFlow
+        ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, services: context.services, businessName: context.business.nombre })
+        : await (async () => {
+            let standaloneAvailability = null
+            const initialIntent = classifyShadowIntent(inbound.text)
+            if (initialIntent === 'availability_query') {
+              try { standaloneAvailability = await loadAvailability(admin, context, inbound.text, initialIntent) } catch { standaloneAvailability = { status: 'error', request: interpretRequestedDate(inbound.text, timezone), slots: [], rpc_executed: false } }
+            }
+            return generateShadowProposal({
+              text: inbound.text,
+              context: { ...context, availability: standaloneAvailability },
+              apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
+              model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
+            })
+          })()
       const { data: recorded, error: recordError } = await admin.rpc('record_whatsapp_shadow_run', {
         p_integration_id: connection.integration_id,
         p_event_id: inbound.eventId,
@@ -208,7 +324,8 @@ Deno.serve(async (request) => {
           event: INBOUND_EVENT,
           environment: 'qa',
           message_type: inbound.messageType,
-          sender_hash: await senderHash(inbound.remoteJid),
+          sender_hash: senderHashValue,
+          instance,
           from_me: false,
           agent: {
             provider: proposal.provider,
@@ -232,6 +349,9 @@ Deno.serve(async (request) => {
             },
           },
           proposed_reply: proposal.proposed_reply,
+          conversation_state: bookingFlow ? conversationState : null,
+          conversation_action: bookingFlow ? (proposal.requested_action || conversation.action?.action || null) : null,
+          conversation_scope: bookingFlow ? { tenant_id: connection.barberia_id, integration_id: connection.integration_id, instance, sender_hash: senderHashValue, environment: 'qa' } : null,
           mutation_blocked: true,
           outbound_send: false,
           mutation_allowed: false,
@@ -241,7 +361,7 @@ Deno.serve(async (request) => {
       })
       if (recordError) return json({ error: 'shadow_record_failed', mutation_blocked: true }, 502)
       const shadowRun = Array.isArray(recorded) ? recorded[0] : recorded
-      return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, shadow_run_id: shadowRun?.shadow_run_id || null, duplicate: false, intent: proposal.intent, proposed_reply: proposal.proposed_reply, provider: proposal.provider, mutation_blocked: true, outbound_send: false })
+      return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, shadow_run_id: shadowRun?.shadow_run_id || null, duplicate: false, intent: proposal.intent, proposed_reply: proposal.proposed_reply, provider: proposal.provider, mutation_blocked: true, outbound_send: false, conversation_state: bookingFlow ? conversationState.confirmation_state : null, ready_for_booking_mutation: bookingFlow ? conversationState.ready_for_booking_mutation === true : false })
     }
     const state = event === 'QRCODE_UPDATED' ? 'QR_READY' : connectionState(payload as Record<string, unknown>)
     if (state) {

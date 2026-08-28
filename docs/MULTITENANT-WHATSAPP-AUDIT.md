@@ -357,3 +357,26 @@ teléfono crudo, mensajes innecesarios, tokens o secretos.
   desplegada, Evolution, n8n o producción.
 
 **AGENT OUTBOUND CODE READY BUT NOT DEPLOYED**
+
+### Integración QA multi-turn preparada — 2026-08-28
+
+La implementación QA ahora conecta el helper determinista al webhook de
+Evolution sin crear una tabla nueva: cada evento de una conversación de reserva
+guarda `conversation_state`, `conversation_scope`, `instance` y la acción en el
+`metadata` del `saas_automation_shadow_runs` correspondiente. El siguiente
+evento recupera únicamente el estado cuyo `tenant_id`, `integration_id`,
+`environment`, instancia y `sender_hash` coinciden con la conexión resuelta por
+el servidor.
+
+El flujo admite la recolección ordenada de servicio, fecha y hora, consulta la
+RPC autoritativa `horarios_disponibles_reserva_publica`, solicita confirmación
+de la propuesta vigente y pasa a `confirmed`/`ready_for_booking_mutation` sólo
+tras una afirmación explícita. En esta fase `mutation_allowed` permanece siempre
+`false`; no se ejecuta la RPC de reserva ni se modifican clientes o turnos.
+
+`booking_intent` puede usar el outbound QA únicamente para preguntas,
+disponibilidad y acuse de confirmación no mutante. La función outbound exige
+además que el estado persistido y su scope pertenezcan a la misma conversación;
+los claims de reserva creada/modificada continúan bloqueados. El cambio está
+validado localmente y todavía requiere CI/deploy QA antes de una conversación
+real.
