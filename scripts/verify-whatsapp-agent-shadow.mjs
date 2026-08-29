@@ -101,11 +101,11 @@ assert.match(emptyAvailabilityProposal.proposed_reply, /No encontré disponibili
 
 const bookingAvailable = buildDeterministicShadowProposal({ text: 'Quiero reservar mañana a las 16', availability: { ...availability, requested_slot_available: true, slots: [{ service_name: 'E2E_QA_A_SERVICIO', barbero_nombre: 'E2E_QA_A_EMPLEADO', hora: '16:00:00' }] }, ...tenantA })
 assert.equal(bookingAvailable.intent, 'booking_intent')
-assert.match(bookingAvailable.proposed_reply, /16:00 está disponible/)
+assert.match(bookingAvailable.proposed_reply, /disponibilidad.*16:00|16:00.*disponibilidad/i)
 assert.doesNotMatch(bookingAvailable.proposed_reply, /reservado|creado/i)
 
 const bookingMissingService = buildDeterministicShadowProposal({ text: 'Quiero reservar mañana a las 16', availability: { status: 'service_required', request: availability.request, slots: [], rpc_executed: false }, ...tenantA })
-assert.match(bookingMissingService.proposed_reply, /qué servicio querés/)
+assert.match(bookingMissingService.proposed_reply, /qué servicio querés/i)
 
 const duplicateEvents = new Set()
 const eventId = 'E2E_QA_AGENT_SHADOW_001'

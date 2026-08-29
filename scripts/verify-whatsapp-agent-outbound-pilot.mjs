@@ -51,8 +51,8 @@ assert.equal(isSafePersistedReply({ intent: 'general_query', reply: 'Hola. ¿En 
 assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'La reserva fue creada.', metadata }), false)
 assert.equal(isSafePersistedReply({ intent: 'services_query', reply: 'Usá el service_role token.', metadata }), false)
 assert.equal(isSafePersistedReply({ intent: 'services_query', reply: 'INSERT INTO clientes...', metadata }), false)
-assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: '¿Qué servicio querés reservar? No se creó ningún turno.', metadata }), true)
-assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'Perfecto, tengo los datos confirmados. El siguiente paso permanece bloqueado.', metadata }), true)
+assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: '¿Qué servicio querés reservar?', metadata }), true)
+assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'Perfecto, tengo los datos confirmados.', metadata }), true)
 assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'Tu turno fue confirmado.', metadata }), false)
 const conversationMetadata = {
   ...metadata,

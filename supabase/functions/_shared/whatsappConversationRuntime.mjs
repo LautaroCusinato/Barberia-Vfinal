@@ -11,7 +11,9 @@ import {
 } from './whatsappConversationState.mjs'
 import {
   classifyShadowIntent,
+  CUSTOMER_FACING_PROMPT_VERSION,
   interpretRequestedDate,
+  normalizeCustomerReply,
   parseRequestedTime,
   resolveRequestedServices,
 } from './whatsappAgentShadow.mjs'
@@ -85,44 +87,44 @@ export function buildConversationProposal({ state, action, availability = null, 
 
   switch (action?.action) {
     case 'ask_service':
-      proposedReply = '¿Qué servicio querés reservar? No se creó ningún turno.'
+      proposedReply = '¿Qué servicio querés reservar?'
       requestedAction = 'booking_collect_service'
       break
     case 'ask_date':
-      proposedReply = `¿Qué día querés para ${service || 'el servicio'}? No se creó ningún turno.`
+      proposedReply = `¿Qué día te gustaría reservar${service ? ` para ${service}` : ''}?`
       requestedAction = 'booking_collect_date'
       break
     case 'ask_time':
-      proposedReply = `¿A qué hora querés ${service ? `el servicio ${service}` : 'el turno'} el ${date || 'ese día'}? No se creó ningún turno.`
+      proposedReply = `¿A qué hora te gustaría reservar${service ? ` para ${service}` : ''} el ${date || 'ese día'}?`
       requestedAction = 'booking_collect_time'
       break
     case 'offer_alternatives': {
       const slots = Array.isArray(availability?.slots) ? availability.slots.slice(0, 6) : []
       const alternatives = slots.map((slot) => textFrom(slot?.hora).slice(0, 5)).filter(Boolean).join(', ')
       proposedReply = alternatives
-        ? `El horario solicitado no está disponible. Alternativas reales: ${alternatives}. No se creó ningún turno.`
-        : `No encontré disponibilidad para ${date || 'ese día'}. No se creó ningún turno.`
+        ? `Ese horario no está disponible. Puedo ofrecerte: ${alternatives}. ¿Cuál te sirve?`
+        : `No encontré disponibilidad para ${date || 'ese día'}. ¿Querés que busque otro día?`
       requestedAction = 'booking_offer_alternatives'
       break
     }
     case 'request_confirmation':
-      proposedReply = `Tengo disponible ${service || 'el servicio'} el ${date || 'día solicitado'} a las ${time || 'la hora solicitada'}. ¿Confirmás estos datos? No se creó ningún turno.`
+      proposedReply = `Tengo disponible ${service || 'el servicio'} el ${date || 'día solicitado'} a las ${time || 'la hora solicitada'}. ¿Confirmás?`
       requestedAction = 'booking_request_confirmation'
       break
     case 'ready_for_booking_mutation':
-      proposedReply = 'Perfecto, tengo los datos confirmados. El siguiente paso de reserva permanece bloqueado en este modo.'
+      proposedReply = 'Perfecto, tengo los datos confirmados.'
       requestedAction = 'booking_confirmed_ready'
       break
     case 'restart_conversation':
-      proposedReply = `La conversación venció. Volvamos a empezar: ¿qué servicio querés reservar en ${safeBusinessName}?`
+      proposedReply = `Retomemos desde el principio. ¿Qué servicio te gustaría reservar en ${safeBusinessName}?`
       requestedAction = 'booking_restart'
       break
     case 'check_availability':
-      proposedReply = 'Estoy revisando la disponibilidad solicitada. No se creó ningún turno.'
+      proposedReply = 'Estoy revisando horarios para vos.'
       requestedAction = 'booking_check_availability'
       break
     default:
-      proposedReply = 'Puedo ayudarte a preparar una reserva. ¿Qué servicio querés reservar? No se creó ningún turno.'
+      proposedReply = 'Puedo ayudarte a preparar una reserva. ¿Qué servicio te gustaría reservar?'
       requestedAction = 'booking_collect_service'
   }
 
@@ -130,7 +132,7 @@ export function buildConversationProposal({ state, action, availability = null, 
   if (availability?.rpc_executed === true) tools.push('availability_rpc_read')
   return {
     intent: 'booking_intent',
-    proposed_reply: proposedReply.replace(/[\r\n]+/g, ' ').trim().slice(0, 1000),
+    proposed_reply: normalizeCustomerReply(proposedReply, '¿En qué te puedo ayudar?'),
     confidence: 0.95,
     requested_action: requestedAction,
     tools_considered: tools,
@@ -145,6 +147,7 @@ export function buildConversationProposal({ state, action, availability = null, 
     },
     provider: 'qa_deterministic_conversation',
     model: 'conversation-state-v1',
+    agent_prompt_version: CUSTOMER_FACING_PROMPT_VERSION,
     mutation_allowed: false,
     outbound_allowed: false,
   }

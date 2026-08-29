@@ -330,6 +330,7 @@ Deno.serve(async (request) => {
           agent: {
             provider: proposal.provider,
             model: proposal.model,
+            prompt_version: proposal.agent_prompt_version || 'natural-v2',
             confidence: proposal.confidence,
             requested_action: proposal.requested_action,
             tools_considered: proposal.tools_considered,

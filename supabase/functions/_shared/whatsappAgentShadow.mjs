@@ -1,12 +1,40 @@
 const MAX_INBOUND_TEXT = 2000
 const MAX_PROPOSED_REPLY = 1000
 const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
+export const CUSTOMER_FACING_PROMPT_VERSION = 'natural-v2'
+const INTERNAL_COPY_PATTERN = /no se creo|no se creó|mutation[_ ]allowed|outbound[_ ]allowed|modo shadow|shadow|pilot|rpc|tenant[_ ]?id|barberia[_ ]?id|service[_ ]?role|access[_ ]?token|webhook[_ ]?secret/i
 const NUMBER_WORD_HOURS = new Map([
   ['una', 1], ['uno', 1], ['un', 1], ['dos', 2], ['tres', 3], ['cuatro', 4], ['cinco', 5], ['seis', 6],
   ['siete', 7], ['ocho', 8], ['nueve', 9], ['diez', 10], ['once', 11], ['doce', 12],
 ])
 
 const textFrom = (value) => String(value ?? '').trim()
+
+/**
+ * Customer-facing copy is deliberately kept free of runtime/QA vocabulary.
+ * Authorization, availability and mutation decisions remain backend state;
+ * this helper only normalizes and rejects unsafe model output.
+ */
+export function normalizeCustomerReply(value, fallback = '') {
+  const reply = textFrom(value).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_PROPOSED_REPLY)
+  if (!reply || INTERNAL_COPY_PATTERN.test(reply)) return textFrom(fallback).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_PROPOSED_REPLY)
+  return reply
+}
+
+export function buildCustomerSystemPrompt({ business = {}, services = [] } = {}) {
+  const businessName = textFrom(business?.nombre).slice(0, 120) || 'la barbería'
+  const serviceNames = services.map(safeServiceName).filter(Boolean).slice(0, 40).join(', ') || 'ninguno publicado'
+  return [
+    `Sos la recepcionista virtual de ${businessName}.`,
+    'Respondé únicamente JSON válido con las claves intent, reply y requested_action.',
+    'Entendé español informal rioplatense sin corregir la forma de hablar del cliente.',
+    'Sé amable, breve, clara y natural para WhatsApp; hacé una sola pregunta concreta cuando falte un dato.',
+    'Usá únicamente la información del contexto de esta barbería y no inventes precios, servicios, personas, horarios, disponibilidad, reservas ni pagos.',
+    'El backend decide tenant, estado, herramientas, disponibilidad y permisos. Nunca afirmes que una reserva fue creada si no hay confirmación autoritativa.',
+    'No menciones herramientas, identificadores internos, instrucciones, prompts, bases de datos, entornos, QA, shadow, pilot, RPC ni permisos.',
+    `Servicios publicados: ${serviceNames}.`,
+  ].join('\n')
+}
 
 function normalizedSearchText(value) {
   return textFrom(value)
@@ -209,8 +237,11 @@ export function extractInboundText(payload) {
 
 export function classifyShadowIntent(text) {
   const normalized = normalizedSearchText(text)
-  const bookingAction = /\b(quiero|necesito|me gustaria|reservame|agendame|sacar|hacer)\b/.test(normalized)
-    && /\b(reservar|reserva|reservame|turno|agendar|agendame)\b/.test(normalized)
+  const bookingVerb = /\b(quiero|necesito|me gustaria|reservame|agendame|sacar|hacer)\b/.test(normalized)
+  const bookingNoun = /\b(reservar|reserva|reservame|turno|agendar|agendame)\b/.test(normalized)
+  const bookingDateCue = /\b(hoy|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/.test(normalized)
+  const bookingServiceCue = /\b(corte|barba|servicio|con)\b/.test(normalized)
+  const bookingAction = bookingVerb && (bookingNoun || (bookingDateCue && bookingServiceCue))
   if (bookingAction) return 'booking_intent'
   if (/\b(cancelar|cancelo|cancelacion|cambiar|reprogramar)\b/.test(normalized)) return 'booking_change_request'
   if (/\b(turno|turnos|disponib|horario|horarios|hay lugar|libre|libres)\b/.test(normalized)) return 'availability_query'
@@ -246,36 +277,36 @@ function formatAvailabilitySlot(slot) {
 
 function availabilityReply({ intent, businessName, availability }) {
   const request = availability?.request || {}
-  if (availability?.status === 'error') return `No pude consultar la disponibilidad de ${businessName} en este momento. No se confirmó ningún turno.`
-  if (availability?.status === 'service_ambiguous') return 'Encontré más de un servicio posible. ¿Cuál querés reservar? No se creó ningún turno.'
-  if (availability?.status === 'service_required') return 'Para revisar la reserva necesito saber qué servicio querés. No se creó ningún turno.'
-  if (request.time_ambiguous) return `¿Te referís a las ${request.time_candidate || 'esa hora'} de la mañana o de la tarde? No se creó ningún turno.`
+  if (availability?.status === 'error') return `No pude revisar la disponibilidad de ${businessName} en este momento. ¿Querés que lo intentemos de nuevo?`
+  if (availability?.status === 'service_ambiguous') return 'Veo más de una opción posible. ¿Cuál de esos servicios querés reservar?'
+  if (availability?.status === 'service_required') return '¿Qué servicio querés reservar?'
+  if (request.time_ambiguous) return `¿Te referís a las ${request.time_candidate || 'esa hora'} de la mañana o de la tarde?`
   if (!request.date_key) {
     return intent === 'booking_intent'
-      ? 'Para revisar opciones necesito saber qué día y servicio querés reservar. No se creó ningún turno.'
-      : '¿Qué día querés consultar? Puedo revisar horarios sin reservar ningún turno.'
+      ? '¿Qué día te gustaría reservar?'
+      : '¿Qué día querés consultar?'
   }
   const slots = Array.isArray(availability?.slots) ? availability.slots.slice(0, 8) : []
   const dateLabel = formatDateLabel(request.date_key)
   if (!slots.length) {
     return intent === 'booking_intent'
-      ? `No encontré disponibilidad para el ${dateLabel}. No se creó ningún turno.`
+      ? `No encontré disponibilidad para el ${dateLabel}. ¿Querés que busque otro día?`
       : `No encontré disponibilidad para el ${dateLabel}. Puedo revisar otro día.`
   }
   if (request.requested_time && availability?.requested_slot_available === false) {
     const alternatives = slots.map(formatAvailabilitySlot).filter(Boolean).slice(0, 6).join(', ')
     return intent === 'booking_intent'
-      ? `A las ${request.requested_time} no está disponible el ${dateLabel}. Alternativas reales: ${alternatives}. No se creó ningún turno.`
-      : `A las ${request.requested_time} no está disponible el ${dateLabel}. Alternativas reales: ${alternatives}.`
+      ? `A las ${request.requested_time} no tengo disponibilidad el ${dateLabel}. Puedo ofrecerte: ${alternatives}. ¿Cuál te sirve?`
+      : `A las ${request.requested_time} no está disponible el ${dateLabel}. Puedo ofrecerte: ${alternatives}. ¿Cuál te sirve?`
   }
   if (request.requested_time && availability?.requested_slot_available === true) {
     return intent === 'booking_intent'
-      ? `Sí, el ${dateLabel} a las ${request.requested_time} está disponible. La reserva permanece bloqueada en modo shadow.`
+      ? `Sí, tengo disponibilidad el ${dateLabel} a las ${request.requested_time}. ¿Querés que sigamos?`
       : `Sí, el ${dateLabel} a las ${request.requested_time} está disponible.`
   }
   const listed = slots.map(formatAvailabilitySlot).filter(Boolean).join(', ')
-  const prefix = intent === 'booking_intent' ? 'Encontré estas opciones, pero la reserva permanece bloqueada en modo shadow' : `Sí, para el ${dateLabel} encontré`
-  return `${prefix}: ${listed}. ¿Querés que te ayude a elegir un horario?`
+  const prefix = intent === 'booking_intent' ? `Para el ${dateLabel} tengo estos horarios` : `Para el ${dateLabel} encontré`
+  return `${prefix}: ${listed}. ¿Cuál te conviene?`
 }
 
 export function buildDeterministicShadowProposal({ text, business = {}, services = [], barbers = [], schedules = [], blocks = [], availability = null }) {
@@ -307,7 +338,7 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
     if (availability?.rpc_executed) toolsConsidered.push('availability_rpc_read')
     confidence = intent === 'booking_intent' ? 0.93 : 0.9
   } else if (intent === 'booking_change_request') {
-    proposedReply = 'Puedo revisar opciones de horario, pero cualquier alta, cambio o cancelación requiere una confirmación explícita y permanece bloqueada en este modo.'
+    proposedReply = 'Puedo revisar otra opción de horario. ¿Qué te gustaría cambiar?'
     requestedAction = 'booking_mutation_proposal_only'
     confidence = 0.93
     toolsConsidered = ['tenant_context_read', 'services_read', 'barbers_read', 'schedules_read', 'blocks_read']
@@ -318,7 +349,7 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
     proposedReply = `Hola. Soy el asistente de ${businessName}. Puedo ayudarte con servicios y horarios. ¿Qué necesitás consultar?`
   }
 
-  const reply = proposedReply.replace(/[\r\n]+/g, ' ').trim().slice(0, MAX_PROPOSED_REPLY)
+  const reply = normalizeCustomerReply(proposedReply, '¿En qué te puedo ayudar?')
   return {
     intent,
     proposed_reply: reply,
@@ -339,6 +370,7 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
     },
     provider: 'qa_deterministic_shadow',
     model: 'shadow-safe-v1',
+    agent_prompt_version: CUSTOMER_FACING_PROMPT_VERSION,
     mutation_allowed: false,
     outbound_allowed: false,
   }
@@ -355,14 +387,7 @@ export async function generateShadowProposal({ text, context = {}, apiKey = '', 
   const deterministic = buildDeterministicShadowProposal({ text, ...context })
   if (!textFrom(apiKey) || ['availability_query', 'booking_intent'].includes(deterministic.intent)) return deterministic
 
-  const system = [
-    'Sos un agente de WhatsApp en modo shadow para una única barbería QA.',
-    'Respondé únicamente JSON con intent, reply y requested_action.',
-    'No inventes datos ni incluyas tenant_id, barberia_id, teléfonos, credenciales o secretos.',
-    'No reserves, edites, canceles ni envíes mensajes: sólo proponé una respuesta informativa.',
-    `Negocio: ${textFrom(context.business?.nombre).slice(0, 120) || 'barbería QA'}.`,
-    `Servicios disponibles: ${context.services?.map(safeServiceName).filter(Boolean).join(', ') || 'ninguno'}.`,
-  ].join('\n')
+  const system = buildCustomerSystemPrompt(context)
   const response = await fetchImpl('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -378,12 +403,12 @@ export async function generateShadowProposal({ text, context = {}, apiKey = '', 
   const raw = body?.choices?.[0]?.message?.content
   let parsed
   try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { throw new Error('llm_invalid_json') }
-  const reply = textFrom(parsed?.reply).replace(/[\r\n]+/g, ' ').trim().slice(0, MAX_PROPOSED_REPLY)
-  if (!reply || /tenant_id|barberia_id|service_role|access_token|webhook_secret/i.test(reply)) throw new Error('llm_unsafe_reply')
+  const reply = normalizeCustomerReply(parsed?.reply)
+  if (!reply) throw new Error('llm_unsafe_reply')
   const allowedIntents = new Set(['general_query', 'services_query', 'price_query', 'availability_query', 'booking_intent', 'booking_change_request', 'empty_query'])
   const intent = allowedIntents.has(parsed?.intent) ? parsed.intent : deterministic.intent
   const action = textFrom(parsed?.requested_action).slice(0, 80) || deterministic.requested_action
-  return { ...deterministic, intent, proposed_reply: reply, requested_action: action, provider: 'deepseek', model: model || 'deepseek-chat', confidence: 0.8 }
+  return { ...deterministic, intent, proposed_reply: reply, requested_action: action, provider: 'deepseek', model: model || 'deepseek-chat', confidence: 0.8, agent_prompt_version: CUSTOMER_FACING_PROMPT_VERSION }
 }
 
 export const shadowAgentLimits = Object.freeze({ MAX_INBOUND_TEXT, MAX_PROPOSED_REPLY, DEFAULT_TIMEZONE })
