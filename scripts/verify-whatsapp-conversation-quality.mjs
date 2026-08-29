@@ -202,7 +202,7 @@ cases += 1
 
 const tenantAReply = buildDeterministicShadowProposal({ text: '¿Qué servicios tienen?', ...tenantA })
 const tenantBReply = buildDeterministicShadowProposal({ text: '¿Qué servicios tienen?', ...tenantB })
-assert.match(tenantAReply.proposed_reply, /Corte clásico/); assert.doesNotMatch(tenantAReply.proposed_reply, /Corte B/); cases += 1
+assert.equal(tenantAReply.proposed_reply, 'Tenemos Corte clásico, Barba.'); assert.doesNotMatch(tenantAReply.proposed_reply, /Corte B/); cases += 1
 assert.match(tenantBReply.proposed_reply, /Corte B/); assert.doesNotMatch(tenantBReply.proposed_reply, /Corte clásico/); cases += 1
 
 const injectionTexts = [

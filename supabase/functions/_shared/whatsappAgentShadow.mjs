@@ -333,8 +333,8 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
   if (intent === 'services_query') {
     const names = activeServices.map(safeServiceName)
     proposedReply = names.length
-      ? `Hola. En ${businessName} contamos con: ${names.join(', ')}. Si querés, te indico duración y precio de cada servicio.`
-      : `Hola. Todavía no hay servicios publicados para ${businessName}.`
+      ? `Tenemos ${names.join(', ')}.`
+      : 'Todavía no hay servicios publicados.'
     toolsConsidered = ['tenant_context_read', 'services_read']
   } else if (intent === 'price_query') {
     const resolution = resolveRequestedServices(text, activeServices)
