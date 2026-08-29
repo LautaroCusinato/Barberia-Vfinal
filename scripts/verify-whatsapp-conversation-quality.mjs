@@ -81,6 +81,17 @@ assert.match(specificPrice.proposed_reply, /Corte clásico sale ARS 30\.000/)
 assert.doesNotMatch(specificPrice.proposed_reply, /Barba/)
 cases += 1
 
+let priceModelCalls = 0
+const authoritativePrice = await generateShadowProposal({
+  text: '¿Cuánto sale un corte?',
+  context: tenantA,
+  apiKey: 'test-only',
+  fetchImpl: async () => { priceModelCalls += 1; return { ok: false } },
+})
+assert.equal(priceModelCalls, 0)
+assert.equal(authoritativePrice.proposed_reply, specificPrice.proposed_reply)
+cases += 1
+
 const ambiguousServiceAvailability = buildDeterministicShadowProposal({
   text: 'Quiero reservar corte',
   availability: {
