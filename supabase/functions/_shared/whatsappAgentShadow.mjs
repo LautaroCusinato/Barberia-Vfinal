@@ -242,7 +242,9 @@ export function classifyShadowIntent(text) {
   const bookingNoun = /\b(reservar|reserva|reservame|turno|agendar|agendame)\b/.test(normalized)
   const bookingDateCue = /\b(hoy|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/.test(normalized)
   const bookingServiceCue = /\b(corte|barba|servicio|con)\b/.test(normalized)
+  const bookingTimeCue = /\b(?:a las|tipo)?\s*(?:\d{1,2}(?::\d{2})?|una|uno|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\b/.test(normalized)
   const bookingAction = bookingVerb && (bookingNoun || (bookingDateCue && bookingServiceCue))
+    || bookingDateCue && bookingServiceCue && bookingTimeCue
   if (bookingAction) return 'booking_intent'
   if (/\b(turno|turnos|disponib|horario|horarios|hay lugar|libre|libres)\b/.test(normalized)) return 'availability_query'
   if (/\b(precio|precios|cuanto|cuantos|costo|sale)\b/.test(normalized)) return 'price_query'

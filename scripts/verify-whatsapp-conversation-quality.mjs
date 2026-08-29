@@ -142,6 +142,7 @@ assert.equal(resolveRequestedServices('quiero el corte de Otra Barbería', tenan
 assert.equal(parseRequestedTime('tipo 4').time_ambiguous, true); cases += 1
 assert.equal(parseRequestedTime('a las 4 de la tarde').requested_time, '16:00'); cases += 1
 assert.equal(parseRequestedTime('a las 9 de la mañana').requested_time, '09:00'); cases += 1
+assert.equal(buildDeterministicShadowProposal({ text: 'Corte mañana 16', availability: { status: 'ready', request: { date_key: '2026-08-25', requested_time: '16:00' }, slots: [{ hora: '16:00:00' }], requested_slot_available: true, rpc_executed: true }, ...tenantA }).intent, 'booking_intent'); cases += 1
 
 let state = null
 const scope = { tenantId: 1, integrationId: 1, instance: 'austral-qa-tenant-1', senderHash: 'sha256:0123456789ab', environment: 'qa' }
