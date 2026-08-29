@@ -112,7 +112,7 @@ export function buildConversationProposal({ state, action, availability = null, 
       requestedAction = 'booking_request_confirmation'
       break
     case 'ready_for_booking_mutation':
-      proposedReply = 'Perfecto, tengo los datos confirmados.'
+      proposedReply = 'Perfecto, ya tengo todos los datos.'
       requestedAction = 'booking_confirmed_ready'
       break
     case 'restart_conversation':
@@ -120,7 +120,11 @@ export function buildConversationProposal({ state, action, availability = null, 
       requestedAction = 'booking_restart'
       break
     case 'check_availability':
-      proposedReply = 'Estoy revisando horarios para vos.'
+      proposedReply = time
+        ? `Dale, reviso las ${time}${date ? ` para el ${date}` : ''}.`
+        : date
+          ? `Dale, reviso los horarios del ${date}.`
+          : 'Dale, reviso los horarios.'
       requestedAction = 'booking_check_availability'
       break
     default:

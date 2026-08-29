@@ -237,13 +237,13 @@ export function extractInboundText(payload) {
 
 export function classifyShadowIntent(text) {
   const normalized = normalizedSearchText(text)
+  if (/\b(cancelar|cancelo|cancelacion|cambiar|reprogramar)\b/.test(normalized)) return 'booking_change_request'
   const bookingVerb = /\b(quiero|necesito|me gustaria|reservame|agendame|sacar|hacer)\b/.test(normalized)
   const bookingNoun = /\b(reservar|reserva|reservame|turno|agendar|agendame)\b/.test(normalized)
   const bookingDateCue = /\b(hoy|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/.test(normalized)
   const bookingServiceCue = /\b(corte|barba|servicio|con)\b/.test(normalized)
   const bookingAction = bookingVerb && (bookingNoun || (bookingDateCue && bookingServiceCue))
   if (bookingAction) return 'booking_intent'
-  if (/\b(cancelar|cancelo|cancelacion|cambiar|reprogramar)\b/.test(normalized)) return 'booking_change_request'
   if (/\b(turno|turnos|disponib|horario|horarios|hay lugar|libre|libres)\b/.test(normalized)) return 'availability_query'
   if (/\b(precio|precios|cuanto|cuantos|costo|sale)\b/.test(normalized)) return 'price_query'
   if (/\b(servicio|servicios|ofrecen|catalogo)\b/.test(normalized)) return 'services_query'
@@ -278,9 +278,20 @@ function formatAvailabilitySlot(slot) {
 function availabilityReply({ intent, businessName, availability }) {
   const request = availability?.request || {}
   if (availability?.status === 'error') return `No pude revisar la disponibilidad de ${businessName} en este momento. ¿Querés que lo intentemos de nuevo?`
-  if (availability?.status === 'service_ambiguous') return 'Veo más de una opción posible. ¿Cuál de esos servicios querés reservar?'
+  if (availability?.status === 'service_ambiguous') {
+    const matches = Array.isArray(availability?.service_resolution?.matches) ? availability.service_resolution.matches : []
+    const options = matches.map(safeServiceName).filter(Boolean).slice(0, 3)
+    return options.length > 1
+      ? `¿Querés ${options.join(' o ')}?`
+      : '¿Cuál de esos servicios querés reservar?'
+  }
   if (availability?.status === 'service_required') return '¿Qué servicio querés reservar?'
-  if (request.time_ambiguous) return `¿Te referís a las ${request.time_candidate || 'esa hora'} de la mañana o de la tarde?`
+  if (request.time_ambiguous) {
+    const candidate = textFrom(request.time_candidate)
+    const hourMatch = candidate.match(/^0?(\d{1,2}):\d{2}$/)
+    if (hourMatch && Number(hourMatch[1]) <= 6) return `¿Te referís a las ${Number(hourMatch[1])} de la tarde?`
+    return `¿Te referís a las ${candidate || 'esa hora'}?`
+  }
   if (!request.date_key) {
     return intent === 'booking_intent'
       ? '¿Qué día te gustaría reservar?'
@@ -294,17 +305,17 @@ function availabilityReply({ intent, businessName, availability }) {
       : `No encontré disponibilidad para el ${dateLabel}. Puedo revisar otro día.`
   }
   if (request.requested_time && availability?.requested_slot_available === false) {
-    const alternatives = slots.map(formatAvailabilitySlot).filter(Boolean).slice(0, 6).join(', ')
+    const alternatives = slots.map(formatAvailabilitySlot).filter(Boolean).slice(0, 3).join(', ')
     return intent === 'booking_intent'
       ? `A las ${request.requested_time} no tengo disponibilidad el ${dateLabel}. Puedo ofrecerte: ${alternatives}. ¿Cuál te sirve?`
       : `A las ${request.requested_time} no está disponible el ${dateLabel}. Puedo ofrecerte: ${alternatives}. ¿Cuál te sirve?`
   }
   if (request.requested_time && availability?.requested_slot_available === true) {
     return intent === 'booking_intent'
-      ? `Sí, tengo disponibilidad el ${dateLabel} a las ${request.requested_time}. ¿Querés que sigamos?`
+      ? `Sí, tengo disponibilidad el ${dateLabel} a las ${request.requested_time}. ¿Querés confirmar ese horario?`
       : `Sí, el ${dateLabel} a las ${request.requested_time} está disponible.`
   }
-  const listed = slots.map(formatAvailabilitySlot).filter(Boolean).join(', ')
+  const listed = slots.map(formatAvailabilitySlot).filter(Boolean).slice(0, 3).join(', ')
   const prefix = intent === 'booking_intent' ? `Para el ${dateLabel} tengo estos horarios` : `Para el ${dateLabel} encontré`
   return `${prefix}: ${listed}. ¿Cuál te conviene?`
 }
@@ -326,10 +337,27 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
       : `Hola. Todavía no hay servicios publicados para ${businessName}.`
     toolsConsidered = ['tenant_context_read', 'services_read']
   } else if (intent === 'price_query') {
-    const prices = activeServices.map((service) => `${safeServiceName(service)}: ${formatPrice(service, currency)}`).filter(Boolean)
-    proposedReply = prices.length
-      ? `Estos son nuestros precios: ${prices.join(' · ')}.`
-      : `Todavía no hay precios publicados para ${businessName}.`
+    const resolution = resolveRequestedServices(text, activeServices)
+    if (resolution.status === 'matched') {
+      const service = resolution.matches[0]
+      proposedReply = `El ${safeServiceName(service)} sale ${formatPrice(service, currency)}.`
+    } else if (resolution.status === 'ambiguous') {
+      const options = resolution.matches.map(safeServiceName).filter(Boolean).slice(0, 3)
+      proposedReply = options.length > 1
+        ? `¿De cuál querés saber el precio: ${options.join(' o ')}?`
+        : '¿Qué servicio querés consultar?'
+    } else {
+      const normalized = normalizedSearchText(text)
+      const asksAll = /\b(precios|costos|cuanto cuestan|cuanto salen|todos)\b/.test(normalized)
+      const prices = asksAll
+        ? activeServices.map((service) => `${safeServiceName(service)}: ${formatPrice(service, currency)}`).filter(Boolean)
+        : []
+      proposedReply = prices.length
+        ? `Estos son nuestros precios: ${prices.join(' · ')}.`
+        : asksAll
+          ? `Todavía no hay precios publicados para ${businessName}.`
+          : '¿Qué servicio querés consultar?'
+    }
     toolsConsidered = ['tenant_context_read', 'services_read']
   } else if (intent === 'availability_query' || intent === 'booking_intent') {
     proposedReply = availabilityReply({ intent, businessName, availability })
@@ -338,15 +366,15 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
     if (availability?.rpc_executed) toolsConsidered.push('availability_rpc_read')
     confidence = intent === 'booking_intent' ? 0.93 : 0.9
   } else if (intent === 'booking_change_request') {
-    proposedReply = 'Puedo revisar otra opción de horario. ¿Qué te gustaría cambiar?'
+    proposedReply = 'Claro. Decime qué día u horario preferís y reviso las opciones.'
     requestedAction = 'booking_mutation_proposal_only'
     confidence = 0.93
     toolsConsidered = ['tenant_context_read', 'services_read', 'barbers_read', 'schedules_read', 'blocks_read']
   } else if (intent === 'empty_query') {
-    proposedReply = `Hola. Soy el asistente de ${businessName}. ¿En qué te puedo ayudar?`
+    proposedReply = '¡Hola! ¿En qué te puedo ayudar?'
     confidence = 0.72
   } else {
-    proposedReply = `Hola. Soy el asistente de ${businessName}. Puedo ayudarte con servicios y horarios. ¿Qué necesitás consultar?`
+    proposedReply = '¡Hola! ¿En qué te puedo ayudar?'
   }
 
   const reply = normalizeCustomerReply(proposedReply, '¿En qué te puedo ayudar?')

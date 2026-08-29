@@ -71,6 +71,56 @@ for (const [, text] of messages) {
   cases += 1
 }
 
+const greeting = buildDeterministicShadowProposal({ text: 'Hola', ...tenantA })
+assert.equal(greeting.proposed_reply, '¡Hola! ¿En qué te puedo ayudar?')
+assert.doesNotMatch(greeting.proposed_reply, /soy el asistente/i)
+cases += 1
+
+const specificPrice = buildDeterministicShadowProposal({ text: '¿Cuánto sale un corte?', ...tenantA })
+assert.match(specificPrice.proposed_reply, /Corte clásico sale ARS 30\.000/)
+assert.doesNotMatch(specificPrice.proposed_reply, /Barba/)
+cases += 1
+
+const ambiguousServiceAvailability = buildDeterministicShadowProposal({
+  text: 'Quiero reservar corte',
+  availability: {
+    status: 'service_ambiguous',
+    request: {},
+    service_resolution: { matches: [{ nombre: 'Corte', activo: true }, { nombre: 'Corte y barba', activo: true }] },
+  },
+  ...tenantA,
+})
+assert.match(ambiguousServiceAvailability.proposed_reply, /Corte.*Corte y barba/)
+assert.doesNotMatch(ambiguousServiceAvailability.proposed_reply, /Cuál de esos servicios/i)
+cases += 1
+
+const timeClarification = buildDeterministicShadowProposal({
+  text: '¿Hay lugar tipo 4?',
+  availability: { status: 'ready', request: { time_ambiguous: true, time_candidate: '04:00' }, slots: [], rpc_executed: false },
+  ...tenantA,
+})
+assert.equal(timeClarification.proposed_reply, '¿Te referís a las 4 de la tarde?')
+cases += 1
+
+const daypartSlots = buildDeterministicShadowProposal({
+  text: '¿Hay lugar el lunes a la tarde?',
+  availability: {
+    status: 'ready',
+    request: { date_key: '2026-08-31', requested_daypart: 'afternoon' },
+    slots: [
+      { hora: '15:30:00' },
+      { hora: '16:30:00' },
+      { hora: '17:00:00' },
+      { hora: '17:30:00' },
+    ],
+    rpc_executed: true,
+  },
+  ...tenantA,
+})
+assert.match(daypartSlots.proposed_reply, /15:30.*16:30.*17:00/)
+assert.doesNotMatch(daypartSlots.proposed_reply, /17:30/)
+cases += 1
+
 const compact = [
   ['Corte mañana 16', 1, '16:00'],
   ['Quiero barba el lunes a la tarde', 2, null],
@@ -117,7 +167,7 @@ assertSafeProposal(confirmation); assert.match(confirmation.proposed_reply, /con
 const confirmed = advanceConversationTurn({ state: available.state, scope, eventId: 'evt-q-5', text: 'Sí, confirmo', services: tenantA.services, timezone, now })
 assert.equal(confirmed.state.confirmation_state, 'confirmed'); assert.equal(confirmed.state.mutation_allowed, false); cases += 1
 const confirmedReply = buildConversationProposal({ state: confirmed.state, action: confirmed.action, services: tenantA.services, businessName: tenantA.business.nombre })
-assertSafeProposal(confirmedReply); assert.doesNotMatch(confirmedReply.proposed_reply, /reservad[oa]|cread[oa]/i); cases += 1
+assertSafeProposal(confirmedReply); assert.match(confirmedReply.proposed_reply, /ya tengo todos los datos/); assert.doesNotMatch(confirmedReply.proposed_reply, /reservad[oa]|cread[oa]/i); cases += 1
 const duplicate = advanceConversationTurn({ state: confirmed.state, scope, eventId: 'evt-q-5', text: 'Sí', services: tenantA.services, timezone, now })
 assert.equal(duplicate.duplicate, true); cases += 1
 const expired = advanceConversationTurn({ state: available.state, scope, eventId: 'evt-q-expired', text: 'Sí', services: tenantA.services, timezone, now: new Date(now.getTime() + 31 * 60 * 1000) })
@@ -134,7 +184,21 @@ assertSafeProposal(unavailable); assert.match(unavailable.proposed_reply, /no te
 const noSlots = buildDeterministicShadowProposal({ text: '¿Hay lugar mañana?', availability: { status: 'ready', request: { date_key: '2026-08-25' }, slots: [], rpc_executed: true }, ...tenantA })
 assertSafeProposal(noSlots); assert.match(noSlots.proposed_reply, /No encontré disponibilidad/); cases += 1
 const availableReply = buildDeterministicShadowProposal({ text: 'Quiero un corte mañana a las 16', availability: { status: 'ready', request: { date_key: '2026-08-25', requested_time: '16:00' }, slots: [{ hora: '16:00:00', service_name: 'Corte clásico' }], requested_slot_available: true, rpc_executed: true }, ...tenantA })
-assertSafeProposal(availableReply); assert.match(availableReply.proposed_reply, /disponibilidad/); assert.doesNotMatch(availableReply.proposed_reply, /reservad[oa]/i); cases += 1
+assertSafeProposal(availableReply); assert.match(availableReply.proposed_reply, /confirmar ese horario/); assert.doesNotMatch(availableReply.proposed_reply, /reservad[oa]/i); cases += 1
+
+const changeRequest = buildDeterministicShadowProposal({ text: 'Quiero cambiar mi turno', ...tenantA })
+assert.match(changeRequest.proposed_reply, /Decime qué día u horario preferís y reviso las opciones/)
+cases += 1
+
+const runtimeCheck = buildConversationProposal({
+  state: { requested_date: '2026-08-25', requested_time: '16:00', service_id: 1, daypart: 'afternoon', requested_slot_available: null },
+  action: { action: 'check_availability' },
+  services: tenantA.services,
+  businessName: tenantA.business.nombre,
+})
+assert.match(runtimeCheck.proposed_reply, /Dale, reviso las 16:00 para el 25 de agosto/)
+assert.doesNotMatch(runtimeCheck.proposed_reply, /revisando|consultando|procesando/i)
+cases += 1
 
 const tenantAReply = buildDeterministicShadowProposal({ text: '¿Qué servicios tienen?', ...tenantA })
 const tenantBReply = buildDeterministicShadowProposal({ text: '¿Qué servicios tienen?', ...tenantB })
