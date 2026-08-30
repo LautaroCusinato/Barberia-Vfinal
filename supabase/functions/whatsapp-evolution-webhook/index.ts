@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
 import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate, resolveRequestedServices } from '../_shared/whatsappAgentShadow.mjs'
 import { advanceConversationTurn, buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
 import { nextConversationAction, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
+import { normalizeMessagesUpsertData } from '../_shared/whatsappEvolutionPayload.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -69,13 +70,13 @@ function connectionState(payload: Record<string, unknown>) {
   return null
 }
 
-function messageData(payload: Record<string, unknown>) {
+function messageData(payload: Record<string, unknown>, { allowEnvelopeIdentity = true } = {}) {
   const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : {}
   const key = data.key && typeof data.key === 'object' ? data.key as Record<string, unknown> : {}
   const message = data.message && typeof data.message === 'object' ? data.message as Record<string, unknown> : {}
-  const eventId = safeString(key.id || data.messageId || payload.message_id || payload.event_id || payload.id).slice(0, 200)
-  const remoteJid = safeString(key.remoteJid || key.participant || data.remoteJid || payload.sender)
-  const fromMe = key.fromMe === true || data.fromMe === true || payload.fromMe === true
+  const eventId = safeString(key.id || data.messageId || (allowEnvelopeIdentity ? payload.message_id || payload.event_id || payload.id : '')).slice(0, 200)
+  const remoteJid = safeString(key.remoteJid || key.participant || data.remoteJid || (allowEnvelopeIdentity ? payload.sender : ''))
+  const fromMe = key.fromMe === true || data.fromMe === true || (allowEnvelopeIdentity && payload.fromMe === true)
   const rawMessageType = safeString(data.messageType || payload.messageType || Object.keys(message)[0]).slice(0, 80).toLowerCase()
   const messageType = rawMessageType === 'conversation' || rawMessageType === 'extendedtextmessage' ? 'text' : rawMessageType || null
   const normalizedJid = remoteJid.toLowerCase()
@@ -87,6 +88,10 @@ function messageData(payload: Record<string, unknown>) {
     isGroup: normalizedJid.endsWith('@g.us'),
     isBroadcast: normalizedJid.endsWith('@broadcast'),
     text: extractInboundText(payload),
+    timestamp: data.messageTimestamp || data.timestamp || payload.timestamp || null,
+    message,
+    instance: safeString(payload.instance || payload.instanceName),
+    event: eventName(payload),
   }
 }
 
@@ -230,6 +235,147 @@ async function loadConversationState(admin: ReturnType<typeof adminClient>, conn
   return metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
 }
 
+type InboundProcessingResult = { body: Record<string, unknown>; status: number }
+
+/**
+ * Process one normalized Evolution message. This is intentionally sequential
+ * at the caller so a batch preserves Evolution's ordering for multi-turn
+ * conversations while retaining per-message idempotency.
+ */
+async function processInboundMessage({
+  admin,
+  connection,
+  instance,
+  payload,
+  isBatch,
+}: {
+  admin: ReturnType<typeof adminClient>
+  connection: Record<string, any>
+  instance: string
+  payload: Record<string, unknown>
+  isBatch: boolean
+}): Promise<InboundProcessingResult> {
+  if (connection.state !== 'CONNECTED') return { body: { error: 'connection_not_connected', mutation_blocked: true }, status: 409 }
+  if (!connection.integration_id) return { body: { error: 'integration_not_configured', mutation_blocked: true }, status: 409 }
+  const inbound = messageData(payload, { allowEnvelopeIdentity: !isBatch })
+  if (!inbound.eventId || !inbound.remoteJid) return { body: { error: 'message_identity_required', mutation_blocked: true }, status: 422 }
+  if (inbound.fromMe) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: 'from_me_ignored', mutation_blocked: true }, status: 202 }
+  const { data: existing, error: existingError } = await admin.from('saas_automation_shadow_runs').select('id').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle()
+  if (existingError) return { body: { error: 'shadow_lookup_failed', mutation_blocked: true }, status: 502 }
+  if (existing) return { body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, status: 202 }
+  const context = await loadTenantContext(admin, connection.barberia_id)
+  const senderHashValue = await senderHash(inbound.remoteJid)
+  const previousConversation = await loadConversationState(admin, connection, instance, senderHashValue)
+  const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
+  const conversation = advanceConversationTurn({
+    state: previousConversation,
+    scope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' },
+    eventId: inbound.eventId,
+    text: inbound.text,
+    messageType: inbound.messageType || 'text',
+    fromMe: inbound.fromMe,
+    isGroup: inbound.isGroup,
+    isBroadcast: inbound.isBroadcast,
+    services: context.services,
+    timezone,
+  })
+  if (!conversation.accepted) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: conversation.reason, duplicate: conversation.duplicate === true, mutation_blocked: true, outbound_send: false }, status: conversation.duplicate ? 202 : 422 }
+
+  const bookingFlow = conversation.intent === 'booking_intent' || conversation.state?.pending_intent === 'booking_intent'
+  let availability = null
+  let conversationState = conversation.state
+  if (bookingFlow && conversation.action?.action === 'check_availability') {
+    try {
+      availability = await loadConversationAvailability(admin, context, conversationState)
+      if (availability.rpc_executed === true) {
+        const availabilityResult = recordAvailabilityResult({
+          state: conversationState,
+          expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' },
+          source: 'authoritative_rpc',
+          available: availability.requested_slot_available === true,
+          snapshotId: `rpc:${inbound.eventId}`,
+          proposalId: `proposal:${conversationState.conversation_id}:${conversationState.version}`,
+        })
+        if (availabilityResult.accepted) conversationState = availabilityResult.state
+      }
+    } catch {
+      availability = { status: 'error', request: { requested_date: conversationState.requested_date, requested_time: conversationState.requested_time, requested_daypart: conversationState.daypart, timezone }, slots: [], rpc_executed: false }
+    }
+  }
+  const proposal = bookingFlow
+    ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, services: context.services, businessName: context.business.nombre })
+    : await (async () => {
+        let standaloneAvailability = null
+        const initialIntent = classifyShadowIntent(inbound.text)
+        if (initialIntent === 'availability_query') {
+          try { standaloneAvailability = await loadAvailability(admin, context, inbound.text, initialIntent) } catch { standaloneAvailability = { status: 'error', request: interpretRequestedDate(inbound.text, timezone), slots: [], rpc_executed: false } }
+        }
+        return generateShadowProposal({
+          text: inbound.text,
+          context: { ...context, availability: standaloneAvailability },
+          apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
+          model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
+        })
+      })()
+  const { data: recorded, error: recordError } = await admin.rpc('record_whatsapp_shadow_run', {
+    p_integration_id: connection.integration_id,
+    p_event_id: inbound.eventId,
+    p_intent: proposal.intent,
+    p_proposed_result: 'agent_proposal_shadow',
+    p_proposed_response_length: proposal.proposed_reply.length,
+    p_proposed_latency_ms: null,
+    p_proposed_tokens_input: null,
+    p_proposed_tokens_output: null,
+    p_metadata: {
+      source: 'evolution',
+      event: INBOUND_EVENT,
+      environment: 'qa',
+      message_type: inbound.messageType,
+      message_timestamp: inbound.timestamp,
+      sender_hash: senderHashValue,
+      instance,
+      from_me: false,
+      agent: {
+        provider: proposal.provider,
+        model: proposal.model,
+        prompt_version: proposal.agent_prompt_version || 'natural-v2',
+        confidence: proposal.confidence,
+        requested_action: proposal.requested_action,
+        tools_considered: proposal.tools_considered,
+        context_counts: {
+          ...proposal.context_counts,
+          availability_request: availability?.request || null,
+          availability_status: availability?.status || null,
+          requested_slot_available: availability?.requested_slot_available ?? null,
+          service_resolution: availability?.service_resolution
+            ? {
+                status: availability.service_resolution.status,
+                match_type: availability.service_resolution.match_type,
+                resolved_service_ids: availability.service_resolution.matches.map((service: Record<string, unknown>) => service.id),
+                resolved_service_names: availability.service_resolution.matches.map((service: Record<string, unknown>) => safeString(service.nombre).slice(0, 120)),
+              }
+            : null,
+        },
+      },
+      proposed_reply: proposal.proposed_reply,
+      conversation_state: bookingFlow ? conversationState : null,
+      conversation_action: bookingFlow ? (proposal.requested_action || conversation.action?.action || null) : null,
+      conversation_scope: bookingFlow ? { tenant_id: connection.barberia_id, integration_id: connection.integration_id, instance, sender_hash: senderHashValue, environment: 'qa' } : null,
+      mutation_blocked: true,
+      outbound_send: false,
+      mutation_allowed: false,
+      outbound_allowed: false,
+      observed_at: new Date().toISOString(),
+    },
+  })
+  if (recordError) return { body: { error: 'shadow_record_failed', mutation_blocked: true }, status: 502 }
+  const shadowRun = Array.isArray(recorded) ? recorded[0] : recorded
+  return {
+    body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, shadow_run_id: shadowRun?.shadow_run_id || null, duplicate: false, intent: proposal.intent, proposed_reply: proposal.proposed_reply, provider: proposal.provider, mutation_blocked: true, outbound_send: false, conversation_state: bookingFlow ? conversationState.confirmation_state : null, ready_for_booking_mutation: bookingFlow ? conversationState.ready_for_booking_mutation === true : false },
+    status: 200,
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
   try {
@@ -248,121 +394,38 @@ Deno.serve(async (request) => {
     if (lookupError) return json({ error: 'connection_lookup_failed' }, 502)
     if (!connection) return json({ error: 'qa_connection_not_found' }, 404)
     if (event === INBOUND_EVENT) {
-      if (connection.state !== 'CONNECTED') return json({ error: 'connection_not_connected', mutation_blocked: true }, 409)
-      if (!connection.integration_id) return json({ error: 'integration_not_configured', mutation_blocked: true }, 409)
-      const inbound = messageData(payload as Record<string, unknown>)
-      if (!inbound.eventId || !inbound.remoteJid) return json({ error: 'message_identity_required', mutation_blocked: true }, 422)
-      if (inbound.fromMe) return json({ received: true, accepted: false, event, reason: 'from_me_ignored', mutation_blocked: true }, 202)
-      const { data: existing, error: existingError } = await admin.from('saas_automation_shadow_runs').select('id').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle()
-      if (existingError) return json({ error: 'shadow_lookup_failed', mutation_blocked: true }, 502)
-      if (existing) return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, 202)
-      const context = await loadTenantContext(admin, connection.barberia_id)
-      const senderHashValue = await senderHash(inbound.remoteJid)
-      const previousConversation = await loadConversationState(admin, connection, instance, senderHashValue)
-      const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
-      const conversation = advanceConversationTurn({
-        state: previousConversation,
-        scope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' },
-        eventId: inbound.eventId,
-        text: inbound.text,
-        messageType: inbound.messageType || 'text',
-        fromMe: inbound.fromMe,
-        isGroup: inbound.isGroup,
-        isBroadcast: inbound.isBroadcast,
-        services: context.services,
-        timezone,
-      })
-      if (!conversation.accepted) return json({ received: true, accepted: false, event, reason: conversation.reason, duplicate: conversation.duplicate === true, mutation_blocked: true, outbound_send: false }, conversation.duplicate ? 202 : 422)
-
-      const bookingFlow = conversation.intent === 'booking_intent' || conversation.state?.pending_intent === 'booking_intent'
-      let availability = null
-      let conversationState = conversation.state
-      if (bookingFlow && conversation.action?.action === 'check_availability') {
+      const rawData = (payload as Record<string, unknown>).data
+      const messages = normalizeMessagesUpsertData(rawData)
+      if (!messages.length) return json({ error: 'message_identity_required', mutation_blocked: true }, 422)
+      const isBatch = Array.isArray(rawData)
+      const results: InboundProcessingResult[] = []
+      for (const message of messages) {
+        const itemPayload = { ...(payload as Record<string, unknown>), data: message }
         try {
-          availability = await loadConversationAvailability(admin, context, conversationState)
-          if (availability.rpc_executed === true) {
-            const availabilityResult = recordAvailabilityResult({
-              state: conversationState,
-              expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' },
-              source: 'authoritative_rpc',
-              available: availability.requested_slot_available === true,
-              snapshotId: `rpc:${inbound.eventId}`,
-              proposalId: `proposal:${conversationState.conversation_id}:${conversationState.version}`,
-            })
-            if (availabilityResult.accepted) conversationState = availabilityResult.state
-          }
+          results.push(await processInboundMessage({ admin, connection, instance, payload: itemPayload, isBatch }))
         } catch {
-          availability = { status: 'error', request: { requested_date: conversationState.requested_date, requested_time: conversationState.requested_time, requested_daypart: conversationState.daypart, timezone }, slots: [], rpc_executed: false }
+          // Keep processing sibling messages while failing this item closed.
+          results.push({ body: { error: 'message_processing_failed', mutation_blocked: true, outbound_send: false }, status: 503 })
         }
       }
-      const proposal = bookingFlow
-        ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, services: context.services, businessName: context.business.nombre })
-        : await (async () => {
-            let standaloneAvailability = null
-            const initialIntent = classifyShadowIntent(inbound.text)
-            if (initialIntent === 'availability_query') {
-              try { standaloneAvailability = await loadAvailability(admin, context, inbound.text, initialIntent) } catch { standaloneAvailability = { status: 'error', request: interpretRequestedDate(inbound.text, timezone), slots: [], rpc_executed: false } }
-            }
-            return generateShadowProposal({
-              text: inbound.text,
-              context: { ...context, availability: standaloneAvailability },
-              apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
-              model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
-            })
-          })()
-      const { data: recorded, error: recordError } = await admin.rpc('record_whatsapp_shadow_run', {
-        p_integration_id: connection.integration_id,
-        p_event_id: inbound.eventId,
-        p_intent: proposal.intent,
-        p_proposed_result: 'agent_proposal_shadow',
-        p_proposed_response_length: proposal.proposed_reply.length,
-        p_proposed_latency_ms: null,
-        p_proposed_tokens_input: null,
-        p_proposed_tokens_output: null,
-        p_metadata: {
-          source: 'evolution',
-          event: INBOUND_EVENT,
-          environment: 'qa',
-          message_type: inbound.messageType,
-          sender_hash: senderHashValue,
-          instance,
-          from_me: false,
-          agent: {
-            provider: proposal.provider,
-            model: proposal.model,
-            prompt_version: proposal.agent_prompt_version || 'natural-v2',
-            confidence: proposal.confidence,
-            requested_action: proposal.requested_action,
-            tools_considered: proposal.tools_considered,
-            context_counts: {
-              ...proposal.context_counts,
-              availability_request: availability?.request || null,
-              availability_status: availability?.status || null,
-              requested_slot_available: availability?.requested_slot_available ?? null,
-              service_resolution: availability?.service_resolution
-                ? {
-                    status: availability.service_resolution.status,
-                    match_type: availability.service_resolution.match_type,
-                    resolved_service_ids: availability.service_resolution.matches.map((service: Record<string, unknown>) => service.id),
-                    resolved_service_names: availability.service_resolution.matches.map((service: Record<string, unknown>) => safeString(service.nombre).slice(0, 120)),
-                  }
-                : null,
-            },
-          },
-          proposed_reply: proposal.proposed_reply,
-          conversation_state: bookingFlow ? conversationState : null,
-          conversation_action: bookingFlow ? (proposal.requested_action || conversation.action?.action || null) : null,
-          conversation_scope: bookingFlow ? { tenant_id: connection.barberia_id, integration_id: connection.integration_id, instance, sender_hash: senderHashValue, environment: 'qa' } : null,
-          mutation_blocked: true,
-          outbound_send: false,
-          mutation_allowed: false,
-          outbound_allowed: false,
-          observed_at: new Date().toISOString(),
-        },
-      })
-      if (recordError) return json({ error: 'shadow_record_failed', mutation_blocked: true }, 502)
-      const shadowRun = Array.isArray(recorded) ? recorded[0] : recorded
-      return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, shadow_run_id: shadowRun?.shadow_run_id || null, duplicate: false, intent: proposal.intent, proposed_reply: proposal.proposed_reply, provider: proposal.provider, mutation_blocked: true, outbound_send: false, conversation_state: bookingFlow ? conversationState.confirmation_state : null, ready_for_booking_mutation: bookingFlow ? conversationState.ready_for_booking_mutation === true : false })
+      if (!isBatch) {
+        const result = results[0]
+        return json(result.body, result.status)
+      }
+      const processed = results.some(({ body }) => body.accepted === true || body.duplicate === true)
+      const allInvalid = results.every(({ status }) => status === 422)
+      const allIgnored = results.every(({ status }) => status === 202)
+      const hasServerError = results.some(({ status }) => status >= 500)
+      const status = processed ? 200 : hasServerError ? 503 : allInvalid ? 422 : allIgnored ? 202 : 200
+      return json({
+        received: true,
+        accepted: processed,
+        event,
+        batch: true,
+        messages: results.map(({ body }, index) => ({ index, ...body })),
+        mutation_blocked: true,
+        outbound_send: false,
+      }, status)
     }
     const state = event === 'QRCODE_UPDATED' ? 'QR_READY' : connectionState(payload as Record<string, unknown>)
     if (state) {
