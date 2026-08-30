@@ -19,6 +19,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, Check, CalendarX, LayoutGrid, L
 import { slotsOcupados, parseHorarioBarbero } from '../lib/text'
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
+import { EmptyState } from './ui'
 
 const DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -611,10 +612,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
           )}
 
           {turnosDelDia.length === 0 ? (
-            <div className="empty-state day-empty-state">
-              <CalendarX size={26} style={{ color: 'var(--border-strong)' }} />
-              <p>No hay turnos para este dia</p>
-            </div>
+            <EmptyState className="day-empty-state" icon={<CalendarX size={26} style={{ color: 'var(--border-strong)' }} />} description="No hay turnos para este dia" />
           ) : (
             <div className="day-side-list">
               {turnosDelDia.map((t) => (

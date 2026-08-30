@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Clock3, MessageSquareText, RefreshCw, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
+import { EmptyState } from './ui'
 
 const OUTREACH_TYPES = [
   ['initial_contact', 'Contacto inicial'],
@@ -66,7 +67,7 @@ export default function CRMOutreachQueue({ role = 'owner' }) {
       <button className="btn" type="button" onClick={load} disabled={loading}><RefreshCw size={14} /> Actualizar</button>
       <span className="platform-inline-note"><ShieldCheck size={14} /> La cola no envía mensajes.</span>
     </div>
-    {loading ? <div className="empty-state">Cargando leads listos para revisar…</div> : items.length === 0 ? <div className="empty-state"><MessageSquareText size={22} /><strong>No hay leads listos para contactar</strong><span>Un lead entra cuando está calificado, verificado y tiene un mensaje preparado.</span></div> : <div className="crm-outreach-grid">{items.map((item) => <article className="crm-outreach-card" key={item.lead_id}>
+    {loading ? <div role="status" aria-live="polite"><EmptyState description="Cargando leads listos para revisar…" /></div> : items.length === 0 ? <EmptyState icon={<MessageSquareText size={22} />} title="No hay leads listos para contactar" description="Un lead entra cuando está calificado, verificado y tiene un mensaje preparado." /> : <div className="crm-outreach-grid">{items.map((item) => <article className="crm-outreach-card" key={item.lead_id}>
       <div className="crm-outreach-card__header"><div><strong>{item.negocio}</strong><small>{item.ciudad || 'Ciudad pendiente'}{item.pais ? ` · ${item.pais}` : ''}</small></div><span className="score-badge score-high">{item.score || 0} · score</span></div>
       <div className="crm-outreach-card__meta"><span><MessageSquareText size={13} /> {item.canal || 'Manual'}</span><span><Clock3 size={13} /> {item.verified_at ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(item.verified_at)) : 'Sin verificación'}</span></div>
       <p>{item.message_prepared}</p>

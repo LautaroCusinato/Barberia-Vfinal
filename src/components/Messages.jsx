@@ -4,6 +4,7 @@ import { initials, colorFor } from '../lib/avatar'
 import { isNearBottom, shouldFollowNewMessages } from '../lib/chatScroll'
 import { normalizar } from '../lib/text'
 import SafeMarkdown, { stripMarkdown } from './SafeMarkdown'
+import { EmptyState } from './ui'
 
 export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage }) {
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false)
@@ -167,10 +168,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     // Modo compacto (resumen)
     if (conversaciones.length === 0) {
       return (
-        <div className="empty-state">
-          <MessageCircleOff size={26} style={{ color: 'var(--border-strong)' }} />
-          <p>Sin conversaciones recientes</p>
-        </div>
+        <EmptyState icon={<MessageCircleOff size={26} style={{ color: 'var(--border-strong)' }} />} description="Sin conversaciones recientes" />
       )
     }
     return (
@@ -204,9 +202,8 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   // Vista completa
   if (conversaciones.length === 0) {
     return (
-      <div className="empty-state" style={{ marginTop: 60 }}>
-        <MessageCircleOff size={32} style={{ color: 'var(--border-strong)' }} />
-        <p>No hay conversaciones registradas</p>
+      <div style={{ marginTop: 60 }}>
+        <EmptyState icon={<MessageCircleOff size={32} style={{ color: 'var(--border-strong)' }} />} description="No hay conversaciones registradas" />
       </div>
     )
   }
@@ -231,10 +228,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
         </div>
 
         {filtered.length === 0 ? (
-          <div className="empty-state">
-            <Search size={22} style={{ color: 'var(--border-strong)' }} />
-            <p>Sin resultados</p>
-          </div>
+          <EmptyState icon={<Search size={22} style={{ color: 'var(--border-strong)' }} />} description="Sin resultados" />
         ) : (
           <div className="conv-list-scroll">
             {filtered.map((c) => (
@@ -284,9 +278,8 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
 
           <div className="thread" ref={threadRef}>
             {selected.mensajes.length === 0 ? (
-              <div className="empty-state" style={{ padding: '1rem' }}>
-                <MessageCircleOff size={22} style={{ color: 'var(--border-strong)' }} />
-                <p>Sin mensajes en esta conversación</p>
+              <div style={{ padding: '1rem' }}>
+                <EmptyState icon={<MessageCircleOff size={22} style={{ color: 'var(--border-strong)' }} />} description="Sin mensajes en esta conversación" />
               </div>
             ) : (
               selected.mensajes.map((m, i) => (
