@@ -1,6 +1,6 @@
 export const QA_AGENT_OUTBOUND_TENANT_ID = 1
 export const QA_AGENT_OUTBOUND_INSTANCE = 'austral-qa-tenant-1'
-export const QA_AGENT_OUTBOUND_ALLOWED_INTENTS = Object.freeze(['services_query', 'availability_query', 'general_query', 'booking_intent'])
+export const QA_AGENT_OUTBOUND_ALLOWED_INTENTS = Object.freeze(['services_query', 'price_query', 'availability_query', 'general_query', 'booking_intent'])
 export const PROTECTED_WHATSAPP_INSTANCE = 'miwsp'
 
 const textFrom = (value) => String(value ?? '').trim()
@@ -20,6 +20,16 @@ export function isQaAgentOutboundRuntime({ projectRef, provisioningEnv, whatsapp
 
 export function isAllowedAgentIntent(intent) {
   return allowedIntents.has(textFrom(intent))
+}
+
+export function hasAuthoritativePriceSource(metadata = {}) {
+  const agent = metadata && typeof metadata.agent === 'object' ? metadata.agent : {}
+  const tools = Array.isArray(agent.tools_considered) ? agent.tools_considered : []
+  const counts = agent.context_counts && typeof agent.context_counts === 'object' ? agent.context_counts : {}
+  return agent.provider === 'qa_deterministic_shadow'
+    && tools.includes('services_read')
+    && Number.isFinite(Number(counts.services))
+    && Number(counts.services) >= 0
 }
 
 export function isRealPersistedSourceMetadata(metadata = {}) {
@@ -100,6 +110,7 @@ export function agentOutboundGuard({
   if (!isRealPersistedSourceMetadata(sourceMetadata)) return { allowed: false, reason: 'real_persisted_source_required' }
   if (sourceFromMe === true) return { allowed: false, reason: 'from_me_ignored' }
   if (senderHashMatches !== true) return { allowed: false, reason: 'sender_not_allowlisted' }
+  if (intent === 'price_query' && !hasAuthoritativePriceSource(sourceMetadata)) return { allowed: false, reason: 'price_source_required' }
   if (!isSafePersistedReply({ intent, reply: proposedReply, metadata: sourceMetadata })) return { allowed: false, reason: 'unsafe_or_missing_proposed_reply' }
   if (operationAcquired !== true) return { allowed: false, reason: 'operation_already_claimed' }
   return { allowed: true, reason: null }
