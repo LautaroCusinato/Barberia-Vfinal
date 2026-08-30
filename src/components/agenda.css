@@ -557,7 +557,13 @@
   }
 
   .agenda-calendar-shell .day-panel-team-chip {
-    min-width: 118px;
+    flex: 1 1 112px;
+    min-width: 0;
+  }
+
+  .agenda-calendar-shell .day-panel-team-list {
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 
   .agenda-item--enhanced {

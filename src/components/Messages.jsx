@@ -216,6 +216,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
           <Search size={16} style={{ color: 'var(--ink-faint)' }} />
           <input
             className="search-input"
+            aria-label="Buscar conversaciones"
             placeholder="Buscar cliente o mensaje..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -317,6 +318,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
             <div className="thread-composer">
               <textarea
                 className="note-input"
+                aria-label={`Mensaje para ${selected.paciente}`}
                 style={{ marginBottom: 0, minHeight: 40, maxHeight: 90 }}
                 placeholder={`Escribir a ${selected.paciente}...`}
                 value={draft}

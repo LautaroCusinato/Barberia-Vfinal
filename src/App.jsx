@@ -1307,13 +1307,13 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                 <StatsCards turnos={turnosHoy} conversaciones={conversaciones} todayKey={todayKey} />
                 <div className="two-col">
                   <div className="panel resumen-agenda-panel">
-                    <p className="panel-title">
+                    <h2 className="panel-title">
                       <span className="panel-title-icon"><CalendarCheck size={16} style={{ color: 'var(--accent)' }} />Agenda de hoy</span>
                       <button className="link-btn" onClick={openNewTurno}>
                         <Plus size={13} strokeWidth={2.5} />
                         Nuevo
                       </button>
-                    </p>
+                    </h2>
                     <div className="resumen-agenda-scroll">
                       <Agenda
                         turnos={turnosHoy}

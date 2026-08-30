@@ -112,6 +112,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
             en vez de tener que escribir el nombre a mano. */}
         <select
           className="text-input"
+          aria-label="Cliente de la nota"
           value={pacienteSel}
           onChange={(e) => setPacienteSel(e.target.value)}
           style={{ marginBottom: 8 }}
@@ -126,6 +127,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
         {pacienteSel === OTRO_PACIENTE && (
           <input
             className="text-input"
+            aria-label="Nombre del cliente"
             placeholder="Nombre del cliente"
             value={pacienteLibre}
             onChange={(e) => setPacienteLibre(e.target.value)}
@@ -135,6 +137,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
 
         <textarea
           className="note-input"
+          aria-label="Contenido de la nota"
           placeholder="Escribi una preferencia del cliente o recordatorio..."
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
@@ -151,6 +154,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
         <Search size={16} style={{ color: 'var(--ink-faint)' }} />
         <input
           className="search-input"
+          aria-label="Filtrar notas por cliente"
           placeholder="Filtrar notas por cliente..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
