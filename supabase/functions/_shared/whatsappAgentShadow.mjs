@@ -118,7 +118,12 @@ export function resolveRequestedServices(text, services = []) {
     const tokenSets = [service.nombre, ...serviceAliases(service)]
       .map(meaningfulServiceTokens)
       .filter((tokens) => tokens.length)
-    return tokenSets.some((tokens) => tokens.every((token) => containsServicePhrase(normalizedMessage, token)))
+    if (!tokenSets.length) return false
+    // A customer often uses a short, natural alias instead of the full
+    // catalog name ("corte" for "Corte clásico"). Match an authoritative
+    // service when at least one meaningful catalog token is present; the
+    // existing ambiguity handling still rejects overlapping services.
+    return tokenSets.some((tokens) => tokens.some((token) => containsServicePhrase(normalizedMessage, token)))
   })
   if (tokenMatches.length > 1) return { status: 'ambiguous', matches: tokenMatches, match_type: 'tokens' }
   if (tokenMatches.length === 1) return { status: 'matched', matches: tokenMatches, match_type: 'tokens' }

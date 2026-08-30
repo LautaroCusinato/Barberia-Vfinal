@@ -81,6 +81,43 @@ assert.match(specificPrice.proposed_reply, /Corte clásico sale ARS 30\.000/)
 assert.doesNotMatch(specificPrice.proposed_reply, /Barba/)
 cases += 1
 
+const priceCatalog = {
+  business: { nombre: 'Barbería Austral', moneda: 'ARS' },
+  services: [
+    { id: 11, nombre: 'Corte clásico', precio: 30000, activo: true },
+    { id: 12, nombre: 'Barba', precio: 22000, activo: true },
+  ],
+}
+for (const text of ['¿Cuánto sale el corte?', 'precio del corte', 'precio corte']) {
+  const proposal = buildDeterministicShadowProposal({ text, ...priceCatalog })
+  assert.equal(proposal.proposed_reply, 'El Corte clásico sale ARS 30.000.')
+  cases += 1
+}
+const barbaPrice = buildDeterministicShadowProposal({ text: 'cuánto cuesta barba', ...priceCatalog })
+assert.equal(barbaPrice.proposed_reply, 'El Barba sale ARS 22.000.')
+cases += 1
+
+const ambiguousPriceCatalog = {
+  ...priceCatalog,
+  services: [
+    ...priceCatalog.services,
+    { id: 13, nombre: 'Corte y barba', precio: 45000, activo: true },
+  ],
+}
+const ambiguousPrice = buildDeterministicShadowProposal({ text: 'precio del corte', ...ambiguousPriceCatalog })
+assert.match(ambiguousPrice.proposed_reply, /Corte clásico.*Corte y barba/)
+assert.doesNotMatch(ambiguousPrice.proposed_reply, /ARS/)
+cases += 1
+
+const missingPrice = buildDeterministicShadowProposal({
+  text: '¿Cuánto sale el degradé?',
+  business: priceCatalog.business,
+  services: [{ id: 14, nombre: 'Corte clásico', activo: true }],
+})
+assert.equal(missingPrice.proposed_reply, '¿Qué servicio querés consultar?')
+assert.doesNotMatch(missingPrice.proposed_reply, /ARS\s+\d/)
+cases += 1
+
 let priceModelCalls = 0
 const authoritativePrice = await generateShadowProposal({
   text: '¿Cuánto sale un corte?',
