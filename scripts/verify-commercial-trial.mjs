@@ -16,13 +16,19 @@ import { trialHasExpired, trialRemainingDays } from '../src/lib/trial.js'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
 const migration = read('supabase/migrations/20260831090000_commercial_trial_15_days.sql').replace(/\r\n/g, '\n')
+const platformMigration = read('supabase/migrations/20260831091000_platform_manual_activation_support.sql').replace(/\r\n/g, '\n')
 const billing = read('src/pages/Billing.jsx')
 const platformCrm = read('src/pages/PlatformCRM.jsx')
 const api = read('supabase/functions/billing-api/index.ts')
 const invitations = read('src/components/TenantSettings.jsx')
+const app = read('src/App.jsx')
+const settingsMigration = read('supabase/migrations/20260807040000_commercial_operations_foundation.sql')
+const qaSchema = read('supabase/migrations/20260810171324_qa_base_schema.sql')
+const onboardingLegacy = read('supabase/migrations/20260807000000_self_service_onboarding.sql')
 const demo = read('e2e/demo.spec.mjs')
 const bookingAccess = read('supabase/migrations/20260806120000_enforce_booking_access.sql')
 const whatsappMutations = read('supabase/migrations/20260806161000_whatsapp_booking_mutations.sql')
+const qaRunbook = read('docs/COMMERCIAL-TRIAL-QA-ROLLBACK.md')
 const coverageCases = [
   '15-day trial catalog', 'server-side trial dates', 'existing trial end preserved', 'existing trial start preserved',
   'legacy null date not reset', 'stale trial access blocked', 'cron expires trial', 'no automatic grace',
@@ -30,8 +36,11 @@ const coverageCases = [
   'active trial CTA absent', 'expired trial CTA exact', 'missing billing mode manual', 'empty billing mode manual',
   'invalid billing mode manual', 'tenant owner cannot self-activate', 'readonly/sales/support cannot activate',
   'platform owner/admin activation RPC', 'versioned audit and tenant isolation',
+  'idempotent plan update', 'owner entitlement write denied', 'normal settings RPC allow-list',
+  'operational helper membership scope', 'cross-tenant write isolation', 'migration A/B separation',
+  'rollback documented', 'QA backup checklist',
 ]
-assert.equal(coverageCases.length, 21)
+assert.equal(coverageCases.length, 29)
 
 assert.equal(COMMERCIAL_TRIAL_DAYS, 15)
 assert.equal(COMMERCIAL_BILLING_MODE, 'manual')
@@ -42,6 +51,11 @@ assert.equal(normalizeCommercialBillingMode(' automatic '), 'automatic')
 assert.ok(COMMERCIAL_CATALOG.every((plan) => plan.trial_dias === 15), 'todos los planes comerciales deben anunciar 15 días')
 assert.match(migration, /alter column trial_dias set default 15/)
 assert.match(migration, /set trial_dias = 15/)
+const trialPlanUpdateStart = migration.indexOf('update public.saas_planes')
+const trialPlanUpdateEnd = migration.indexOf('create or replace function public.bootstrap_barberia_saas')
+const trialPlanUpdate = migration.slice(trialPlanUpdateStart, trialPlanUpdateEnd)
+assert.match(trialPlanUpdate, /where activo = true\s+and trial_dias is distinct from 15;/, 'la actualización del catálogo debe ser idempotente')
+assert.doesNotMatch(trialPlanUpdate, /where activo = true;\s*$/)
 assert.match(migration, /create or replace function public\.bootstrap_barberia_saas/)
 assert.match(migration, /create or replace function public\.complete_self_service_onboarding/)
 assert.match(migration, /coalesce\(trial_dias, 15\)/)
@@ -55,6 +69,13 @@ assert.match(migration, /trial_ends_at = case when v_existing\.id is null then c
 assert.match(migration, /estado_cuenta = case when v_existing\.id is null then coalesce\(estado_cuenta, 'trial'\) else estado_cuenta end/, 'el onboarding no debe reabrir ni resetear el estado de un tenant existente')
 assert.match(migration, /on conflict \(barberia_id\) do update set\s+-- Existing subscription dates are immutable here as well\.[\s\S]*?trial_ends_at = case when v_existing\.id is null\s+then coalesce\(public\.saas_suscripciones\.trial_ends_at, excluded\.trial_ends_at\)\s+else public\.saas_suscripciones\.trial_ends_at end/s)
 assert.doesNotMatch(migration, /trial_ends_at\s*=\s*excluded\.trial_ends_at(?!,)/)
+const onboardingLegacyStart = onboardingLegacy.indexOf('create or replace function public.complete_self_service_onboarding')
+const onboardingLegacyEnd = onboardingLegacy.indexOf('\n$$;', onboardingLegacyStart)
+const onboardingLegacyBlock = onboardingLegacy.slice(onboardingLegacyStart, onboardingLegacyEnd)
+assert.ok(onboardingLegacyStart >= 0 && onboardingLegacyEnd > onboardingLegacyStart)
+assert.match(onboardingLegacyBlock, /v_trial_days integer := 14/, 'la referencia histórica debe conservar el contrato anterior de 14 días')
+assert.match(migration, /v_trial_days integer := 15/, 'la nueva migración debe cambiar únicamente el fallback comercial a 15 días')
+assert.match(migration, /estado_cuenta = case when v_existing\.id is null[\s\S]*?else estado_cuenta end/, 'onboarding no debe reabrir tenants suspendidos/cancelados')
 
 const exact15 = new Date('2030-01-01T00:00:00.000Z')
 const plus15 = new Date(exact15.getTime() + 15 * 24 * 60 * 60 * 1000)
@@ -67,6 +88,22 @@ assert.equal(trialHasExpired(plus15, plus15.getTime() - 1), false)
 assert.match(migration, /s\.estado = 'trialing' and s\.trial_ends_at is not null and s\.trial_ends_at <= now\(\) then 'expired'/, 'el acceso debe bloquear trials vencidos aunque el cron esté atrasado')
 assert.match(migration, /create or replace function public\.barberia_operational_access/)
 assert.match(migration, /barberia_access_state\(p_barberia_id\) in \('active', 'trialing', 'past_due'\)/)
+assert.match(migration, /current_setting\('request\.jwt\.claim\.role', true\) = 'service_role'/, 'service_role debe conservar el camino interno')
+assert.match(migration, /exists\s*\(\s*select 1\s+from public\.barberia_members m[\s\S]*?m\.barberia_id = p_barberia_id[\s\S]*?m\.user_id = auth\.uid\(\)/, 'el helper debe acotar el tenant al membership autenticado')
+assert.match(migration, /revoke update on table public\.barberias from public, anon, authenticated;/, 'el owner no debe actualizar la tabla de tenant directamente')
+assert.match(migration, /grant update on table public\.barberias to service_role;/, 'service_role debe conservar la administración de tenant')
+assert.match(invitations, /update_tenant_settings/, 'los cambios normales deben seguir el RPC allow-list')
+assert.match(qaSchema, /create policy "barberias_update_owner"[\s\S]*is_barberia_role\(id, array\['owner'\]\)/, 'la política de owner debe seguir acotada al owner del tenant')
+const settingsUpdateStart = settingsMigration.indexOf('update public.barberias set')
+const settingsUpdateEnd = settingsMigration.indexOf('create or replace function public.create_barberia_invitation', settingsUpdateStart)
+const settingsUpdate = settingsMigration.slice(settingsUpdateStart, settingsUpdateEnd)
+assert.ok(settingsUpdateStart >= 0 && settingsUpdateEnd > settingsUpdateStart)
+for (const entitlementField of ['estado_cuenta', 'plan_codigo', 'trial_started_at', 'trial_ends_at', 'suscripcion', 'subscription']) {
+  assert.doesNotMatch(settingsUpdate, new RegExp(`\\b${entitlementField}\\b`, 'i'), `el RPC de settings no debe aceptar ${entitlementField}`)
+}
+assert.match(settingsUpdate, /nombre\s*=\s*btrim\(p_nombre\)/)
+assert.match(settingsUpdate, /intervalo_reserva_min\s*=\s*p_intervalo_reserva_min/)
+assert.doesNotMatch(app, /\.from\(['"]barberias['"]\)\s*\.update/, 'la UI no debe escribir barberias directamente')
 assert.match(migration, /turnos_write_staff[\s\S]*barberia_operational_access\(barberia_id\)/, 'las escrituras de agenda deben respetar el acceso operativo')
 assert.match(migration, /s\.estado = 'past_due' and s\.status_reason = 'trial_expired' then 'expired'/, 'legacy past_due de trial debe seguir bloqueado sin afectar pagos reales')
 assert.match(migration, /when s\.estado = 'past_due' then 'past_due'/, 'past_due legítimo de una suscripción paga debe conservar su semántica')
@@ -113,10 +150,24 @@ assert.match(platformCrm, /billingTenantById/, 'la acción de activación debe d
 assert.match(migration, /billing_can_manage\(v_sub\.barberia_id\)/, 'la autorización de activación debe ser server-side')
 assert.match(migration, /saas_billing_state_history/, 'la activación debe conservar auditoría de estados')
 assert.match(migration, /subscription\.state_changed/, 'la activación debe emitir evento histórico')
-assert.match(migration, /'subscription_id', s\.id/)
-assert.match(migration, /'state_version', s\.state_version/)
+assert.doesNotMatch(migration, /get_platform_billing_overview/, 'la proyección de PlatformCRM debe vivir en la migración B')
+assert.match(platformMigration, /create or replace function public\.get_platform_billing_overview/)
+assert.equal((platformMigration.match(/create or replace function public\.get_platform_billing_overview/g) || []).length, 1)
+assert.match(platformMigration, /billing_can_manage\(\)/, 'la vista global debe conservar su guard server-side')
+assert.match(platformMigration, /'subscription_id', s\.id/)
+assert.match(platformMigration, /'state_version', s\.state_version/)
+assert.match(platformMigration, /revoke all on function public\.get_platform_billing_overview\(\) from public, anon;/)
+assert.match(platformMigration, /grant execute on function public\.get_platform_billing_overview\(\) to authenticated, service_role;/)
 assert.match(migration, /when v_to = 'active' then 'active'/, 'la activación debe restaurar el estado operativo del tenant')
 assert.doesNotMatch(migration, /mercadopago|paypal/i, 'la migración comercial no debe tocar proveedores ni producción')
+assert.doesNotMatch(platformMigration, /mercadopago|paypal/i, 'la migración B no debe tocar proveedores ni producción')
+assert.equal((migration.match(/drop policy if exists/g) || []).length, 12, 'Migration A debe reemplazar exactamente las doce políticas operativas')
+assert.match(qaRunbook, /Exact QA backup checklist/)
+assert.match(qaRunbook, /trial_dias.*snapshot|snapshot.*trial_dias/s)
+assert.match(qaRunbook, /Historical state is append-only evidence|state history/s)
+assert.match(qaRunbook, /set_updated_at.*now\(\)/s)
+assert.match(qaRunbook, /transition_saas_subscription.*barberias\.estado_cuenta/s)
+assert.match(platformMigration, /PlatformCRM projection/)
 const criticalChecks = {
   expired_to_active_platform_admin: true,
   activation_preserves_trial_dates: true,
@@ -135,6 +186,10 @@ console.log(JSON.stringify({
   whatsapp_message_encoded: true,
   automatic_backend_preserved: true,
   invitation_ttl_preserved: true,
+  migration_split: true,
+  owner_entitlement_update_denied: true,
+  operational_helper_membership_scoped: true,
+  rollback_and_backup_documented: true,
   coverage_cases: coverageCases.length,
   critical_checks: criticalChecks,
 }, null, 2))

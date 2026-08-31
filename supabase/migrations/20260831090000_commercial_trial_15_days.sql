@@ -5,7 +5,8 @@ begin;
 alter table public.saas_planes alter column trial_dias set default 15;
 update public.saas_planes
 set trial_dias = 15, updated_at = now()
-where activo = true;
+where activo = true
+  and trial_dias is distinct from 15;
 
 create or replace function public.bootstrap_barberia_saas()
 returns trigger
@@ -275,7 +276,23 @@ stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select coalesce(public.barberia_access_state(p_barberia_id) in ('active', 'trialing', 'past_due'), false);
+  select case
+    -- Backend/service-role callers already run inside the trusted boundary.
+    when current_setting('request.jwt.claim.role', true) = 'service_role' then
+      coalesce(public.barberia_access_state(p_barberia_id) in ('active', 'trialing', 'past_due'), false)
+    -- Authenticated callers may only ask about a tenant they belong to. The
+    -- policy-specific role checks below still decide which rows they can write.
+    else coalesce(
+      exists (
+        select 1
+        from public.barberia_members m
+        where m.barberia_id = p_barberia_id
+          and m.user_id = auth.uid()
+      )
+      and public.barberia_access_state(p_barberia_id) in ('active', 'trialing', 'past_due'),
+      false
+    )
+  end;
 $$;
 
 -- Existing member read policies stay intact; these additive replacements stop
@@ -342,6 +359,15 @@ with check (public.is_barberia_role(barberia_id, array['owner']) and public.barb
 
 revoke all on function public.barberia_operational_access(bigint) from public, anon;
 grant execute on function public.barberia_operational_access(bigint) to authenticated, service_role;
+
+-- Owners edit normal tenant settings through the SECURITY DEFINER
+-- update_tenant_settings RPC, which has an explicit allow-list of mutable
+-- fields. Remove direct table UPDATE from all client roles so entitlement and
+-- billing columns (estado_cuenta, plan_codigo, trial dates and subscription
+-- state mirrors) cannot be changed around that RPC. Service-role/admin
+-- functions retain their existing administrative path.
+revoke update on table public.barberias from public, anon, authenticated;
+grant update on table public.barberias to service_role;
 
 -- Reuse the existing transition RPC and audit/history contract. The only
 -- additional transition is trialing -> expired; no grace period is created
@@ -466,42 +492,6 @@ begin
     v_count := v_count + 1;
   end loop;
   return v_count;
-end;
-$$;
-
--- PlatformCRM receives only the subscription metadata needed to call the
--- guarded transition RPC. Existing consumers can ignore the additive keys.
-create or replace function public.get_platform_billing_overview()
-returns jsonb
-language plpgsql
-stable
-security definer
-set search_path = public, pg_temp
-as $$
-declare
-  v_result jsonb;
-begin
-  if not public.billing_can_manage() then
-    raise exception 'Sólo owner/admin de plataforma puede consultar billing global.' using errcode = '42501';
-  end if;
-  select jsonb_build_object(
-    'subscriptions_by_state', coalesce((select jsonb_object_agg(estado, total) from (select estado, count(*) total from public.saas_suscripciones group by estado) s), '{}'::jsonb),
-    'tenants', coalesce((select jsonb_agg(jsonb_build_object(
-      'barberia_id', b.id,
-      'nombre', b.nombre,
-      'plan_codigo', s.plan_codigo,
-      'estado', s.estado,
-      'status_reason', s.status_reason,
-      'state_version', s.state_version,
-      'subscription_id', s.id,
-      'access_state', public.barberia_access_state(b.id),
-      'trial_ends_at', s.trial_ends_at,
-      'current_period_end', s.current_period_end
-    ) order by b.nombre) from public.barberias b join public.saas_suscripciones s on s.barberia_id = b.id), '[]'::jsonb),
-    'pending_webhooks', (select count(*) from public.saas_billing_webhook_events where estado in ('received','processing','failed')),
-    'pending_events', (select count(*) from public.saas_billing_events where estado = 'pending')
-  ) into v_result;
-  return v_result;
 end;
 $$;
 
