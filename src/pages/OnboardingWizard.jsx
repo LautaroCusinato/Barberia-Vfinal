@@ -164,7 +164,7 @@ export default function OnboardingWizard() {
   const selectedVertical = useMemo(() => catalog.verticales?.find((item) => item.codigo === form.vertical), [catalog.verticales, form.vertical])
 
   if (checking) return <div className="auth-shell"><div className="auth-card"><LoaderCircle className="spin" size={24} /><p className="auth-copy">Cargando tu cuenta…</p></div></div>
-  if (!user) return <div className="auth-shell"><div className="auth-card"><p className="auth-kicker">Onboarding</p><h1 className="auth-title">Iniciá sesión para continuar</h1><p className="auth-copy">Primero necesitamos identificar tu cuenta.</p><button className="btn btn-primary auth-full-button" onClick={() => window.location.assign('/')}>Ir a iniciar sesión <ArrowRight size={15} /></button></div></div>
+  if (!user) return <div className="auth-shell"><div className="auth-card"><p className="auth-kicker">Onboarding</p><h1 className="auth-title">Iniciá sesión para continuar</h1><p className="auth-copy">Primero necesitamos identificar tu cuenta.</p><button className="btn btn-primary auth-full-button" onClick={() => window.location.assign('/ingresar')}>Ir a iniciar sesión <ArrowRight size={15} /></button></div></div>
   if (!verified) return (
     <div className="auth-shell"><div className="auth-card fade-in">
       <div className="auth-success-icon"><ShieldCheck size={23} /></div><p className="auth-kicker">Un paso más</p><h1 className="auth-title">Verificá tu email</h1>

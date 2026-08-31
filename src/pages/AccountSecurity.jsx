@@ -45,7 +45,7 @@ export default function AccountSecurity() {
   }
 
   if (!user) {
-    return <div className="auth-shell"><div className="auth-card"><p className="auth-copy">Necesitás iniciar sesión para administrar tu cuenta.</p><button className="btn btn-primary auth-full-button" onClick={() => window.location.assign('/')}>Ir a iniciar sesión</button></div></div>
+    return <div className="auth-shell"><div className="auth-card"><p className="auth-copy">Necesitás iniciar sesión para administrar tu cuenta.</p><button className="btn btn-primary auth-full-button" onClick={() => window.location.assign('/ingresar')}>Ir a iniciar sesión</button></div></div>
   }
 
   return (
