@@ -5326,6 +5326,12 @@ input.client-search-input {
 .billing-provider-empty .status-pill { font-size: 10px; }
 .billing-currency-note { margin: 7px 0 0; color: var(--ink-faint); font-size: 11px; line-height: 1.45; }
 .billing-notice { display: flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--accent-strong); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 14px; font-size: 13px; }
+.billing-notice--expired { background: var(--rose-soft); color: var(--rose); border-color: color-mix(in srgb, var(--rose) 30%, transparent); }
+.billing-continuation-cta { display: inline-flex; width: fit-content; align-items: center; justify-content: center; gap: 7px; margin-top: 14px; }
+.billing-manual-card { display: grid; align-content: start; gap: 10px; }
+.billing-manual-card h2 { margin: 0; font-family: var(--font-display); font-weight: 500; }
+.billing-manual-card .panel-subtitle { margin: 0; }
+.billing-manual-card .status-pill { width: fit-content; }
 .billing-plans-panel { margin-bottom: 14px; }
 .billing-plans-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .billing-plan { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; display: flex; flex-direction: column; min-width: 0; }

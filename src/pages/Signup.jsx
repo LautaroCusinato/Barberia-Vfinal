@@ -59,7 +59,7 @@ export default function Signup() {
           <div className="auth-success-icon"><CheckCircle2 size={24} /></div>
           <p className="auth-kicker">Cuenta creada</p>
           <h1 className="auth-title">Revisá tu email</h1>
-          <p className="auth-copy">Te enviamos un enlace de verificación. Cuando lo confirmes, vas a poder crear tu negocio y empezar tu prueba gratuita de 14 días.</p>
+          <p className="auth-copy">Te enviamos un enlace de verificación. Cuando lo confirmes, vas a poder crear tu negocio y empezar tu prueba gratuita de 15 días.</p>
           <button className="btn btn-primary auth-full-button" onClick={() => go('/')}>
             Ir a iniciar sesión <ArrowRight size={15} />
           </button>

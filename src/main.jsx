@@ -88,7 +88,7 @@ function SinBarberia() {
       <p className="centered-state__eyebrow">Austral Automatizaciones</p>
       <h1 className="centered-state__title">Creá tu primer negocio</h1>
       <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
-        Tu cuenta está lista. Completá el asistente para activar tu prueba gratuita de 14 días.
+        Tu cuenta está lista. Completá el asistente para activar tu prueba gratuita de 15 días.
       </p>
       <div className="centered-state__actions"><button className="btn btn-primary" onClick={() => window.location.assign('/onboarding')}>Configurar negocio</button></div>
       <button className="btn" onClick={() => logout()}>Cerrar sesión</button>

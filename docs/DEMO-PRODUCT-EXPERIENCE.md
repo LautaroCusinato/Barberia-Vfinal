@@ -35,7 +35,7 @@ La demo permite explorar y modificar temporalmente:
 - Servicios y equipo: precios, duración, especialidades y horarios demo.
 - Mensajes y notas: conversaciones simuladas y notas locales.
 - Configuración: nombre, branding, colores y preferencias de reservas.
-- Facturación: catálogo informativo Starter ARS 30.000/mes, 14 días de prueba y CTA al registro; no hay checkout.
+- Facturación: catálogo informativo Starter ARS 30.000/mes, 15 días de prueba y continuidad manual por WhatsApp; no hay checkout.
 
 La reserva pública demo queda fuera de este corte: `/demo` mantiene el panel operativo real como superficie comercial principal y no abre un flujo de reserva adicional que pueda confundirse con una reserva pública real.
 
