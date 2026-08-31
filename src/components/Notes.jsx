@@ -10,13 +10,37 @@ function NoteCard({ nota, onUpdate, onDelete }) {
   const [draft, setDraft] = useState(nota.texto)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
 
   const guardar = async () => {
     if (!draft.trim()) return
     setSaving(true)
-    await onUpdate?.(nota.id, draft.trim())
-    setSaving(false)
-    setEditando(false)
+    setErrorMsg('')
+    try {
+      const saved = await onUpdate?.(nota.id, draft.trim())
+      if (saved !== false) setEditando(false)
+      else setErrorMsg('No se pudo actualizar la nota. El texto quedó preservado.')
+    } catch {
+      setErrorMsg('No se pudo actualizar la nota. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const eliminar = async () => {
+    if (deleting) return
+    setDeleting(true)
+    setErrorMsg('')
+    try {
+      const removed = await onDelete?.(nota.id)
+      if (removed !== false) setConfirmDelete(false)
+      else setErrorMsg('No se pudo eliminar la nota. Sigue disponible para reintentar.')
+    } catch {
+      setErrorMsg('No se pudo eliminar la nota. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const cancelar = () => {
@@ -30,20 +54,20 @@ function NoteCard({ nota, onUpdate, onDelete }) {
         <p className="note-meta">{nota.paciente} · {nota.fecha}</p>
         {!editando && (
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-            <button className="btn-icon-plain" onClick={() => setEditando(true)} aria-label="Editar nota" title="Editar nota">
+            <button className="btn-icon-plain" onClick={() => { setErrorMsg(''); setEditando(true) }} disabled={deleting} aria-label="Editar nota" title="Editar nota">
               <Pencil size={13} />
             </button>
             {confirmDelete ? (
               <span className="confirm-delete">
-                <button className="btn-icon-plain danger-solid" onClick={() => onDelete?.(nota.id)} aria-label="Confirmar eliminar nota">
+                <button className="btn-icon-plain danger-solid" onClick={eliminar} disabled={deleting} aria-label="Confirmar eliminar nota">
                   <Check size={12} strokeWidth={2.75} />
                 </button>
-                <button className="btn-icon-plain" onClick={() => setConfirmDelete(false)} aria-label="Cancelar">
+                <button className="btn-icon-plain" onClick={() => setConfirmDelete(false)} disabled={deleting} aria-label="Cancelar">
                   <X size={12} strokeWidth={2.75} />
                 </button>
               </span>
             ) : (
-              <button className="btn-icon-plain" onClick={() => setConfirmDelete(true)} aria-label="Eliminar nota" title="Eliminar nota">
+              <button className="btn-icon-plain" onClick={() => { setErrorMsg(''); setConfirmDelete(true) }} disabled={deleting} aria-label="Eliminar nota" title="Eliminar nota">
                 <Trash2 size={13} />
               </button>
             )}
@@ -53,9 +77,10 @@ function NoteCard({ nota, onUpdate, onDelete }) {
 
       {editando ? (
         <div style={{ marginTop: 6 }}>
-          <textarea className="note-input" value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus />
+          <textarea className="note-input" value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus disabled={saving} />
+          {errorMsg && <p className="login-error" role="alert">{errorMsg}</p>}
           <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="btn" onClick={cancelar}>Cancelar</button>
+            <button className="btn" onClick={cancelar} disabled={saving}>Cancelar</button>
             <button className="btn btn-primary" onClick={guardar} disabled={saving}>
               {saving ? 'Guardando...' : 'Guardar'}
             </button>
@@ -73,6 +98,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
   const [pacienteSel, setPacienteSel] = useState(PACIENTE_GENERAL)
   const [pacienteLibre, setPacienteLibre] = useState('')
   const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
   const [query, setQuery] = useState(filtroInicial || '')
 
   // Si llegamos acá desde "ver notas" de un paciente puntual (en la sección
@@ -92,10 +118,18 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
     if (!texto.trim()) return
     const pacienteFinal = pacienteSel === OTRO_PACIENTE ? pacienteLibre.trim() || PACIENTE_GENERAL : pacienteSel
     setSaving(true)
-    await onAdd({ paciente: pacienteFinal, texto: texto.trim() })
-    setTexto('')
-    setPacienteLibre('')
-    setSaving(false)
+    setErrorMsg('')
+    try {
+      const saved = await onAdd({ paciente: pacienteFinal, texto: texto.trim() })
+      if (saved !== false) {
+        setTexto('')
+        setPacienteLibre('')
+      } else setErrorMsg('No se pudo guardar la nota. El borrador quedó preservado.')
+    } catch {
+      setErrorMsg('No se pudo guardar la nota. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -141,7 +175,9 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
           placeholder="Escribi una preferencia del cliente o recordatorio..."
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
+          disabled={saving}
         />
+        {errorMsg && <p className="login-error" role="alert">{errorMsg}</p>}
         <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn btn-primary" onClick={submit} disabled={saving}>
             <Check size={14} strokeWidth={2.5} />

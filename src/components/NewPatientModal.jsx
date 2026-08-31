@@ -37,30 +37,31 @@ export default function NewPatientModal({ open, onClose, onSubmit }) {
     setSaving(true)
     setErrorMsg('')
 
-    const ok = await onSubmit({
-      nombre: nombre.trim(),
-      telefono: telefonoRaw,
-      email: email.trim() || null,
-      ultima_visita: ultimaVisita || null,
-    })
-
-    setSaving(false)
-    if (ok !== false) {
-      onClose()
-    } else {
-      setErrorMsg('No se pudo guardar. Revisá que el teléfono no esté repetido.')
+    try {
+      const ok = await onSubmit({
+        nombre: nombre.trim(),
+        telefono: telefonoRaw,
+        email: email.trim() || null,
+        ultima_visita: ultimaVisita || null,
+      })
+      if (ok !== false) onClose()
+      else setErrorMsg('No se pudo guardar. Revisá que el teléfono no esté repetido.')
+    } catch {
+      setErrorMsg('No se pudo guardar. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setSaving(false)
     }
   }
 
   return (
-    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="modal-overlay" onMouseDown={(e) => { if (!saving && e.target === e.currentTarget) onClose() }}>
       <div className="modal-box">
         <div className="modal-header">
           <span className="panel-title-icon">
             <UserPlus size={17} style={{ color: 'var(--accent)' }} />
             Agregar cliente
           </span>
-          <button className="btn-icon-plain" onClick={onClose} aria-label="Cerrar">
+          <button className="btn-icon-plain" onClick={onClose} disabled={saving} aria-label="Cerrar">
             <X size={17} />
           </button>
         </div>
@@ -107,13 +108,13 @@ export default function NewPatientModal({ open, onClose, onSubmit }) {
           </div>
 
           {errorMsg && (
-            <p style={{ color: 'var(--danger, #e5484d)', fontSize: 12.5, marginTop: -4, marginBottom: 10 }}>
+            <p role="alert" style={{ color: 'var(--danger, #e5484d)', fontSize: 12.5, marginTop: -4, marginBottom: 10 }}>
               {errorMsg}
             </p>
           )}
 
           <div className="modal-actions">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="button" className="btn" onClick={onClose} disabled={saving}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={!valido || saving}>
               {saving ? 'Guardando...' : 'Agregar cliente'}
             </button>

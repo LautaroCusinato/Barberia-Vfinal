@@ -10,6 +10,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState('')
   const [query, setQuery] = useState('')
   const threadRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -50,9 +51,15 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   const enviar = async () => {
     if (!draft.trim() || sending || !selected) return
     setSending(true)
+    setSendError('')
     pendingOwnMessageRef.current = true
     try {
-      await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
+      const sent = await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
+      if (sent === false) {
+        pendingOwnMessageRef.current = false
+        setSendError('No se pudo guardar el mensaje. El borrador quedó preservado.')
+        return
+      }
       setDraft('')
       // El callback puede actualizar el hilo de forma asincrónica. El frame
       // siguiente es el primer momento en que el nuevo mensaje está medido.
@@ -62,9 +69,9 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
         pendingOwnMessageRef.current = false
         setShowNewMessages(false)
       })
-    } catch (error) {
+    } catch {
       pendingOwnMessageRef.current = false
-      throw error
+      setSendError('No se pudo guardar el mensaje. Revisá tu conexión e intentá de nuevo.')
     } finally {
       setSending(false)
     }
@@ -315,7 +322,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
           )}
 
           {onSendMessage && (
-            <div className="thread-composer">
+            <div className="thread-composer" aria-busy={sending}>
               <textarea
                 className="note-input"
                 aria-label={`Mensaje para ${selected.paciente}`}
@@ -325,6 +332,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={onKeyDown}
                 rows={1}
+                disabled={sending}
               />
               <button
                 className="btn btn-primary"
@@ -337,6 +345,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
               </button>
             </div>
           )}
+          {sendError && <p className="login-error" role="alert">{sendError}</p>}
         </div>
       )}
     </div>
