@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Palette, Plus, Scissors, Settings, Trash2, UserRound, Coffee, Check } from 'lucide-react'
 import { generarIdHabilidad, parseHabilidades, serializeHabilidades } from '../lib/text'
+import { EmptyState } from './ui'
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -240,7 +241,14 @@ export default function Operations({
           </p>
 
           <div className="ops-edit-list">
-            {servicios.map((servicio) => (
+            {servicios.length === 0 ? (
+              <EmptyState
+                className="empty-state"
+                icon={<Scissors size={26} aria-hidden="true" style={{ color: 'var(--border-strong)' }} />}
+                title="Todavía no hay servicios configurados"
+                action={<button type="button" className="btn btn-primary" onClick={onAddServicio}><Plus size={14} /> Agregar servicio</button>}
+              />
+            ) : servicios.map((servicio) => (
               <div className="ops-edit-row management-service-row" key={servicio.id}>
                 <div className="ops-edit-main">
                   <label>

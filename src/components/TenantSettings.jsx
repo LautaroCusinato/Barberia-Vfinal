@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, Copy, ImagePlus, LoaderCircle, Save, ShieldCheck, Trash2, UserPlus, UsersRound } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Copy, ImagePlus, Save, ShieldCheck, Trash2, UserPlus, UsersRound } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { getAppOrigin } from '../lib/authRedirect'
 import WhatsAppConnectionPanel from './WhatsAppConnectionPanel.jsx'
+import { EmptyState, Skeleton } from './ui'
 
 const DEFAULTS = {
   nombre: '', descripcion: '', slug: '', vertical: 'barberia', pais: 'AR', locale: 'es-AR', zona_horaria: 'America/Argentina/Buenos_Aires', moneda: 'ARS', direccion: '', email: '', telefono: '', whatsapp: '', logo_url: '', logo_storage_path: '', color_principal: '#9B6A2F', color_secundario: '#EDE6D8', reservas_publicas: true, politica_cancelacion: '', anticipacion_minutos: 60, max_dias_reserva: 60, intervalo_reserva_min: 15,
@@ -11,6 +12,59 @@ const DEFAULTS = {
 const ROLE_LABELS = { admin: 'Administrador', recepcionista: 'Recepción', empleado: 'Empleado', readonly: 'Sólo lectura', barbero: 'Barbero' }
 
 function cleanError(error) { return String(error?.message || 'No se pudo completar la operación.').replace(/^.*?ERROR:\s*/i, '').replace(/\s*DETAIL:.*$/i, '') }
+
+function SettingsLoadingState() {
+  return (
+    <div className="management-screen management-settings settings-page settings-loading-state" role="status" aria-busy="true" aria-label="Cargando configuración">
+      <span className="sr-only">Cargando configuración…</span>
+      <header className="settings-loading-header">
+        <div className="settings-loading-stack">
+          <Skeleton width="112px" height={10} />
+          <Skeleton width="min(280px, 70vw)" height={30} />
+          <Skeleton width="min(360px, 82vw)" height={12} />
+        </div>
+        <Skeleton width="116px" height={26} />
+      </header>
+
+      <section className="panel settings-loading-whatsapp">
+        <div className="settings-loading-card-heading">
+          <div className="settings-loading-stack">
+            <Skeleton width="130px" height={10} />
+            <Skeleton width="220px" height={18} />
+            <Skeleton width="min(520px, 82vw)" height={11} />
+          </div>
+          <Skeleton width="94px" height={25} />
+        </div>
+        <Skeleton width="100%" height={62} />
+        <div className="settings-loading-actions"><Skeleton width="132px" height={36} /><Skeleton width="112px" height={36} /></div>
+      </section>
+
+      <div className="settings-grid">
+        {[1, 2, 3].map((card) => (
+          <section className="panel settings-card settings-loading-card" key={card}>
+            <Skeleton width="170px" height={18} />
+            <div className="settings-loading-fields">
+              <div className="settings-loading-field"><Skeleton width="92px" height={10} /><Skeleton width="100%" height={40} /></div>
+              <div className="settings-loading-field"><Skeleton width="118px" height={10} /><Skeleton width="100%" height={40} /></div>
+              <div className="settings-loading-field-row"><Skeleton width="100%" height={40} /><Skeleton width="100%" height={40} /></div>
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <section className="panel settings-card settings-loading-card settings-loading-collaborators">
+        <div className="settings-loading-stack"><Skeleton width="170px" height={18} /><Skeleton width="min(520px, 82vw)" height={11} /></div>
+        <div className="settings-loading-invite-row"><Skeleton width="100%" height={40} /><Skeleton width="150px" height={40} /><Skeleton width="132px" height={40} /></div>
+        <div className="settings-loading-list"><div className="settings-loading-list-row"><Skeleton width="150px" height={14} /><Skeleton width="108px" height={32} /></div><div className="settings-loading-list-row"><Skeleton width="190px" height={14} /><Skeleton width="108px" height={32} /></div></div>
+      </section>
+
+      <section className="panel settings-card settings-loading-card settings-loading-activity">
+        <div className="settings-loading-stack"><Skeleton width="160px" height={18} /><Skeleton width="min(460px, 78vw)" height={11} /></div>
+        <div className="settings-loading-list"><Skeleton width="100%" height={40} /><Skeleton width="100%" height={40} /></div>
+      </section>
+    </div>
+  )
+}
 
 export default function TenantSettings({ barberiaId, onBrandingChange, demoMode = false }) {
   const demoStorageKey = `austral-demo-settings:${barberiaId}`
@@ -30,6 +84,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange, demoMode 
   const [inviteLink, setInviteLink] = useState('')
   const [inviteSaving, setInviteSaving] = useState(false)
   const [invitationNow] = useState(() => Date.now())
+  const inviteEmailRef = useRef(null)
 
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
 
@@ -140,7 +195,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange, demoMode 
 
   const publicUrl = useMemo(() => form.slug ? `${window.location.origin}/reservar/${form.slug}` : '', [form.slug])
 
-  if (loading) return <div className="panel settings-loading"><LoaderCircle className="spin" size={18} /> Cargando configuración…</div>
+  if (loading) return <SettingsLoadingState />
   if (!isSupabaseConfigured && !demoMode) return <div className="panel empty-state">Configurá Supabase para editar el negocio.</div>
 
   return <div className="management-screen management-settings settings-page fade-in">
@@ -159,7 +214,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange, demoMode 
       <section className="panel settings-card"><h2 className="panel-title">Región y reservas</h2><div className="settings-fields"><div className="settings-two"><label>País<input className="text-input" value={form.pais || ''} onChange={(e) => update('pais', e.target.value.toUpperCase())} /></label><label>Idioma<input className="text-input" value={form.locale || ''} onChange={(e) => update('locale', e.target.value)} /></label></div><div className="settings-two"><label>Zona horaria<input className="text-input" value={form.zona_horaria || ''} onChange={(e) => update('zona_horaria', e.target.value)} /></label><label>Moneda<input className="text-input" value={form.moneda || ''} onChange={(e) => update('moneda', e.target.value.toUpperCase())} /></label></div><label className="settings-check"><input type="checkbox" checked={Boolean(form.reservas_publicas)} onChange={(e) => update('reservas_publicas', e.target.checked)} /> Permitir reservas públicas</label><div className="settings-three"><label>Anticipación (min)<input className="text-input" type="number" min="0" max="10080" value={form.anticipacion_minutos} onChange={(e) => update('anticipacion_minutos', e.target.value)} /></label><label>Máximo (días)<input className="text-input" type="number" min="1" max="365" value={form.max_dias_reserva} onChange={(e) => update('max_dias_reserva', e.target.value)} /></label><label>Intervalo (min)<input className="text-input" type="number" min="5" max="120" value={form.intervalo_reserva_min} onChange={(e) => update('intervalo_reserva_min', e.target.value)} /></label></div><label>Política de cancelación<textarea className="text-input" rows="3" value={form.politica_cancelacion || ''} onChange={(e) => update('politica_cancelacion', e.target.value)} /></label></div></section>
       <div className="settings-actions"><button className="btn btn-primary" type="submit" disabled={saving || uploading}><Save size={15} /> {saving ? 'Guardando…' : 'Guardar configuración'}</button></div>
     </form>
-    <section className="panel settings-card"><div className="panel-header-inline"><div><h2 className="panel-title"><UsersRound size={16} /> Colaboradores</h2><p className="panel-subtitle">Las invitaciones no envían emails: copiá el enlace y compartilo manualmente.</p></div></div><form className="invite-form" onSubmit={createInvite} aria-busy={inviteSaving}><input className="text-input" type="email" required aria-label="Email de la invitación" placeholder="email@negocio.com" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} /><select className="text-input" aria-label="Rol de la invitación" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}>{Object.entries(ROLE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select className="text-input" aria-label="Duración de la invitación" value={invite.expires} onChange={(e) => setInvite({ ...invite, expires: Number(e.target.value) })}><option value={1}>Vence en 1 día</option><option value={7}>Vence en 7 días</option><option value={14}>Vence en 14 días</option><option value={30}>Vence en 30 días</option></select><button className="btn btn-primary" type="submit" disabled={inviteSaving}><UserPlus size={14} /> {inviteSaving ? 'Creando…' : 'Crear invitación'}</button></form>{inviteLink && <div className="invite-link"><input className="text-input" readOnly value={inviteLink} aria-label="Enlace de invitación generado" /><button className="btn" type="button" onClick={copyInvite}><Copy size={14} /> Copiar enlace</button></div>}<div className="member-list">{members.map((member) => { const memberName = member.profiles?.full_name || member.user_id; return <div className="member-row" key={member.id}><div><strong>{memberName}</strong><small>{member.role === 'owner' ? 'Owner protegido' : 'Miembro del negocio'}</small></div><div className="member-actions"><select className="text-input" aria-label={`Rol de ${memberName}`} value={member.role} disabled={member.role === 'owner'} onChange={(e) => changeRole(member, e.target.value)}>{[['owner', 'Owner'], ...Object.entries(ROLE_LABELS)].map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{member.role !== 'owner' && <button className="btn-icon-plain" type="button" onClick={() => removeMember(member)} aria-label="Retirar acceso"><Trash2 size={15} /></button>}</div></div> })}</div><div className="member-list invitations-list">{invitations.length === 0 ? <div className="empty-state">Todavía no hay invitaciones.</div> : invitations.map((item) => { const state = invitationState(item); return <div className="member-row" key={item.id}><div><strong>{item.email}</strong><small>Invitación · {ROLE_LABELS[item.role] || item.role} · vence {new Date(item.expires_at).toLocaleDateString()}</small></div><div className="member-actions"><span className={`status-pill invitation-status invitation-status--${state.tone}`}>{state.label}</span>{state.actionable && <button className="btn-icon-plain" type="button" onClick={() => cancelInvite(item.id)} aria-label={`Cancelar invitación para ${item.email}`}>×</button>}</div></div> })}</div></section>
+    <section className="panel settings-card"><div className="panel-header-inline"><div><h2 className="panel-title"><UsersRound size={16} /> Colaboradores</h2><p className="panel-subtitle">Las invitaciones no envían emails: copiá el enlace y compartilo manualmente.</p></div></div><form className="invite-form" onSubmit={createInvite} aria-busy={inviteSaving}><input ref={inviteEmailRef} className="text-input" type="email" required aria-label="Email de la invitación" placeholder="email@negocio.com" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} /><select className="text-input" aria-label="Rol de la invitación" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}>{Object.entries(ROLE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select className="text-input" aria-label="Duración de la invitación" value={invite.expires} onChange={(e) => setInvite({ ...invite, expires: Number(e.target.value) })}><option value={1}>Vence en 1 día</option><option value={7}>Vence en 7 días</option><option value={14}>Vence en 14 días</option><option value={30}>Vence en 30 días</option></select><button className="btn btn-primary" type="submit" disabled={inviteSaving}><UserPlus size={14} /> {inviteSaving ? 'Creando…' : 'Crear invitación'}</button></form>{inviteLink && <div className="invite-link"><input className="text-input" readOnly value={inviteLink} aria-label="Enlace de invitación generado" /><button className="btn" type="button" onClick={copyInvite}><Copy size={14} /> Copiar enlace</button></div>}<div className="member-list">{members.length === 0 ? <EmptyState className="empty-state" icon={<UsersRound size={26} aria-hidden="true" style={{ color: 'var(--border-strong)' }} />} title="Todavía no hay colaboradores" action={<button type="button" className="btn btn-primary" onClick={() => inviteEmailRef.current?.focus()}><UserPlus size={14} /> Invitar miembro</button>} /> : members.map((member) => { const memberName = member.profiles?.full_name || member.user_id; return <div className="member-row" key={member.id}><div><strong>{memberName}</strong><small>{member.role === 'owner' ? 'Owner protegido' : 'Miembro del negocio'}</small></div><div className="member-actions"><select className="text-input" aria-label={`Rol de ${memberName}`} value={member.role} disabled={member.role === 'owner'} onChange={(e) => changeRole(member, e.target.value)}>{[['owner', 'Owner'], ...Object.entries(ROLE_LABELS)].map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{member.role !== 'owner' && <button className="btn-icon-plain" type="button" onClick={() => removeMember(member)} aria-label="Retirar acceso"><Trash2 size={15} /></button>}</div></div> })}</div><div className="member-list invitations-list">{invitations.length === 0 ? <div className="empty-state">Todavía no hay invitaciones.</div> : invitations.map((item) => { const state = invitationState(item); return <div className="member-row" key={item.id}><div><strong>{item.email}</strong><small>Invitación · {ROLE_LABELS[item.role] || item.role} · vence {new Date(item.expires_at).toLocaleDateString()}</small></div><div className="member-actions"><span className={`status-pill invitation-status invitation-status--${state.tone}`}>{state.label}</span>{state.actionable && <button className="btn-icon-plain" type="button" onClick={() => cancelInvite(item.id)} aria-label={`Cancelar invitación para ${item.email}`}>×</button>}</div></div> })}</div></section>
     <section className="panel settings-card"><div className="panel-header-inline"><div><h2 className="panel-title">Actividad reciente</h2><p className="panel-subtitle">Cambios relevantes del negocio, sin secretos ni tokens.</p></div></div>{activity.length === 0 ? <div className="empty-state">Todavía no hay actividad registrada.</div> : <div className="member-list">{activity.map((item) => <div className="member-row" key={item.id}><div><strong>{item.event_name.replaceAll('_', ' ')}</strong><small>{new Date(item.created_at).toLocaleString()} · {item.metadata?.slug || ''}</small></div></div>)}</div>}</section>
   </div>
 }

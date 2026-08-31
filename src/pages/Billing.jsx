@@ -1,9 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, CreditCard, ExternalLink, LoaderCircle, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, CreditCard, ExternalLink, ShieldCheck } from 'lucide-react'
 import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabaseClient'
 import { classifyBillingFailure } from '../lib/runtimeStability.js'
 import { getBillingReturnState } from '../lib/billingReturnState.js'
 import { COMMERCIAL_CATALOG, catalogPlan } from '../lib/commercialCatalog.js'
+import { Skeleton } from '../components/ui'
 
 const MercadoPagoCardTokenForm = lazy(() => import('../components/billing/MercadoPagoCardTokenForm.jsx'))
 
@@ -58,6 +59,46 @@ function normalizeCountryCode(value) {
   if (/^[A-Z]{2}$/.test(raw)) return raw
   const aliases = { ARGENTINA: 'AR', BRASIL: 'BR', BRAZIL: 'BR', CHILE: 'CL', MEXICO: 'MX', 'MÉXICO': 'MX', URUGUAY: 'UY' }
   return aliases[raw] || 'GLOBAL'
+}
+
+function BillingLoadingState() {
+  return (
+    <div className="billing-page billing-loading-state" role="status" aria-busy="true" aria-label="Cargando facturación">
+      <span className="sr-only">Cargando facturación…</span>
+      <header className="billing-loading-header">
+        <div className="settings-loading-stack">
+          <Skeleton width="96px" height={10} />
+          <Skeleton width="190px" height={30} />
+          <Skeleton width="min(420px, 82vw)" height={12} />
+        </div>
+        <Skeleton width="130px" height={25} />
+      </header>
+
+      <div className="billing-summary-grid">
+        <section className="panel billing-current-card billing-loading-card">
+          <div className="billing-loading-card-heading"><div className="settings-loading-stack"><Skeleton width="86px" height={10} /><Skeleton width="150px" height={20} /></div><Skeleton width="86px" height={25} /></div>
+          <Skeleton width="190px" height={34} className="billing-loading-price" />
+          <div className="billing-loading-facts"><Skeleton width="100%" height={48} /><Skeleton width="100%" height={48} /><Skeleton width="100%" height={48} /></div>
+        </section>
+        <section className="panel billing-provider-card billing-loading-card">
+          <Skeleton width="180px" height={10} />
+          <Skeleton width="210px" height={22} />
+          <Skeleton width="min(430px, 82vw)" height={11} />
+          <div className="billing-loading-provider-options"><Skeleton width="100%" height={48} /><Skeleton width="100%" height={48} /></div>
+        </section>
+      </div>
+
+      <section className="panel billing-plans-panel billing-loading-card">
+        <div className="settings-loading-stack"><Skeleton width="150px" height={18} /><Skeleton width="min(420px, 82vw)" height={11} /></div>
+        <div className="billing-loading-plans"><Skeleton width="100%" height={230} /><Skeleton width="100%" height={230} /><Skeleton width="100%" height={230} /></div>
+      </section>
+
+      <div className="billing-history-grid">
+        <section className="panel billing-loading-card"><div className="settings-loading-stack"><Skeleton width="72px" height={18} /><Skeleton width="min(320px, 72vw)" height={11} /></div><div className="billing-loading-history"><Skeleton width="100%" height={38} /><Skeleton width="100%" height={38} /></div></section>
+        <section className="panel billing-loading-card"><div className="settings-loading-stack"><Skeleton width="112px" height={18} /><Skeleton width="min(360px, 76vw)" height={11} /></div><div className="billing-loading-history"><Skeleton width="100%" height={38} /><Skeleton width="100%" height={38} /></div></section>
+      </div>
+    </div>
+  )
 }
 
 async function billingApi(path, options = {}) {
@@ -204,7 +245,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
   }
 
   if (!isSupabaseConfigured && !demoMode) return <div className="panel billing-empty"><CreditCard size={18} /><p>Conectá Supabase para consultar el estado de facturación.</p></div>
-  if (loading) return <div className="panel billing-empty"><LoaderCircle className="spin" size={18} /> Cargando facturación…</div>
+  if (loading) return <BillingLoadingState />
 
   return (
     <div className="fade-in billing-page">

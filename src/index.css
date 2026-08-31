@@ -167,6 +167,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   outline-offset: 3px;
 }
 
+.route-focus-target:focus:not(:focus-visible) { outline: none; }
+.route-focus-target:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 10px; }
@@ -5290,6 +5293,15 @@ input.client-search-input {
 .billing-security { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-faint); font-size: 12px; }
 .billing-summary-grid, .billing-history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
 .billing-current-card, .billing-provider-card { min-height: 245px; }
+.billing-loading-state { display: grid; gap: 14px; }
+.billing-loading-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 2px; }
+.billing-loading-card { display: grid; align-content: start; gap: 14px; }
+.billing-loading-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.billing-loading-price { margin: 8px 0 0; }
+.billing-loading-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 2px; }
+.billing-loading-provider-options { display: grid; gap: 8px; margin-top: 8px; }
+.billing-loading-plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.billing-loading-history { display: grid; gap: 8px; margin-top: 2px; }
 .billing-card-heading, .billing-plan-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .billing-card-heading h2, .billing-provider-card h2 { margin: 0; font-family: var(--font-display); font-weight: 500; }
 .billing-price { font-family: var(--font-display); font-size: 30px; margin: 22px 0 16px; color: var(--ink); }
@@ -5362,6 +5374,21 @@ input.client-search-input {
 .settings-page { max-width: 1180px; margin: 0 auto; }
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .settings-card { min-width: 0; }
+.settings-loading-state { max-width: 1180px; margin: 0 auto; }
+.settings-loading-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.settings-loading-stack { display: grid; gap: 8px; min-width: 0; }
+.settings-loading-whatsapp { display: grid; gap: 14px; min-height: 190px; }
+.settings-loading-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.settings-loading-card { display: grid; align-content: start; gap: 14px; min-height: 220px; }
+.settings-loading-fields { display: grid; gap: 12px; }
+.settings-loading-field { display: grid; gap: 5px; }
+.settings-loading-field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.settings-loading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-loading-collaborators { min-height: 260px; }
+.settings-loading-activity { min-height: 180px; }
+.settings-loading-invite-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px 132px; gap: 8px; }
+.settings-loading-list { display: grid; gap: 6px; }
+.settings-loading-list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
 .settings-card > .panel-title, .panel-header-inline .panel-title { display: flex; align-items: center; gap: 8px; }
 .settings-fields { display: grid; gap: 12px; }
 .settings-fields label, .settings-two label, .settings-three label { display: grid; gap: 5px; color: var(--ink-soft); font-size: 12px; font-weight: 600; }
@@ -5448,6 +5475,13 @@ input.client-search-input {
   .crm-search { width: 100%; min-width: 0; }
   .platform-crm-form { padding: 1rem; }
   .billing-summary-grid, .billing-history-grid { grid-template-columns: 1fr; }
+  .billing-loading-header,
+  .settings-loading-header { flex-direction: column; }
+  .billing-loading-header > .ui-skeleton,
+  .settings-loading-header > .ui-skeleton { align-self: flex-start; }
+  .billing-loading-facts,
+  .billing-loading-plans { grid-template-columns: 1fr; }
+  .billing-loading-plans > .ui-skeleton { height: 170px !important; }
   .sandbox-billing-console .panel-header { flex-direction: column; }
   .sandbox-billing-actions .btn { width: 100%; justify-content: center; }
   .sandbox-billing-grid, .sandbox-billing-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -5457,6 +5491,8 @@ input.client-search-input {
   .billing-card-grid { grid-template-columns: 1fr; }
   .billing-card-actions .btn { width: 100%; justify-content: center; }
   .settings-grid { grid-template-columns: 1fr; }.settings-actions { grid-column: auto; }.settings-three { grid-template-columns: 1fr; }.invite-form { grid-template-columns: 1fr; }.invite-link { flex-direction: column; }.member-row { align-items: flex-start; }.member-actions { flex-wrap: wrap; }
+  .settings-loading-field-row,
+  .settings-loading-invite-row { grid-template-columns: 1fr; }
   .whatsapp-connection-header { flex-direction: column; }.whatsapp-connection-actions { display: grid; grid-template-columns: 1fr; }.whatsapp-connection-actions .btn { width: 100%; justify-content: center; }.whatsapp-qr-frame { width: min(100%, 240px); }
   .agent-contract { align-items: flex-start; flex-direction: column; }
   .crm-toolbar { align-items: stretch; }.crm-toolbar .crm-search, .crm-filter, .crm-toolbar > .btn { width: 100%; }.crm-filter select { flex: 1; }.crm-pipeline-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }.crm-duplicate-alert { align-items: flex-start; flex-wrap: wrap; }.crm-duplicate-alert span { flex-basis: calc(100% - 25px); }.crm-leads-table { min-width: 780px; }.crm-pagination { align-items: flex-start; flex-direction: column; }.crm-import-modal { max-height: 94vh; overflow-y: auto; }.crm-action-row { align-items: flex-start; flex-direction: column; }.crm-action-row > div:last-child { width: 100%; justify-content: space-between; }.action-form { padding: 1rem; }

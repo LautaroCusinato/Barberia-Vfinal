@@ -173,11 +173,17 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [dbError, setDbError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const barberoWritesRef = useRef({})
+  const mainRef = useRef(null)
+  const routeFocusPendingRef = useRef(false)
 
   useEffect(() => {
     const handlePopState = () => {
+      const nextView = workspaceViewFromUrl()
       setNotasFiltro('')
-      setView(workspaceViewFromUrl())
+      setView((currentView) => {
+        routeFocusPendingRef.current = currentView !== nextView
+        return nextView
+      })
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -270,9 +276,19 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const navigateFromMenu = (v, { replace = false } = {}) => {
     if (!WORKSPACE_VIEWS.has(v)) return
     setNotasFiltro('')
+    routeFocusPendingRef.current = v !== view
     updateWorkspaceViewUrl(v, replace)
     setView(v)
   }
+
+  useEffect(() => {
+    if (!routeFocusPendingRef.current) return undefined
+    routeFocusPendingRef.current = false
+    const frame = window.requestAnimationFrame(() => {
+      mainRef.current?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [view])
 
   useEffect(() => {
     if (!isSupabaseConfigured) return
@@ -1250,7 +1266,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         onAccountSecurity={() => (demoMode ? navigateFromMenu('configuracion') : window.location.assign('/cuenta'))}
         demoMode={demoMode}
       />
-      <main className="main">
+      <main ref={mainRef} className="main route-focus-target" tabIndex="-1">
         {demoMode ? (
           <div className="demo-mode-banner" role="status">
             <div className="demo-mode-banner__message"><Info size={15} /><span><strong>Modo demostración</strong><small>Los cambios son temporales y sólo viven en este navegador. WhatsApp está en validación y esta demo no envía mensajes.</small></span></div>
