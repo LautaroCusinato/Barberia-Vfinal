@@ -187,10 +187,10 @@ test.describe('experiencia de producto demo', () => {
 
   test('DEMO-14 Billing es informativo y no inicia checkout', async ({ page }) => {
     await openDemo(page, 'Facturacion')
-    await expect(page.getByText(/14 días de prueba/i)).toBeVisible()
-    await expect(page.getByText(/checkout se habilita al crear tu cuenta real/i)).toBeVisible()
-    await page.getByRole('button', { name: /Empezar prueba gratuita con Starter/i }).click()
-    await expect(page).toHaveURL(/\/registro\?source=demo-billing/)
+    await expect(page.getByText(/15 días de prueba/i)).toBeVisible()
+    await expect(page.locator('.billing-notice').filter({ hasText: /continuidad se coordina manualmente por WhatsApp/i })).toBeVisible()
+    await expect(page.getByText(/Elegí cómo pagar/i)).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Empezar prueba gratuita con Starter/i })).toHaveCount(0)
   })
 
   test('DEMO-15 WhatsApp queda bloqueado con CTA comercial', async ({ page }) => {

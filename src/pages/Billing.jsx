@@ -1,9 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, CreditCard, ExternalLink, LoaderCircle, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, CreditCard, ExternalLink, MessageCircle, ShieldCheck } from 'lucide-react'
 import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabaseClient'
 import { classifyBillingFailure } from '../lib/runtimeStability.js'
 import { getBillingReturnState } from '../lib/billingReturnState.js'
-import { COMMERCIAL_CATALOG, catalogPlan } from '../lib/commercialCatalog.js'
+import { COMMERCIAL_BILLING_MODE, COMMERCIAL_CATALOG, COMMERCIAL_TRIAL_DAYS, catalogPlan, getTrialContinuationWhatsAppHref } from '../lib/commercialCatalog.js'
+import { trialHasExpired, trialRemainingDays } from '../lib/trial.js'
+import { Skeleton } from '../components/ui'
 
 const MercadoPagoCardTokenForm = lazy(() => import('../components/billing/MercadoPagoCardTokenForm.jsx'))
 
@@ -58,6 +60,46 @@ function normalizeCountryCode(value) {
   if (/^[A-Z]{2}$/.test(raw)) return raw
   const aliases = { ARGENTINA: 'AR', BRASIL: 'BR', BRAZIL: 'BR', CHILE: 'CL', MEXICO: 'MX', 'MÉXICO': 'MX', URUGUAY: 'UY' }
   return aliases[raw] || 'GLOBAL'
+}
+
+function BillingLoadingState() {
+  return (
+    <div className="billing-page billing-loading-state" role="status" aria-busy="true" aria-label="Cargando facturación">
+      <span className="sr-only">Cargando facturación…</span>
+      <header className="billing-loading-header">
+        <div className="settings-loading-stack">
+          <Skeleton width="96px" height={10} />
+          <Skeleton width="190px" height={30} />
+          <Skeleton width="min(420px, 82vw)" height={12} />
+        </div>
+        <Skeleton width="130px" height={25} />
+      </header>
+
+      <div className="billing-summary-grid">
+        <section className="panel billing-current-card billing-loading-card">
+          <div className="billing-loading-card-heading"><div className="settings-loading-stack"><Skeleton width="86px" height={10} /><Skeleton width="150px" height={20} /></div><Skeleton width="86px" height={25} /></div>
+          <Skeleton width="190px" height={34} className="billing-loading-price" />
+          <div className="billing-loading-facts"><Skeleton width="100%" height={48} /><Skeleton width="100%" height={48} /><Skeleton width="100%" height={48} /></div>
+        </section>
+        <section className="panel billing-provider-card billing-loading-card">
+          <Skeleton width="180px" height={10} />
+          <Skeleton width="210px" height={22} />
+          <Skeleton width="min(430px, 82vw)" height={11} />
+          <div className="billing-loading-provider-options"><Skeleton width="100%" height={48} /><Skeleton width="100%" height={48} /></div>
+        </section>
+      </div>
+
+      <section className="panel billing-plans-panel billing-loading-card">
+        <div className="settings-loading-stack"><Skeleton width="150px" height={18} /><Skeleton width="min(420px, 82vw)" height={11} /></div>
+        <div className="billing-loading-plans"><Skeleton width="100%" height={230} /><Skeleton width="100%" height={230} /><Skeleton width="100%" height={230} /></div>
+      </section>
+
+      <div className="billing-history-grid">
+        <section className="panel billing-loading-card"><div className="settings-loading-stack"><Skeleton width="72px" height={18} /><Skeleton width="min(320px, 72vw)" height={11} /></div><div className="billing-loading-history"><Skeleton width="100%" height={38} /><Skeleton width="100%" height={38} /></div></section>
+        <section className="panel billing-loading-card"><div className="settings-loading-stack"><Skeleton width="112px" height={18} /><Skeleton width="min(360px, 76vw)" height={11} /></div><div className="billing-loading-history"><Skeleton width="100%" height={38} /><Skeleton width="100%" height={38} /></div></section>
+      </div>
+    </div>
+  )
 }
 
 async function billingApi(path, options = {}) {
@@ -142,7 +184,18 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
   // bypass, tenant id or environment back to billing-api.
   const samePlanSandboxE2EReady = sandboxCheckoutReady && portal?.sandbox_e2e_same_plan_ready === true
   const currentAmount = plan?.precio_mensual ?? subscription?.precio
-  const currentIsTrial = !subscriptionMissing && subscription?.estado === 'trialing' && Number(currentAmount) === 0
+  const manualBilling = COMMERCIAL_BILLING_MODE === 'manual'
+  const trialEndsAt = subscription?.trial_ends_at
+  const trialExpiredByDate = trialHasExpired(trialEndsAt)
+  const trialExpired = !subscriptionMissing
+    && trialExpiredByDate
+    && (subscription?.estado === 'trialing'
+      || subscription?.estado === 'expired'
+      || (subscription?.estado === 'past_due' && subscription?.status_reason === 'trial_expired'))
+  const trialActive = !subscriptionMissing && Boolean(trialEndsAt) && subscription?.estado === 'trialing' && !trialExpiredByDate
+  const trialDaysRemaining = trialActive ? trialRemainingDays(trialEndsAt) : 0
+  const trialContinuationHref = getTrialContinuationWhatsAppHref()
+  const currentIsTrial = !subscriptionMissing && Boolean(trialEndsAt) && subscription?.estado === 'trialing' && !trialExpiredByDate
   const currentPrice = currentIsTrial ? 'Sin cargo durante el trial' : formatMoney(currentAmount, plan?.moneda || 'ARS')
   const tenantCountry = normalizeCountryCode(portal?.tenant?.pais)
   const findExternalPrice = (item) => {
@@ -155,6 +208,10 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
   }
 
   const startCheckout = async (planCode) => {
+    if (manualBilling) {
+      setNotice('La continuidad se coordina manualmente por WhatsApp. No se inició ningún checkout.')
+      return
+    }
     if (demoMode) {
       window.location.assign('/registro?source=demo-billing')
       return
@@ -183,6 +240,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
   }
 
   const submitSubscription = async (planCode, cardTokenId, environment) => {
+    if (manualBilling) return
     const ready = environment === 'sandbox' ? sandboxCheckoutReady : productionCheckoutReady
     if (!cardTokenId || !ready) return
     productionAttemptKey.current ||= `ui-${crypto.randomUUID()}`
@@ -204,7 +262,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
   }
 
   if (!isSupabaseConfigured && !demoMode) return <div className="panel billing-empty"><CreditCard size={18} /><p>Conectá Supabase para consultar el estado de facturación.</p></div>
-  if (loading) return <div className="panel billing-empty"><LoaderCircle className="spin" size={18} /> Cargando facturación…</div>
+  if (loading) return <BillingLoadingState />
 
   return (
     <div className="fade-in billing-page">
@@ -219,21 +277,29 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
 
       {error && <div className="error-banner" role="alert">{error}</div>}
       {returnState && <div className="billing-notice" role="status" data-billing-return={returnState.kind}><ShieldCheck size={16} /> {returnState.message}</div>}
-      {demoMode && <div className="billing-notice" role="status"><ShieldCheck size={16} /> La facturación de la demo es informativa: Starter incluye 14 días de prueba y cuesta ARS 30.000 por mes. El checkout se habilita al crear tu cuenta real.</div>}
+      {demoMode && <div className="billing-notice" role="status"><ShieldCheck size={16} /> La facturación de la demo es informativa: Starter incluye {COMMERCIAL_TRIAL_DAYS} días de prueba y cuesta ARS 30.000 por mes. La continuidad se coordina manualmente por WhatsApp.</div>}
       {subscriptionMissing && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Todavía no tenés una suscripción activa. El trial y el plan aparecen cuando el onboarding termina de crear la suscripción.</div>}
+      {trialActive && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Prueba gratuita · {trialDaysRemaining} {trialDaysRemaining === 1 ? 'día restante' : 'días restantes'}.</div>}
+      {trialExpired && <div className="billing-notice billing-notice--expired" role="alert"><ShieldCheck size={16} /> Tu período de prueba terminó.</div>}
       {notice && <div className="billing-notice" role="status"><CheckCircle2 size={16} /> {notice}</div>}
 
       <section className="billing-summary-grid">
         <div className="panel billing-current-card">
-          <div className="billing-card-heading"><div><p className="panel-kicker">Plan actual</p><h2>{subscriptionMissing ? 'Sin suscripción activa' : plan?.nombre || subscription?.plan_codigo || 'Sin plan'}</h2></div><span className={`status-pill billing-status-${subscription?.estado || 'unknown'}`}>{subscriptionMissing ? 'Pendiente de iniciar' : statusLabel(subscription?.estado)}</span></div>
+          <div className="billing-card-heading"><div><p className="panel-kicker">Plan actual</p><h2>{subscriptionMissing ? 'Sin suscripción activa' : plan?.nombre || subscription?.plan_codigo || 'Sin plan'}</h2></div><span className={`status-pill billing-status-${trialExpired ? 'expired' : subscription?.estado || 'unknown'}`}>{subscriptionMissing ? 'Pendiente de iniciar' : trialExpired ? 'Prueba finalizada' : statusLabel(subscription?.estado)}</span></div>
           <p className={`billing-price ${currentIsTrial ? 'billing-price--trial' : ''}`}>{subscriptionMissing ? '—' : currentPrice} {!subscriptionMissing && <small>{currentIsTrial ? 'No se cobra durante el trial' : `/ ${subscription?.periodicidad === 'yearly' ? 'año' : 'mes'}`}</small>}</p>
           <dl className="billing-facts">
             <div><dt>Acceso</dt><dd>{subscriptionMissing ? 'Pendiente de activar' : statusLabel(portal?.access_state)}</dd></div>
-            <div><dt>Trial vence</dt><dd>{formatDate(subscription?.trial_ends_at)}</dd></div>
+            <div><dt>Trial</dt><dd>{trialActive ? `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'día restante' : 'días restantes'} · vence ${formatDate(trialEndsAt)}` : formatDate(trialEndsAt)}</dd></div>
             <div><dt>Período actual</dt><dd>{formatDate(subscription?.current_period_end)}</dd></div>
           </dl>
+          {trialExpired && (trialContinuationHref ? <a className="btn btn-primary billing-continuation-cta" href={trialContinuationHref} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Quiero seguir usando Austral</a> : <p className="billing-helper">Configurá VITE_SALES_WHATSAPP_NUMBER para habilitar la continuidad comercial por WhatsApp.</p>)}
         </div>
-        <div className="panel billing-provider-card">
+        {manualBilling ? <div className="panel billing-provider-card billing-manual-card">
+          <p className="panel-kicker">Facturación manual</p>
+          <h2>Continuá por WhatsApp</h2>
+          <p className="panel-subtitle">Durante esta etapa no se ofrecen Mercado Pago, PayPal, tarjetas ni suscripciones automáticas. Conservamos tus datos y coordinamos la continuidad con el equipo.</p>
+          <span className="status-pill">Sin cobros automáticos</span>
+        </div> : <div className="panel billing-provider-card">
           <p className="panel-kicker">Proveedor para el checkout</p>
           <h2>Elegí cómo pagar</h2>
           <p className="panel-subtitle">El checkout se solicita al backend configurado para tu cuenta. El navegador nunca maneja credenciales.</p>
@@ -243,11 +309,11 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
           {selectedProvider && !selectedProvider.activo && !sandboxCheckoutReady && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><CreditCard size={17} /></div><div><strong>{PROVIDER_LABELS[selectedProvider.codigo] || selectedProvider.nombre} todavía no está disponible</strong><p>La cuenta puede consultar sus planes, pero el checkout permanece bloqueado hasta completar la configuración del proveedor.</p><span className="status-pill">Sin cobros habilitados</span></div></div>}
           {sandboxCheckoutReady && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Prueba sandbox disponible para tenant técnico. Usá únicamente comprador y tarjeta TEST; no genera cobros reales.</div>}
           {!selectedProvider && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><ShieldCheck size={17} /></div><div><strong>Proveedor pendiente de configuración</strong><p>Cuando se habilite un medio de pago, aparecerá acá sin modificar tu plan actual.</p><span className="status-pill">Configuración pendiente</span></div></div>}
-        </div>
+        </div>}
       </section>
 
       <section className="panel billing-plans-panel">
-        <div className="panel-header"><div><h2 className="panel-title">Cambiar de plan</h2><p className="panel-subtitle">El precio se valida de forma segura antes de iniciar el pago.</p><p className="billing-currency-note">Cuando el proveedor no tiene un precio configurado, mostramos sólo la referencia base del catálogo y el checkout permanece bloqueado.</p></div></div>
+        <div className="panel-header"><div><h2 className="panel-title">Planes disponibles</h2><p className="panel-subtitle">Referencias comerciales actuales de Austral.</p><p className="billing-currency-note">La continuidad se coordina manualmente por WhatsApp; no se inicia ningún checkout desde esta pantalla.</p></div></div>
         <div className="billing-plans-grid">{catalog.map((item) => {
           const externalPrice = findExternalPrice(item)
           const providerUnavailable = !selectedProvider?.activo && !sandboxCheckoutReady && !productionCheckoutReady
@@ -265,8 +331,8 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
             <p className={`billing-plan-price ${externalPrice ? '' : 'billing-plan-price--reference'}`}>{displayPrice} <small>{priceMeta}</small></p>
             {!externalPrice && <p className="billing-plan-unavailable">Referencia informativa: no hay un precio externo habilitado para {PROVIDER_LABELS[provider] || provider}.</p>}
             <ul>{Object.entries(item.limites || {}).slice(0, 4).map(([key, value]) => <li key={key}><CheckCircle2 size={14} /> {key}: {value}</li>)}</ul>
-            <button className="btn btn-primary billing-plan-action" disabled={saving || (isCurrentPlan && !demoMode && !samePlanSandboxE2EReady) || (!demoMode && (!externalPrice || providerUnavailable))} onClick={() => { if (demoMode) startCheckout(item.codigo); else if (itemCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{demoMode ? `Empezar prueba gratuita con ${item.nombre}` : isCurrentPlan && !samePlanSandboxE2EReady ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : itemSandboxCheckoutReady ? 'Continuar con tarjeta TEST' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>
-            {itemCheckoutReady && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={sandboxCheckoutReady ? sandboxPublicKey : import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} environment={sandboxCheckoutReady ? 'sandbox' : 'production'} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitSubscription(item.codigo, token, sandboxCheckoutReady ? 'sandbox' : 'production')} /></Suspense>}
+             {!manualBilling && <button className="btn btn-primary billing-plan-action" disabled={saving || (isCurrentPlan && !demoMode && !samePlanSandboxE2EReady) || (!demoMode && (!externalPrice || providerUnavailable))} onClick={() => { if (demoMode) startCheckout(item.codigo); else if (itemCheckoutReady) { productionAttemptKey.current = null; setCardPlanCode(item.codigo) } else startCheckout(item.codigo) }}>{demoMode ? `Empezar prueba gratuita con ${item.nombre}` : isCurrentPlan && !samePlanSandboxE2EReady ? 'Plan actual' : providerUnavailable ? 'No disponible todavía' : !externalPrice ? 'Precio no disponible' : saving ? 'Preparando…' : itemSandboxCheckoutReady ? 'Continuar con tarjeta TEST' : productionCheckoutReady ? 'Continuar con tarjeta' : `Elegir con ${PROVIDER_LABELS[provider] || provider}`}</button>}
+             {!manualBilling && itemCheckoutReady && cardPlanCode === item.codigo && <Suspense fallback={<div className="billing-card-disabled" role="status">Preparando formulario seguro…</div>}><MercadoPagoCardTokenForm publicKey={sandboxCheckoutReady ? sandboxPublicKey : import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY} amount={externalPrice.importe} currency={externalPrice.moneda} email={portal?.tenant?.billing_email || ''} environment={sandboxCheckoutReady ? 'sandbox' : 'production'} disabled={saving} onCancel={() => setCardPlanCode(null)} onToken={(token) => submitSubscription(item.codigo, token, sandboxCheckoutReady ? 'sandbox' : 'production')} /></Suspense>}
           </article>
         })}</div>
       </section>

@@ -45,19 +45,19 @@ La aplicación se divide en cuatro capas:
 
 La migración `20260806060000_saas_foundation.sql` agrega metadatos de tenant, planes, suscripciones, usuarios internos, registro de integraciones y CRM. Está aplicada al proyecto remoto `ssagttjdgtypxjcgdnrw`.
 
-## Prueba gratuita de 14 días
+## Prueba gratuita de 15 días
 
-1. Al crear un negocio se inserta una suscripción `trialing` con `trial_ends_at = now() + 14 days`.
+1. Al crear un negocio se inserta una suscripción `trialing` con `trial_ends_at = now() + 15 days` para nuevas altas. La duración proviene de `saas_planes.trial_dias`; las fechas de trials existentes no se reescriben.
 2. Durante el trial se habilitan agenda, clientes, reservas públicas y una integración inicial.
 3. En el día 10 se muestra aviso y se crea una tarea de seguimiento en CRM.
-4. Al vencer, la cuenta pasa a `past_due` o `expired`, conserva lectura/exportación y bloquea nuevas reservas después de un período de gracia configurable.
+4. Al vencer, `expire_saas_trials` (cuando lo invoca el job privado) pasa la cuenta de `trialing` a `expired`, sin período de gracia automático. Además, `barberia_access_state()` comprueba `trial_ends_at <= now()` en cada lectura para bloquear reservas y mutaciones aunque el scheduler esté atrasado. El propietario puede iniciar sesión, consultar Billing y contactar ventas; los datos se conservan intactos.
 5. Un webhook de pagos actualiza la suscripción de forma idempotente usando un identificador de evento en la siguiente migración de billing.
 
 No se abrirán cuentas de pago ni se cobrarán fondos automáticamente sin autorización explícita.
 
 ## Activación y suspensión por pago
 
-Estados previstos: `trialing`, `active`, `past_due`, `paused`, `canceled` y `expired`. La función `barberia_access_state()` ya centraliza la lectura del estado. En la siguiente etapa se incorporará a las políticas de lectura/escritura con una excepción de propietario para exportar datos y resolver facturación.
+Estados previstos: `trialing`, `active`, `past_due`, `grace_period`, `paused`, `canceled` y `expired`. `past_due`/`grace_period` siguen representando fallas de pago de suscripciones activas; `expired` identifica exclusivamente el trial comercial vencido y no se transforma en grace automáticamente. `barberia_access_state()` centraliza la lectura y mantiene habilitada la vista de Billing para el propietario sin reabrir la operación.
 
 ## CRM y agentes
 
@@ -95,6 +95,6 @@ idempotente de administracion estan documentados en `docs/PLATFORM_ADMIN.md`.
 1. Aplicar y verificar la migración SaaS en Supabase; crear el primer `platform_member`.
 2. Crear onboarding de negocio, selección de vertical, branding y usuarios.
 3. Pilotear el contrato multi-tenant de WhatsApp documentado en `docs/MULTITENANT_WHATSAPP_CONTRACT.md`, sin activar todavía el workflow de producción.
-4. Implementar billing con proveedor elegido, eventos idempotentes y enforcement de acceso.
+4. Implementar billing con eventos idempotentes y enforcement de acceso; la salida comercial vigente permanece manual por WhatsApp, con activación controlada desde plataforma.
 5. Construir CRM operativo y agentes en modo borrador/aprobación.
 6. Agregar dominios/subdominios por tenant, presets de vertical y métricas comerciales.

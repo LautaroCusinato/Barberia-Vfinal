@@ -437,6 +437,16 @@
   border-radius: var(--radius-md);
 }
 
+.platform-billing-panel .platform-table th:last-child,
+.platform-billing-panel .platform-table td:last-child {
+  min-width: 174px;
+  text-align: right;
+}
+
+.platform-billing-panel .platform-table td:last-child .btn {
+  white-space: nowrap;
+}
+
 .platform-billing-panel .platform-table tbody tr {
   border-bottom: 1px solid var(--border);
 }

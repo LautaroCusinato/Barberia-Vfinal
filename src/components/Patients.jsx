@@ -5,6 +5,7 @@ import { normalizar, soloDigitos, formatTelefonoDisplay, formatFechaVisible } fr
 import PatientDetailModal from './PatientDetailModal'
 import EditPatientModal from './EditPatientModal'
 import NewPatientModal from './NewPatientModal'
+import { EmptyState } from './ui'
 
 export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente }) {
   const [query, setQuery] = useState('')
@@ -54,10 +55,12 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
       </div>
 
       {pacientes.length === 0 ? (
-        <div className="empty-state">
-          <Users size={26} style={{ color: 'var(--border-strong)' }} />
-          <p>Todavia no hay clientes registrados</p>
-        </div>
+        <EmptyState
+          className="empty-state"
+          icon={<Users size={26} aria-hidden="true" style={{ color: 'var(--border-strong)' }} />}
+          title="Todavía no hay clientes registrados"
+          action={<button type="button" className="btn btn-primary" onClick={() => setAgregando(true)}><UserPlus size={14} /> Agregar cliente</button>}
+        />
       ) : filtrados.length === 0 ? (
         <div className="empty-state">
           <Search size={26} style={{ color: 'var(--border-strong)' }} />

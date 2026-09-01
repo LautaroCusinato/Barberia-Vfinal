@@ -140,6 +140,17 @@ function formatMoney(value, currency) {
   try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: currency || 'USD' }).format(Number(value)) } catch { return `${value} ${currency || ''}`.trim() }
 }
 
+export function isNonOperationalBillingTenant(tenant, now = new Date()) {
+  if (!tenant) return false
+  const state = String(tenant.estado || '').toLowerCase()
+  const accessState = String(tenant.access_state || '').toLowerCase()
+  const trialEnded = tenant.trial_ends_at && new Date(tenant.trial_ends_at).getTime() <= new Date(now).getTime()
+  return ['expired', 'suspended', 'canceled', 'grace_period'].includes(accessState)
+    || ['expired', 'suspended', 'canceled'].includes(state)
+    || (state === 'trialing' && trialEnded)
+    || (state === 'past_due' && tenant.status_reason === 'trial_expired')
+}
+
 function SandboxBillingConsole({ role, snapshot, busy, error, notice, auditWarning, confirmAction, onAction }) {
   if (!['owner', 'admin'].includes(role)) return null
   const config = snapshot?.configStatus
@@ -263,6 +274,11 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [form, setForm] = useState(emptyBusiness)
   const [view, setView] = useState(() => platformViewFromUrl(role))
   const [billingOverview, setBillingOverview] = useState(null)
+  const [activationTarget, setActivationTarget] = useState(null)
+  const [activationReason, setActivationReason] = useState('Activación manual post-trial')
+  const [activationBusy, setActivationBusy] = useState(false)
+  const [activationError, setActivationError] = useState('')
+  const [activationNotice, setActivationNotice] = useState('')
   const [sandboxSnapshot, setSandboxSnapshot] = useState({ tenant: null, binding: null, provider: null, plan: null, price: null, checkout: null, configStatus: null, externalStatus: null, productionIdentity: null, productionPlanSearch: null, productionPilot: null })
   const [sandboxBusy, setSandboxBusy] = useState(false)
   const [sandboxError, setSandboxError] = useState('')
@@ -270,6 +286,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   const [sandboxAuditWarning, setSandboxAuditWarning] = useState('')
   const [sandboxConfirmAction, setSandboxConfirmAction] = useState('')
   const canWrite = ['owner', 'admin', 'sales', 'automation'].includes(role)
+  const canActivateSubscriptions = ['owner', 'admin'].includes(role)
 
   useEffect(() => {
     const handlePopState = () => setView(platformViewFromUrl(role))
@@ -448,6 +465,7 @@ export default function PlatformCRM({ role = 'owner' }) {
   }), [businesses, leads])
 
   const businessById = useMemo(() => new Map(businesses.map((business) => [business.id, business])), [businesses])
+  const billingTenantById = useMemo(() => new Map((billingOverview?.tenants || []).map((tenant) => [Number(tenant.barberia_id), tenant])), [billingOverview])
   const filteredLeads = useMemo(() => {
     const needle = search.trim().toLowerCase()
     if (!needle) return leads
@@ -489,6 +507,51 @@ export default function PlatformCRM({ role = 'owner' }) {
       await load()
     }
     setSaving(false)
+  }
+
+  const openActivation = (tenant) => {
+    if (!canActivateSubscriptions || !tenant?.subscription_id || !isNonOperationalBillingTenant(tenant)) return
+    setActivationTarget(tenant)
+    setActivationReason('Activación manual post-trial')
+    setActivationError('')
+    setActivationNotice('')
+  }
+
+  const closeActivation = () => {
+    if (activationBusy) return
+    setActivationTarget(null)
+    setActivationError('')
+  }
+
+  const activateSubscription = async (event) => {
+    event.preventDefault()
+    if (activationBusy || !canActivateSubscriptions || !activationTarget?.subscription_id) return
+    const reason = activationReason.trim() || 'Activación manual post-trial'
+    setActivationBusy(true)
+    setActivationError('')
+    setActivationNotice('')
+    try {
+      const { error: transitionError } = await supabase.rpc('transition_saas_subscription', {
+        p_subscription_id: Number(activationTarget.subscription_id),
+        p_to_state: 'active',
+        p_reason: reason,
+        p_source: 'admin',
+        p_expected_version: activationTarget.state_version == null ? null : Number(activationTarget.state_version),
+      })
+      if (transitionError) {
+        setActivationError(transitionError.code === '40001'
+          ? 'La suscripción cambió mientras la activabas. Actualizá el resumen e intentá nuevamente.'
+          : 'No se pudo activar la suscripción. La cuenta no fue modificada.')
+      } else {
+        setActivationNotice(`Suscripción de ${activationTarget.nombre} activada.`)
+        setActivationTarget(null)
+        await load()
+      }
+    } catch {
+      setActivationError('No se pudo conectar con billing. La cuenta no fue modificada.')
+    } finally {
+      setActivationBusy(false)
+    }
   }
 
   return (
@@ -535,6 +598,8 @@ export default function PlatformCRM({ role = 'owner' }) {
         </div>
 
         {error && <div className="error-banner" role="alert">{error}</div>}
+        {activationNotice && <div className="billing-notice" role="status">{activationNotice}</div>}
+        {activationError && !activationTarget && <div className="error-banner" role="alert">{activationError}</div>}
 
         <section className="stats-grid platform-stats platform-kpis" aria-label="Resumen del CRM">
           <div className="stat-card platform-kpi"><span className="stat-label">Negocios</span><strong>{stats.total}</strong><small className="platform-kpi-caption">Total registrado</small></div>
@@ -545,10 +610,10 @@ export default function PlatformCRM({ role = 'owner' }) {
 
         {view === 'pilot' ? <CommercialPilot /> : view === 'agent' ? <CommercialAgent /> : view === 'queue' ? <section className="panel platform-crm-panel platform-actions-panel"><CRMOutreachQueue role={role} /></section> : view === 'actions' ? <section className="panel platform-crm-panel platform-actions-panel"><CRMActionInbox role={role} /></section> : view === 'billing' ? <>
           <section className="panel platform-crm-panel platform-billing-panel">
-            <div className="panel-header"><div><h2 className="panel-title">Salud de las cuentas</h2><p className="panel-subtitle">Sólo lectura. Las transiciones se ejecutan por RPC y webhook verificado.</p></div></div>
+            <div className="panel-header"><div><h2 className="panel-title">Salud de las cuentas</h2><p className="panel-subtitle">Estado de suscripciones y trials. Las activaciones manuales se ejecutan por RPC y quedan auditadas.</p></div></div>
             {!billingOverview ? <div className="empty-state">No se pudo cargar el resumen de billing.</div> : <>
               <div className="stats-grid platform-stats billing-platform-stats">{Object.entries(billingOverview.subscriptions_by_state || {}).map(([state, count]) => <div className="stat-card" key={state}><span className="stat-label">{stageLabel(state)}</span><strong>{count}</strong></div>)}</div>
-              <div className="table-scroll"><table className="table platform-table"><thead><tr><th>Negocio</th><th>Plan</th><th>Estado</th><th>Acceso</th><th>Trial</th><th>Periodo</th></tr></thead><tbody>{(billingOverview.tenants || []).map((tenant) => <tr key={tenant.barberia_id}><td><strong>{tenant.nombre}</strong></td><td>{tenant.plan_codigo}</td><td><span className="status-pill">{stageLabel(tenant.estado)}</span></td><td><span className="status-pill">{stageLabel(tenant.access_state)}</span></td><td>{formatDate(tenant.trial_ends_at)}</td><td>{formatDate(tenant.current_period_end)}</td></tr>)}</tbody></table></div>
+              <div className="table-scroll"><table className="table platform-table"><thead><tr><th>Negocio</th><th>Plan</th><th>Estado</th><th>Acceso</th><th>Trial</th><th>Periodo</th>{canActivateSubscriptions && <th>Acción</th>}</tr></thead><tbody>{(billingOverview.tenants || []).map((tenant) => <tr key={tenant.barberia_id}><td><strong>{tenant.nombre}</strong></td><td>{tenant.plan_codigo}</td><td><span className="status-pill">{stageLabel(tenant.estado)}</span></td><td><span className="status-pill">{stageLabel(tenant.access_state)}</span></td><td>{formatDate(tenant.trial_ends_at)}</td><td>{formatDate(tenant.current_period_end)}</td>{canActivateSubscriptions && <td>{isNonOperationalBillingTenant(tenant) && tenant.subscription_id ? <button type="button" className="btn btn-primary" onClick={() => openActivation(tenant)} disabled={activationBusy}><CheckSquare size={14} /> Activar suscripción</button> : <span className="billing-helper">Sin acción</span>}</td>}</tr>)}</tbody></table></div>
               <p className="panel-subtitle billing-platform-footnote">Webhooks pendientes: {billingOverview.pending_webhooks || 0} · Eventos internos pendientes: {billingOverview.pending_events || 0}</p>
             </>}
           </section>
@@ -566,7 +631,7 @@ export default function PlatformCRM({ role = 'owner' }) {
           ) : (
             <div className="table-scroll">
               <table className="table platform-table">
-                <thead><tr><th>Negocio</th><th>Rubro / pais</th><th>Etapa</th><th>Interes</th><th>Proxima accion</th></tr></thead>
+                <thead><tr><th>Negocio</th><th>Rubro / pais</th><th>Etapa</th><th>Interes</th><th>Proxima accion</th>{canActivateSubscriptions && <th>Billing</th>}</tr></thead>
                 <tbody>{filteredBusinesses.map((business) => (
                   <tr key={business.id}>
                     <td><div className="table-name-cell"><span className="avatar avatar-sm">{business.nombre.slice(0, 1).toUpperCase()}</span><div><strong>{business.nombre}</strong><small>{business.email || business.telefono || 'Sin contacto'}</small></div></div></td>
@@ -574,6 +639,7 @@ export default function PlatformCRM({ role = 'owner' }) {
                     <td><span className={`status-pill stage-${business.etapa}`}>{stageLabel(business.etapa)}</span></td>
                     <td>{business.interes || 'Sin clasificar'}</td>
                     <td>{formatDate(business.proxima_accion_at)}</td>
+                    {canActivateSubscriptions && <td>{(() => { const tenant = billingTenantById.get(Number(business.barberia_id)); return isNonOperationalBillingTenant(tenant) && tenant?.subscription_id ? <button type="button" className="btn btn-primary" onClick={() => openActivation(tenant)} disabled={activationBusy}><CheckSquare size={14} /> Activar suscripción</button> : <span className="billing-helper">—</span> })()}</td>}
                   </tr>
                 ))}</tbody>
               </table>
@@ -610,6 +676,17 @@ export default function PlatformCRM({ role = 'owner' }) {
           <div className="modal-row"><div className="modal-field"><label className="modal-label">Interes</label><input className="text-input" value={form.interes} onChange={(event) => updateForm('interes', event.target.value)} /></div><div className="modal-field"><label className="modal-label">Precio ofrecido ({form.moneda})</label><input className="text-input" type="number" min="0" step="0.01" value={form.precio_ofrecido} onChange={(event) => updateForm('precio_ofrecido', event.target.value)} /></div></div>
           <div className="modal-field"><label className="modal-label">Notas</label><textarea className="text-input" rows="3" value={form.notas} onChange={(event) => updateForm('notas', event.target.value)} /></div>
           <div className="modal-actions"><button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar negocio'}</button></div>
+        </form>
+      </div>}
+      {activationTarget && <div className="modal-overlay" onClick={closeActivation}>
+        <form className="modal-box platform-crm-form" onSubmit={activateSubscription} onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><h2 className="panel-title">Activar suscripción</h2><p className="panel-subtitle">{activationTarget.nombre} · acción de plataforma auditada</p></div><button type="button" className="btn-icon-plain" onClick={closeActivation} aria-label="Cerrar" disabled={activationBusy}><X size={18} /></button></div>
+          <div className="modal-row"><div className="modal-field"><span className="modal-label">Plan vigente</span><strong>{activationTarget.plan_codigo || 'starter'}</strong></div><div className="modal-field"><span className="modal-label">Estado destino</span><strong>Activa</strong></div></div>
+          <div className="modal-field"><span className="modal-label">Período actual</span><span>{formatDate(activationTarget.current_period_end)}</span></div>
+          <div className="modal-field"><span className="modal-label">Trial original</span><span>{formatDate(activationTarget.trial_ends_at)} · no se reinicia</span></div>
+          <div className="modal-field"><label className="modal-label" htmlFor="activation-reason">Nota de auditoría</label><textarea id="activation-reason" className="text-input" rows="3" maxLength="240" value={activationReason} onChange={(event) => setActivationReason(event.target.value)} disabled={activationBusy} /></div>
+          {activationError && <div className="error-banner" role="alert">{activationError}</div>}
+          <div className="modal-actions"><button type="button" className="btn" onClick={closeActivation} disabled={activationBusy}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={activationBusy || !activationTarget.subscription_id}>{activationBusy ? 'Activando...' : 'Confirmar activación'}</button></div>
         </form>
       </div>}
     </div>

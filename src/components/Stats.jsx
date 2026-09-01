@@ -317,6 +317,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <Search size={15} style={{ color: 'var(--ink-faint)' }} />
             <input
               className="search-input"
+              aria-label="Filtrar pagos por cliente"
               placeholder="Buscar por cliente..."
               value={filtroPagoNombre}
               onChange={(e) => setFiltroPagoNombre(e.target.value)}
@@ -330,6 +331,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
           <input
             className="text-input"
             type="date"
+            aria-label="Filtrar pagos por fecha"
             style={{ maxWidth: 170 }}
             value={filtroPagoFecha}
             onChange={(e) => setFiltroPagoFecha(e.target.value)}
