@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-const app = fs.readFileSync('src/App.jsx', 'utf8')
-const providers = fs.readFileSync('supabase/functions/_shared/providers.ts', 'utf8')
-const billingApi = fs.readFileSync('supabase/functions/billing-api/index.ts', 'utf8')
+const normalizeLineEndings = (text) => text.replace(/\r\n?/g, '\n')
+const read = (file) => normalizeLineEndings(fs.readFileSync(file, 'utf8'))
+
+assert.equal(normalizeLineEndings('a\nb'), normalizeLineEndings('a\r\nb'))
+assert.equal(normalizeLineEndings('a\nb'), normalizeLineEndings('a\rb'))
+
+const app = read('src/App.jsx')
+const providers = read('supabase/functions/_shared/providers.ts')
+const billingApi = read('supabase/functions/billing-api/index.ts')
 
 // Realtime must never print message payloads, which can contain customer PII.
 assert.doesNotMatch(app, /console\.log\('\[realtime\] evento en mensajes:',\s*payload\)/)

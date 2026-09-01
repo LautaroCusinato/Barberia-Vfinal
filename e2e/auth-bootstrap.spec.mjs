@@ -2,11 +2,11 @@ import { test, expect } from '@playwright/test'
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
 const SESSION = {
-  access_token: 'e2e-auth-bootstrap-token',
+  access_token: 'stub',
   token_type: 'bearer',
   expires_in: 3600,
   expires_at: Math.floor(Date.now() / 1000) + 3600,
-  refresh_token: 'e2e-auth-bootstrap-refresh',
+  refresh_token: 'stub',
   user: {
     id: USER_ID,
     aud: 'authenticated',

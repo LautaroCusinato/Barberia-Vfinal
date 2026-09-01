@@ -6,10 +6,14 @@ import { fileURLToPath } from 'node:url'
 // Offline contract tests only. They never read secrets, contact Supabase or
 // Mercado Pago, create tokens, or mutate billing state.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
+const normalizeLineEndings = (text) => text.replace(/\r\n?/g, '\n')
+const read = (relative) => normalizeLineEndings(fs.readFileSync(path.join(root, relative), 'utf8'))
 const api = read('supabase/functions/billing-api/index.ts')
 const providers = read('supabase/functions/_shared/providers.ts')
 const billing = read('src/pages/Billing.jsx')
+
+assert.equal(normalizeLineEndings('a\nb'), normalizeLineEndings('a\r\nb'))
+assert.equal(normalizeLineEndings('a\nb'), normalizeLineEndings('a\rb'))
 
 assert.match(api, /function qaSandboxE2EEnabled\(tenantId: number\)/)
 assert.match(api, /cmsymmszlzikqpvfqjre/)
