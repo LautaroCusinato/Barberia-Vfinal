@@ -1,40 +1,53 @@
-# Diseño de los primeros 20 prospectos
+# First 20 prospects: execution design
 
-Este documento define un proceso, no una lista de negocios reales. Los primeros registros deben crearse sólo después de una aprobación comercial y con información pública o entregada voluntariamente.
+This document defines a controlled sequence, not a stored list of real businesses. Add a prospect only after public-source research, contact-owner classification, DNC/duplicate review and human approval. The CRM is the source of truth; the empty [PROSPECT-TRACKER.csv](./PROSPECT-TRACKER.csv) is only a preparation template.
 
-## Fuente y criterios
+## Cohort strategy
 
-Elegir negocios de servicios que tengan una operación visible de reservas o atención por turnos y que puedan probar el producto con una persona responsable. Priorizar variedad de tamaño y rubro, no contactos masivos. Registrar fuente, fecha, país, idioma, rubro, web/redes, problema observado, canal preferido, base legal/consentimiento y responsable.
+`20 leads → top 10 → contact 5 → measure → adjust → second 5 → demos → first trial`
 
-No hacer scraping, comprar bases, inferir teléfonos privados ni cargar prospectos sin una base legal. El PlatformCRM existente es la única superficie de seguimiento; no crear otro CRM.
+### Top 10 selection
 
-## Pipeline
+Rank by the score in [IDEAL-FIRST-CUSTOMER.md](./IDEAL-FIRST-CUSTOMER.md), then use these tie-breakers:
 
-`LEAD → CONTACTED → REPLIED → DEMO → TRIAL → ACTIVE` y `LOST` cuando la persona no continúa o pide no contacto. Cada transición debe tener fecha, responsable, nota breve y próxima acción; DNC bloquea nuevos contactos.
+1. direct owner/employee contact is publicly verified;
+2. low switching friction and a concrete scheduling problem;
+3. one to five active professionals;
+4. recent public activity;
+5. a clear path to a 15-day trial.
 
-| Etapa | Entrada | Salida |
-|---|---|---|
-| LEAD | Negocio identificado y fuente registrada. | Datos mínimos revisados y contacto permitido. |
-| CONTACTED | Se envió un único primer contacto manual. | Respuesta, rebote o fecha de seguimiento. |
-| REPLIED | Respondió o pidió información. | Necesidad entendida y demo acordada/no acordada. |
-| DEMO | Demo realizada o cancelada. | Próximo paso explícito. |
-| TRIAL | Cuenta creada con consentimiento y onboarding completo. | Uso y feedback del trial. |
-| ACTIVE | Decidió continuar por el canal manual acordado. | Registro de continuidad y soporte. |
-| LOST | No encaja, no responde tras cadencia o pide no contacto. | Cierre respetuoso; no nuevos envíos. |
+Do not use a large chain, a business with a mature system and no identified gap, or a contact that belongs to an agency, provider, platform or intermediary.
 
-## Cadencia sugerida
+## First 5
 
-- Día 0: primer contacto manual.
-- Día 3–5: un seguimiento sólo si no pidió no contacto.
-- Día 10–14: cierre respetuoso y sin insistencia.
-- Durante trial: revisión acordada en día 1, 3, 7, 12 y 15.
+- Review each business and exact recipient with Lautaro.
+- Confirm `BUSINESS_DIRECT` or `EMPLOYEE_BUSINESS`.
+- Confirm DNC, prior-negative contact and duplicate checks in the CRM.
+- Choose one channel and one short, personalized message.
+- Contact manually, one business at a time.
+- Stop new contacts at five and report outcomes.
 
-No mandar mensajes automáticos. Si responde, detener la cadencia y conversar. No medir el éxito por la cantidad de contactos enviados.
+## Learn before the second 5
 
-## Ficha mínima
+Review response quality, objections, source accuracy, identity issues, demo requests and DNC. Adjust only the relevant line or variant; do not rewrite the entire offer after one response. If a product limitation appears repeatedly, pause and document it with the product owner.
 
-`nombre_negocio`, `nombre_contacto` si lo entregó, canal, fuente, rubro, país/idioma, web/redes públicas, necesidad observada, base legal, DNC, responsable, etapa, fecha de último contacto, próxima acción, resultado de demo/trial y notas de soporte. Evitar contenido de conversaciones que no sea necesario para la operación.
+## Second 5
 
-## Revisión de los 20
+Repeat the same gate with five new prospects. Never backfill a non-response through another channel. Never send 20 identical messages in one batch.
 
-Armar cohortes pequeñas (por ejemplo 5 + 5 + 5 + 5), revisar calidad de datos y consentimiento al cierre de cada cohorte y parar si aparece un patrón de spam, confusión de plan o problema de producto. Recién con evidencia del piloto definir segmentación, entitlements de planes y cadencia definitiva.
+## Demos and trials
+
+- A positive reply becomes a human-reviewed demo conversation.
+- Use the approved demo link only when its readiness is confirmed.
+- Offer a 15-day trial only after consent, scope and onboarding readiness are clear.
+- Do not create a tenant, meeting, discount or billing record automatically.
+
+## Pipeline states
+
+`NEW → RESEARCHED → CONTACTED → REPLIED → DEMO_SCHEDULED → DEMO_DONE → TRIAL → ACTIVE`
+
+Use `LOST` for a closed fit or exhausted respectful cadence and `DO_NOT_CONTACT` for an explicit request or safety/identity block. Record timestamps, owner, channel, exact message and next action in CRM.
+
+## Reporting after each cohort
+
+Report exactly: sent manually, delivered/bounced, replies, positive replies, demos, trials, DNC, errors, identity reviews and the five exact recipients. Stop and wait for Lautaro's review before expanding.
