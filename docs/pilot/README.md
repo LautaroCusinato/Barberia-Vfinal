@@ -31,6 +31,8 @@ Para preparar el primer cliente sin outreach automático, usar [IDEAL-FIRST-CUST
 
 El flujo de respuesta y seguimiento está en [SALES-RESPONSE-PLAYBOOK.md](./SALES-RESPONSE-PLAYBOOK.md), [OUTREACH-SEQUENCE.md](./OUTREACH-SEQUENCE.md), [DEMO-CTA.md](./DEMO-CTA.md), [PRICING-CONVERSATION.md](./PRICING-CONVERSATION.md) y [SALES-DAILY-RUNBOOK.md](./SALES-DAILY-RUNBOOK.md). La propuesta y el objetivo están en [VALUE-PROPOSITION.md](./VALUE-PROPOSITION.md), [COMPETITIVE-POSITIONING.md](./COMPETITIVE-POSITIONING.md), [SALES-ONE-LINERS.md](./SALES-ONE-LINERS.md) y [FIRST-CUSTOMER-GOAL.md](./FIRST-CUSTOMER-GOAL.md).
 
+La primera tanda preparada para revisión humana está en [FIRST-REAL-PROSPECT-BATCH.md](./FIRST-REAL-PROSPECT-BATCH.md). Incluye sólo evidencia comercial pública, copy pendiente de aprobación y gates de identidad; no contiene envíos ni drafts ejecutados.
+
 Este kit exige revisión humana de Lautaro, una cuenta por negocio, datos comerciales públicos y ningún envío automático. [PROSPECT-TRACKER.csv](./PROSPECT-TRACKER.csv) permanece vacío hasta que un prospecto tenga fuente y permiso operativo revisados.
 
 ## Guardas del primer piloto
