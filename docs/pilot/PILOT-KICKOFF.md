@@ -17,4 +17,8 @@ Guion para el momento en que una barbería acepta probar Austral.
 
 > “Al cumplirse los 15 días revisamos juntos qué usaste y si querés continuar. La continuidad se coordina manualmente; no se cobra nada automáticamente por el solo hecho de terminar la prueba.”
 
-No prometer una fecha de pago, un descuento, integraciones o prestaciones que no estén en el catálogo vigente. Si la barbería no quiere seguir, se registra el cierre y se conserva la información según la política acordada.
+## Precio vigente
+
+> “Austral tiene un único plan de ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.”
+
+No prometer una fecha de pago, un descuento, precio por sucursal, precio enterprise, integraciones o prestaciones que no estén confirmadas. Si la barbería no quiere seguir, se registra el cierre y se conserva la información según la política acordada.

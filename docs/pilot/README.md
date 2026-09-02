@@ -8,9 +8,11 @@ Validar con pocos negocios si Austral ayuda a ordenar reservas, clientes, servic
 
 ## Alcance
 
-Incluye onboarding asistido, configuración inicial, uso diario de agenda y reservas, acompañamiento, seguimiento comercial y medición manual de resultados. La continuidad se coordina manualmente por WhatsApp; el catálogo conocido publica Starter ARS 30.000/mes, Pro ARS 60.000/mes y Premium ARS 100.000/mes.
+Incluye onboarding asistido, configuración inicial, uso diario de agenda y reservas, acompañamiento, seguimiento comercial y medición manual de resultados. La continuidad se coordina manualmente por WhatsApp. La verdad comercial vigente es un único plan Austral a ARS 50.000/mes, con 15 días gratis para probarlo.
 
-No se inventan prestaciones por plan: **PLAN ENTITLEMENTS = TO DEFINE AFTER PILOT DATA**. Las automatizaciones de WhatsApp, billing automático, Mercado Pago productivo y cualquier cobro real siguen fuera del piloto hasta contar con aprobación y controles separados.
+No se inventan prestaciones adicionales: el alcance se valida durante el piloto. Si una barbería tiene más de una sucursal, se responde “Si tienen más de una sucursal, lo vemos según el caso”; no hay precio por sucursal, descuento ni precio enterprise definido. Las automatizaciones de WhatsApp, billing automático, Mercado Pago productivo y cualquier cobro real siguen fuera del piloto hasta contar con aprobación y controles separados.
+
+El contacto comercial por WhatsApp del sitio debe resolver su destino desde `VITE_SALES_WHATSAPP_NUMBER`. No hardcodear números personales en archivos públicos.
 
 ## Cómo usar este kit
 

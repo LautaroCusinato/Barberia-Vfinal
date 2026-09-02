@@ -51,7 +51,7 @@ Preparación offline para revisión humana de Lautaro. Este documento no autoriz
    > Último mensaje por acá, no quiero molestar. Si en algún momento querés ver una agenda para barberías, ¿te muestro una demo de 5 minutos?
 
 11. **Si pregunta “¿qué es?”**: “Austral es una herramienta para ordenar agenda, reservas, clientes, servicios y horarios de una barbería. La podemos probar 15 días y ver si te resulta útil.”
-12. **Si pregunta precio**: “El plan Starter está en ARS 30.000 por mes y hay 15 días de prueba gratis. En el piloto vemos qué nivel encaja; todavía no asignamos prestaciones cerradas por plan.”
+12. **Si pregunta precio**: “Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.”
 13. **CTA de demo**: “Si querés, te muestro cómo funciona en 5 minutos.”
 14. **Objeción principal probable**: “No quiero cambiar cómo tomo turnos por WhatsApp.”
 15. **Respuesta sugerida**: “Tiene sentido. La idea es mostrarte si una agenda ordenada te simplifica el día, sin pedirte cambiar todo de entrada; la integración de WhatsApp sigue en validación con pilotos.”
@@ -78,7 +78,7 @@ Preparación offline para revisión humana de Lautaro. Este documento no autoriz
    > Último mensaje por acá. Si más adelante querés ver cómo funciona una agenda para barberías, ¿te muestro una demo de 5 minutos?
 
 11. **Si pregunta “¿qué es?”**: “Austral ordena agenda, reservas, clientes, servicios y horarios para que el equipo tenga la información más clara. Se puede probar 15 días.”
-12. **Si pregunta precio**: “Starter cuesta ARS 30.000 por mes y hay 15 días gratis. En el piloto definimos qué nivel encaja mejor; no hay prestaciones por plan cerradas todavía.”
+12. **Si pregunta precio**: “Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.”
 13. **CTA de demo**: “Si querés, te muestro cómo funciona en 5 minutos.”
 14. **Objeción principal probable**: “¿Qué problema me resuelve?”
 15. **Respuesta sugerida**: “Depende de cómo estén tomando turnos hoy. Primero miramos ese flujo y, si hay mensajes o agenda dispersa, te muestro si Austral puede ordenarlo; no hace falta asumir un cambio antes de verlo.”
@@ -107,7 +107,7 @@ Preparación offline para revisión humana de Lautaro. Este documento no autoriz
    > Cierro por acá para no insistir. Si en algún momento querés ver una agenda pensada para barberías, ¿te muestro una demo de 5 minutos?
 
 11. **Si pregunta “¿qué es?”**: “Austral es una herramienta para ordenar reservas, agenda, clientes, servicios y horarios. La idea es probarla 15 días y ver si les simplifica el trabajo.”
-12. **Si pregunta precio**: “Starter está en ARS 30.000 por mes, con 15 días de prueba gratis. En el piloto definimos qué nivel encaja; no inventamos diferencias de prestaciones.”
+12. **Si pregunta precio**: “Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.”
 13. **CTA de demo**: “Te puedo pasar una demo y ves si te sirve.”
 14. **Objeción principal probable**: “No sé si necesitamos otra herramienta.”
 15. **Respuesta sugerida**: “Totalmente válido. La demo es corta y sirve para comparar con lo que ya usan; si no aporta, no hace falta seguir.”
@@ -136,7 +136,7 @@ Preparación offline para revisión humana de Lautaro. Este documento no autoriz
    > Último mensaje por acá, no quiero molestar. Si alguna vez querés comparar otra forma de ordenar reservas, ¿te muestro una demo de 5 minutos?
 
 11. **Si pregunta “¿qué es?”**: “Austral ordena agenda, reservas, clientes, servicios y horarios para una barbería. Si ya tienen un sistema, la demo sirve para comparar sin asumir una migración.”
-12. **Si pregunta precio**: “Starter cuesta ARS 30.000 por mes y hay 15 días de prueba gratis. En el piloto vemos qué nivel encaja mejor, sin prometer prestaciones que todavía no estén cerradas.”
+12. **Si pregunta precio**: “Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.”
 13. **CTA de demo**: “Si querés, te muestro cómo funciona en 5 minutos.”
 14. **Objeción principal probable**: “Ya tenemos reservas online.”
 15. **Respuesta sugerida**: “Perfecto, entonces no tendría sentido cambiar por cambiar. Podemos comparar el flujo actual con una demo corta y ver si hay algo que realmente les simplifique la agenda.”
@@ -163,7 +163,7 @@ Preparación offline para revisión humana de Lautaro. Este documento no autoriz
    > Último mensaje por acá, no quiero insistir. Si más adelante te interesa ver una agenda para barberías, ¿te muestro una demo de 5 minutos?
 
 11. **Si pregunta “¿qué es?”**: “Austral es una herramienta para ordenar agenda, reservas, clientes, servicios y horarios. Se puede probar 15 días y evaluar con calma.”
-12. **Si pregunta precio**: “El Starter está en ARS 30.000 por mes y hay 15 días gratis. Durante el piloto definimos qué nivel encaja; los entitlements de cada plan todavía no están cerrados.”
+12. **Si pregunta precio**: “Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.”
 13. **CTA de demo**: “Te puedo pasar una demo y ves si te sirve.”
 14. **Objeción principal probable**: “Pasame info y lo veo después.”
 15. **Respuesta sugerida**: “Dale, te paso lo más corto: Austral ordena agenda y reservas de una barbería. Si después te sirve, vemos una demo de 5 minutos; no hace falta decidir nada ahora.”

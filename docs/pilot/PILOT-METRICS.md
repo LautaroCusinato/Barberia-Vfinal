@@ -18,7 +18,7 @@ Medir para aprender, no para maquillar resultados. Separar datos de producto, fe
 - Tasa de respuesta, demos realizadas, trials iniciados y continuidad solicitada.
 - Tiempo entre etapas.
 - Objeciones y motivos de `LOST`.
-- Intención de continuar y plan consultado, sin asumir compra.
+- Intención de continuar y oferta consultada, sin asumir compra.
 
 ## Manual vs automático
 

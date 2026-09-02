@@ -8,7 +8,11 @@ Human review remains mandatory. When any prospect replies, stop all scheduled fo
 
 ## “¿Cuánto sale?”
 
-“Starter cuesta ARS 30.000 por mes e incluye 15 días de prueba. También existen Pro ARS 60.000 y Premium ARS 100.000; las diferencias definitivas de prestaciones todavía se están validando.”
+“Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.”
+
+## “Tenemos varias sucursales”
+
+“Si tienen más de una sucursal, lo vemos según el caso. Primero entendemos cómo trabajan y qué necesitan probar.” No prometer precio por sucursal, descuento ni precio enterprise.
 
 ## “¿Qué hace?”
 

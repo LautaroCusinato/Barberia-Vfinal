@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Austral should start with one barbería real where the owner can see value quickly, give honest feedback and decide whether ARS 30.000+ per month is justified. This is a qualification model, not a claim about any specific business.
+Austral should start with one barbería real where the owner can see value quickly, give honest feedback and decide whether ARS 50.000 per month is justified. This is a qualification model, not a claim about any specific business.
 
 ## High-priority profile
 

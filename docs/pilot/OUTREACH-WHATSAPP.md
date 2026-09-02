@@ -59,7 +59,11 @@ Only include the demo link after the technical owner confirms `DEMO COMMERCIAL R
 
 ## If they ask price
 
-> El Starter cuesta ARS 30.000 por mes e incluye 15 días de prueba. Durante el piloto vemos qué nivel encaja mejor.
+> Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.
+
+## If they mention multiple branches
+
+> Si tienen más de una sucursal, lo vemos según el caso. Primero entendemos cómo trabajan y qué necesitan probar.
 
 ## Stop rules
 

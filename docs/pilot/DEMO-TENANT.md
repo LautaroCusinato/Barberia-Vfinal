@@ -37,7 +37,7 @@ Los nombres, colores y roles son datos de demostración. No representan personas
 | Perfilado | ARS 5.500 | 20 min | Mateo, Lucas, Tomás |
 | Corte infantil | ARS 7.500 | 30 min | Mateo |
 
-Los precios son valores explícitos del fixture demo y no son precios de los planes SaaS. No confundirlos con Starter/Pro/Premium.
+Los precios son valores explícitos del fixture demo y no son el precio comercial de Austral. La verdad comercial vigente es Austral ARS 50.000/mes, con 15 días gratis.
 
 ## Clientes y turnos ficticios
 

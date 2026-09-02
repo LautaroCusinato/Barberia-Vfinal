@@ -19,3 +19,7 @@ Austral is positioned as a focused operational workspace for barberías: enough 
 “Perfecto, no buscamos reemplazar algo que ya funciona sin entenderlo. Podemos mirar sólo el flujo que hoy les cuesta más y ver si Austral aporta algo.”
 
 Never imply that Austral is cheaper, better or more automated than a named competitor unless the comparison has been verified for the current pilot.
+
+## Pricing posture during the pilot
+
+Austral se presenta con un único plan de ARS 50.000/mes y 15 días gratis. Si el negocio tiene más de una sucursal, responder “lo vemos según el caso”. No comparar precios, ofrecer descuentos ni inventar un nivel enterprise.

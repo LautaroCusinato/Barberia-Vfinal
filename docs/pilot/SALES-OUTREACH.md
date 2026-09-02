@@ -26,11 +26,11 @@ Textos breves para personalizar con información observada y consentimiento. Env
 
 ## Cierre del trial
 
-> ¿Cómo te resultó la prueba? Si querés continuar, coordinamos manualmente el próximo paso y revisamos el plan que mejor encaje. Si no, dejamos todo cerrado sin cambiar tus datos.
+> ¿Cómo te resultó la prueba? Si querés continuar, coordinamos manualmente el próximo paso y revisamos cómo seguir con Austral. Si no, dejamos todo cerrado sin cambiar tus datos.
 
-## Precios conocidos
+## Precio vigente
 
-Usar sólo cuando la persona lo pregunta o cuando el contexto lo pide: Starter ARS 30.000 mensuales, Pro ARS 60.000 mensuales, Premium ARS 100.000 mensuales. La prueba es de 15 días y la continuidad actual es manual. **PLAN ENTITLEMENTS = TO DEFINE AFTER PILOT DATA**: no describir diferencias no confirmadas.
+Usar sólo cuando la persona lo pregunta o cuando el contexto lo pide: Austral tiene un único plan de ARS 50.000 por mes y 15 días gratis para probarlo. Si tienen más de una sucursal, responder “lo vemos según el caso”. No ofrecer precio por sucursal, descuento ni precio enterprise.
 
 ## Reglas de envío
 
@@ -39,4 +39,4 @@ Usar sólo cuando la persona lo pregunta o cuando el contexto lo pide: Starter A
 - Confirmar que el destinatario pertenece directamente al negocio; si no, dejar `CONTACT_IDENTITY_REVIEW`.
 - Ante cualquier respuesta, detener seguimientos y preparar la clasificación para Lautaro.
 - No automatizar email, WhatsApp o Instagram desde estos textos.
-- No incluir credenciales, datos de clientes, promesas de resultados ni precios distintos del catálogo conocido.
+- No incluir credenciales, datos de clientes, promesas de resultados ni precios distintos de ARS 50.000/mes.

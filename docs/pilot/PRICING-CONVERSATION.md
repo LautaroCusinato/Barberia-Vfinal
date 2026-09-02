@@ -1,24 +1,37 @@
 # Pricing conversation
 
-## Current catalog
+## Current commercial truth
 
-| Plan | Price | Current statement |
+| Oferta | Precio | Condición |
 |---|---:|---|
-| Starter | ARS 30.000/mes | Price known; final entitlements still being validated |
-| Pro | ARS 60.000/mes | Price known; final entitlements still being validated |
-| Premium | ARS 100.000/mes | Price known; final entitlements still being validated |
-| Trial | 15 días | Continuidad y billing manual inicialmente |
+| Austral | ARS 50.000/mes | Único plan vigente |
+| Trial | 15 días gratis | Continuidad y billing manual inicialmente |
+| Más de una sucursal | Consultar | “Si tienen más de una sucursal, lo vemos según el caso.” |
 
-## Short answer
+No existen tiers activos durante el primer piloto. No ofrecer precio por sucursal, descuento ni precio enterprise hasta contar con datos reales y aprobación.
 
-“El Starter cuesta ARS 30.000 por mes e incluye 15 días de prueba. Durante el piloto vemos qué nivel encaja mejor; no quiero inventarte diferencias de prestaciones que todavía estamos validando.”
+## Very short answer
 
-## Detailed answer
+“Austral sale ARS 50.000 por mes, con 15 días gratis para probarlo.”
 
-“Hoy tenemos Starter ARS 30.000, Pro ARS 60.000 y Premium ARS 100.000 por mes. La prueba dura 15 días y la continuidad se coordina manualmente. El catálogo de prestaciones por nivel todavía se está definiendo con datos del piloto, así que primero entendemos la operación y recomendamos el nivel adecuado.”
+## WhatsApp answer
+
+“Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.”
+
+## Email answer
+
+“Hoy Austral tiene un único plan de ARS 50.000 por mes. Antes cuentan con 15 días gratis para probarlo y evaluar si realmente les sirve. Si tienen más de una sucursal, lo vemos según el caso.”
 
 ## If they say it is expensive
 
-“Entiendo. No hace falta decidir ahora: podemos probar 15 días con una tarea concreta, medir si realmente les ahorra coordinación y después decidir. Si no aporta valor, no tiene sentido forzarlo.”
+“Entiendo. No hace falta decidir ahora: podés probarlo 15 días con tu operación real y ver si realmente te ahorra coordinación. Si no aporta valor, no tiene sentido forzarlo.”
 
-Never hide the price after a direct question, offer an unapproved discount or promise an entitlement by plan.
+No ofrecer descuentos ni negociar un precio distinto para vencer la objeción.
+
+## If they have multiple branches
+
+“Si tienen más de una sucursal, lo vemos según el caso. Primero entendemos cómo trabajan y qué necesitan probar.”
+
+No prometer precio por sucursal, descuento, paquete enterprise ni prestaciones adicionales.
+
+Never hide the price after a direct question. No automatic billing is implied by the trial.

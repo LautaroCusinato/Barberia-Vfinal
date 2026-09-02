@@ -76,7 +76,7 @@ Do not send EMAIL D if the recipient replied, asked not to be contacted, bounced
 
 ## Price and scope guard
 
-If asked directly: “Starter cuesta ARS 30.000 por mes e incluye 15 días de prueba. Las prestaciones definitivas por plan todavía se están validando con el piloto.” Do not add price to the first cold email or invent entitlements.
+If asked directly: “Hoy Austral tiene un único plan de ARS 50.000 por mes. Antes cuentan con 15 días gratis para probarlo y evaluar si realmente les sirve. Si tienen más de una sucursal, lo vemos según el caso.” Do not add price to the first cold email or invent entitlements.
 
 ## Signature
 

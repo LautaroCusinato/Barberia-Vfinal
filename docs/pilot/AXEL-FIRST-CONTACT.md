@@ -49,7 +49,11 @@ Es la mejor opción porque combina una observación pública concreta con una ex
 
 ### B. “¿Cuánto sale?”
 
-> El Starter está en ARS 30.000 por mes y hay 15 días de prueba gratis. En el piloto vemos qué nivel encaja mejor; todavía no prometemos prestaciones cerradas por plan.
+> Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve.
+
+Si pregunta por múltiples sucursales:
+
+> Si tienen más de una sucursal, lo vemos según el caso.
 
 ### C. “¿Qué hace?”
 

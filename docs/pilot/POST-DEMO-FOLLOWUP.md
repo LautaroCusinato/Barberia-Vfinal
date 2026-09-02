@@ -23,3 +23,11 @@ Enviar manualmente y adaptar una sola frase a lo que la persona comentó. No ini
 > Gracias por avisarme. Cierro el seguimiento y no vuelvo a contactarte por este canal. Si más adelante cambia la necesidad, podés escribirme.
 
 Registrar resultado y DNC cuando corresponda. No insistir fuera de la cadencia acordada ni cambiar el precio para forzar una respuesta.
+
+## F. Pregunta por precio
+
+> Austral tiene un único plan de ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve. Si tienen más de una sucursal, lo vemos según el caso.
+
+## G. Tiene varias sucursales
+
+> Si tienen más de una sucursal, lo vemos según el caso. Primero entendemos cómo trabajan y qué necesitan probar.

@@ -36,7 +36,7 @@ Usar los primeros cinco minutos y sumar:
 2. Mostrar dos profesionales y sus horarios/bloqueos.
 3. Buscar un cliente y revisar su historial ficticio.
 4. Simular un cambio de estado de un turno, sin afirmar que una acción externa se ejecutó.
-5. Mostrar Facturación sólo como catálogo informativo: Starter ARS 30.000/mes, Pro ARS 60.000/mes y Premium ARS 100.000/mes; trial gratuito de 15 días y continuidad manual.
+5. Mostrar Facturación sólo como catálogo informativo: Austral ARS 50.000/mes; trial gratuito de 15 días y continuidad manual. Si preguntan por varias sucursales: “lo vemos según el caso”.
 6. Preguntar qué dato necesitaría para decidir una prueba.
 
 ## Versión extendida de diez minutos
