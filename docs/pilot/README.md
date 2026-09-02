@@ -16,12 +16,14 @@ No se inventan prestaciones por plan: **PLAN ENTITLEMENTS = TO DEFINE AFTER PILO
 
 1. Preparar el negocio con [CLIENT-ONBOARDING.md](./CLIENT-ONBOARDING.md).
 2. Ejecutar la demo de [DEMO-SCRIPT.md](./DEMO-SCRIPT.md).
-3. Acompañar los 15 días con [15-DAY-PILOT-PLAN.md](./15-DAY-PILOT-PLAN.md) y [FIRST-24-HOURS.md](./FIRST-24-HOURS.md).
-4. Registrar prospectos en el PlatformCRM existente según [FIRST-20-PROSPECTS.md](./FIRST-20-PROSPECTS.md).
-5. Usar textos breves de [SALES-OUTREACH.md](./SALES-OUTREACH.md) y responder objeciones con [SALES-OBJECTIONS.md](./SALES-OBJECTIONS.md).
-6. Medir con [PILOT-METRICS.md](./PILOT-METRICS.md) y atender incidentes con [SUPPORT-RUNBOOK.md](./SUPPORT-RUNBOOK.md).
-7. Si vuelve el acceso al servidor/cloud, seguir [PILOT-LAUNCH-RUNBOOK.md](./PILOT-LAUNCH-RUNBOOK.md).
-8. Tomar la decisión con [GO-NO-GO.md](./GO-NO-GO.md).
+3. Usar el escenario ficticio de [DEMO-TENANT.md](./DEMO-TENANT.md) y el relato de [DEMO-STORY.md](./DEMO-STORY.md).
+4. Acompañar los 15 días con [15-DAY-PILOT-PLAN.md](./15-DAY-PILOT-PLAN.md) y [FIRST-24-HOURS.md](./FIRST-24-HOURS.md).
+5. Registrar prospectos en el PlatformCRM existente según [FIRST-20-PROSPECTS.md](./FIRST-20-PROSPECTS.md).
+6. Usar textos breves de [SALES-OUTREACH.md](./SALES-OUTREACH.md) y responder objeciones con [SALES-OBJECTIONS.md](./SALES-OBJECTIONS.md).
+7. Medir con [PILOT-METRICS.md](./PILOT-METRICS.md) y atender incidentes con [SUPPORT-RUNBOOK.md](./SUPPORT-RUNBOOK.md).
+8. Si vuelve el acceso al servidor/cloud, seguir [PILOT-LAUNCH-RUNBOOK.md](./PILOT-LAUNCH-RUNBOOK.md).
+9. Usar la checklist de [DEMO-SAFETY.md](./DEMO-SAFETY.md), la ficha [FIRST-CLIENT-DATA.md](./FIRST-CLIENT-DATA.md), el [PILOT-KICKOFF.md](./PILOT-KICKOFF.md) y [POST-DEMO-FOLLOWUP.md](./POST-DEMO-FOLLOWUP.md).
+10. Tomar la decisión con [GO-NO-GO.md](./GO-NO-GO.md).
 
 ## Guardas del primer piloto
 

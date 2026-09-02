@@ -16,6 +16,18 @@ La demo usa el workspace ficticio y no conecta Supabase, WhatsApp, Evolution, n8
 
 **4:30–5:00 · Próximo paso.** “Si esto resuelve tu parte más pesada, podemos configurar tu negocio y probarlo 15 días. La continuidad se conversa manualmente.” Preguntar qué flujo quiere probar primero.
 
+## Flujo exacto para una demo de cinco minutos
+
+**00:00–01:00 · Problema del dueño.** “¿Cómo coordinás hoy los turnos y qué se te desordena más?” Escuchar y resumir una sola necesidad.
+
+**01:00–02:00 · Booking público.** Abrir el enlace de Austral Barber Demo, elegir un servicio, profesional, fecha y horario disponible. Decir: “La persona ve sólo opciones reales y deja sus datos para confirmar”. No completar datos reales.
+
+**02:00–03:00 · Agenda.** Volver al workspace y mostrar cómo el turno aparece con fecha, hora, servicio, profesional y estado. “Así el equipo comparte la misma agenda.”
+
+**03:00–04:00 · Clientes y equipo.** Abrir el cliente ficticio y luego Servicios/Equipo. “Cada servicio tiene duración y precio; cada profesional tiene sus horarios.”
+
+**04:00–05:00 · WhatsApp y cierre.** “WhatsApp se configura aparte y te mostramos el estado real; no prometemos respuestas automáticas sin habilitarlo.” Cerrar: “Podés probar 15 días y después decidís con tu operación real”.
+
 ## Versión de 10 minutos
 
 Usar los primeros cinco minutos y sumar:
@@ -26,6 +38,10 @@ Usar los primeros cinco minutos y sumar:
 4. Simular un cambio de estado de un turno, sin afirmar que una acción externa se ejecutó.
 5. Mostrar Facturación sólo como catálogo informativo: Starter ARS 30.000/mes, Pro ARS 60.000/mes y Premium ARS 100.000/mes; trial gratuito de 15 días y continuidad manual.
 6. Preguntar qué dato necesitaría para decidir una prueba.
+
+## Versión extendida de diez minutos
+
+Después del flujo de cinco minutos, dedicar aproximadamente un minuto a cada punto: configuración de horarios; alta de servicios y precios; profesionales y relaciones; clientes e historial; Billing/trial; preguntas del prospecto y próximo paso. Mantener la conversación sobre su operación y volver al booking cuando una pregunta quede abstracta. No convertir la extensión en una explicación técnica.
 
 ## Frases útiles
 
