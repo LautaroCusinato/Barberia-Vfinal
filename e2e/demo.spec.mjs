@@ -188,6 +188,10 @@ test.describe('experiencia de producto demo', () => {
   test('DEMO-14 Billing es informativo y no inicia checkout', async ({ page }) => {
     await openDemo(page, 'Facturacion')
     await expect(page.getByText(/15 días de prueba/i)).toBeVisible()
+    await expect(page.locator('.billing-plan')).toHaveCount(1)
+    await expect(page.locator('.billing-plan h3', { hasText: 'Austral' })).toHaveCount(1)
+    await expect(page.getByText(/ARS 50\.000/)).toBeVisible()
+    await expect(page.getByText(/\b(?:Starter|Pro|Premium)\b/i)).toHaveCount(0)
     await expect(page.locator('.billing-notice').filter({ hasText: /continuidad se coordina manualmente por WhatsApp/i })).toBeVisible()
     await expect(page.getByText(/Elegí cómo pagar/i)).toHaveCount(0)
     await expect(page.getByRole('button', { name: /Empezar prueba gratuita con Starter/i })).toHaveCount(0)
