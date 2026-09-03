@@ -37,7 +37,9 @@ La primera tanda preparada para revisión humana está en [FIRST-REAL-PROSPECT-B
 
 El paquete individual de Axel The Barber está en [AXEL-FIRST-CONTACT.md](./AXEL-FIRST-CONTACT.md). La fase informativa de hasta cinco negocios está en [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). Ambos son material para aprobación humana: no abren conversaciones ni crean drafts.
 
-La fase vigente sólo presenta la idea y mide respuestas: no ofrece acceso, QA, demo funcional inmediata, trial, QR, pago ni links, y no programa follow-ups.
+La segunda tanda con demo preparada para revisión humana está en [SECOND-PROSPECT-BATCH.md](./SECOND-PROSPECT-BATCH.md). Incluye diez negocios con evidencia comercial pública, top 5 priorizado y copy por canal; no ejecuta ningún envío.
+
+La fase informativa anterior sólo presentaba la idea y medía respuestas. La segunda tanda habilita preparar una demo pública y mencionar 15 días gratis, siempre con revisión humana por negocio; no inicia trials, no habilita QA/producción, no usa QR/pagos y no programa follow-ups.
 
 Este kit exige revisión humana de Lautaro, una cuenta por negocio, datos comerciales públicos y ningún envío automático. [PROSPECT-TRACKER.csv](./PROSPECT-TRACKER.csv) permanece vacío hasta que un prospecto tenga fuente y permiso operativo revisados.
 
