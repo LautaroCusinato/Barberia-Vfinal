@@ -1,6 +1,6 @@
 # Second prospect batch — demo outreach
 
-Investigación comercial pública preparada el **2026-09-03** para conseguir el primer cliente Austral. Este documento no envía emails, WhatsApp ni DMs, no crea drafts y no inicia trials. Cada contacto requiere revisión humana de Lautaro antes de enviar.
+Investigación comercial pública preparada el **2026-09-03** para conseguir el primer cliente Austral. La sección de preparación no envía emails, WhatsApp ni DMs, no crea drafts y no inicia trials; el registro operativo al final documenta los cuatro emails autorizados enviados y la preparación de BMA sin envío. Cada contacto requiere revisión humana de Lautaro antes de enviar.
 
 ## Guardas de esta tanda
 
@@ -249,12 +249,25 @@ Clasificar `HOT_PILOT_LEAD` y responder sólo después de revisión humana:
 
 No crear cuenta, no iniciar trial y no cargar datos automáticamente.
 
+## Registro de ejecución — segunda tanda
+
+La verificación previa en Gmail y en `PROSPECT-TRACKER.csv` no encontró envíos ni drafts para estos cuatro destinatarios. Cada mensaje se envió individualmente desde `australautomatizaciones@gmail.com`, sin BCC, usando exactamente la variante personalizada aprobada.
+
+| business_name | channel | timestamp (ART) | status | message_variant | demo_link_sent | response |
+|---|---|---|---|---|---|---|
+| Marcelli Peluquería | email | 2026-09-03 10:49:48 -03:00 | `CONTACTED` | `approved_personalized_email` | `YES` | `NONE` |
+| Pikaros Barbería | email | 2026-09-03 10:49:56 -03:00 | `CONTACTED` | `approved_personalized_email` | `YES` | `NONE` |
+| Barbería Pelizzari | email | 2026-09-03 10:50:05 -03:00 | `CONTACTED` | `approved_personalized_email` | `YES` | `NONE` |
+| Firulete Barbería | email | 2026-09-03 10:50:13 -03:00 | `CONTACTED` | `approved_personalized_email` | `YES` | `NONE` |
+
+No follow-up fue enviado. No se contactó a los otros cinco prospectos. BMA Barber quedó con el chat público `+54 9 11 2593-7529` confirmado y el mensaje preparado sin enviar (`READY_TO_SEND`), pendiente de aprobación humana.
+
 ## Gate final
 
 - `READY_TO_CONTACT`: los diez por identidad directa documentada; top 5 priorizados arriba.
 - `CONTACT_IDENTITY_REVIEW`: ninguno por ahora; si el canal cambia o deja de estar vinculado al sitio oficial, volver a este estado.
-- `HUMAN_REVIEW_REQUIRED`: sí, para cada envío.
-- `OUTREACH_SENT`: `0`.
+- `HUMAN_REVIEW_REQUIRED`: cumplida para los cuatro emails; BMA pendiente.
+- `OUTREACH_SENT`: `4` emails; `BMA` no enviado.
 - No follow-up automático; cualquier respuesta se clasifica y se trae a Lautaro antes de contestar.
 
-**Estado:** `SECOND PROSPECT BATCH PREPARED / DEMO OUTREACH PENDING HUMAN REVIEW`
+**Estado:** `SECOND OUTREACH BATCH SENT / WAITING FOR RESPONSES AND BMA APPROVAL`
