@@ -13,7 +13,10 @@ async function clickWorkspaceButton(page, view) {
       // The workspace is still on its default summary view; navigate below.
     }
   }
-  await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible({ timeout: 30_000 })
+  // After a reload the demo restores the last persisted view, so the
+  // summary heading is not a reliable readiness signal. The demo banner is
+  // present on every workspace view and confirms that the shell is mounted.
+  await expect(page.getByText('Modo demostración', { exact: true })).toBeVisible({ timeout: 30_000 })
   const directButton = page.getByRole('button', { name: visibleLabel, exact: true }).filter({ visible: true })
   if (await directButton.count()) return directButton.first().click()
   const desktopSidebar = page.locator('.sidebar')
