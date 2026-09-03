@@ -2,7 +2,7 @@
 
 Manual routine for Lautaro while Austral enters its first pilot. Stop if a gate fails; quality and consent matter more than volume.
 
-For the current informational phase, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md): no product access, links, price in the first message, immediate demo, trial, payment or follow-up.
+For the current post-outreach phase, do not research or contact more prospects and do not send follow-ups. Review replies, prepare the five-minute demo and onboarding only for a qualified responder, always with Lautaro's approval.
 
 ## 0–5 min — safety and pipeline
 
@@ -11,32 +11,30 @@ For the current informational phase, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIR
 - Confirm `HUMAN_REVIEW_REQUIRED` is on and no automatic sender is active.
 - Choose no more than five businesses for research today.
 
-## 5–15 min — research five
+## 5–15 min — review responses
 
-- Confirm active public presence.
-- Capture only commercial public data: website, Instagram, Maps, public email/phone/WhatsApp.
-- Note observed booking method, team estimate and one evidence-backed friction.
-- Classify `contact_owner_type`.
+- Check new replies from the six contacted businesses.
+- Capture only the minimum commercial context needed to classify the response.
+- Stop all follow-ups after any reply.
+- Classify with [SALES-RESPONSE-PLAYBOOK.md](./SALES-RESPONSE-PLAYBOOK.md).
 
-## 15–25 min — qualify and personalize
+## 15–25 min — prepare response/demo
 
-- Score using [IDEAL-FIRST-CUSTOMER.md](./IDEAL-FIRST-CUSTOMER.md).
-- Complete [LEAD-QUALIFICATION.md](./LEAD-QUALIFICATION.md).
-- Draft one message using [OUTREACH-PERSONALIZATION.md](./OUTREACH-PERSONALIZATION.md).
-- Edit for Argentine, natural language and one CTA.
+- Prepare one short reply for Lautaro's review.
+- If the lead is qualified, prepare [DEMO-SCRIPT.md](./DEMO-SCRIPT.md) and confirm the demo environment.
+- If the lead asks to try, collect only the fields in [CLIENT-ONBOARDING.md](./CLIENT-ONBOARDING.md); do not create the account automatically.
 
-## 25–35 min — human-reviewed contact
+## 25–35 min — human-reviewed next step
 
-- Lautaro reviews business, recipient, channel, DNC, duplicate and exact copy.
-- Contact only a `BUSINESS_DIRECT` or `EMPLOYEE_BUSINESS` recipient that passes all gates.
-- Send manually, one business at a time, only after approval; otherwise leave the copy pending in documentation. Do not create drafts.
+- Lautaro reviews the received text, classification, proposed reply and any demo/trial next step.
+- Do not send a response, create a trial or create a tenant automatically.
 - Never use Evolution, Reply Only, n8n, product bots, BCC or bulk sends.
 
 ## 35–45 min — record and respond
 
 - Record timestamp, channel, message, delivery/bounce and next action.
 - Stop follow-ups for any reply.
-- Do not schedule follow-ups for the first informational batch; wait for natural responses.
+- Do not schedule follow-ups for the current cohort; wait for natural responses.
 - Classify with [SALES-RESPONSE-PLAYBOOK.md](./SALES-RESPONSE-PLAYBOOK.md).
 - Escalate interest, trial, call, negotiation, technical uncertainty and complaints to Lautaro.
 - Review one learning for tomorrow; do not change the whole sequence after one anecdote.

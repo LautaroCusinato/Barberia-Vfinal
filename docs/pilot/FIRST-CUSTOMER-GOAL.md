@@ -18,6 +18,8 @@ After the first validated customer, aim for three. Only then optimize acquisitio
 
 Record date, business, responsible contact, channel, next action and the smallest useful note in the CRM source of truth. Do not count a sent message as success. Do not count a demo request as a trial. Do not count a trial as a paying customer.
 
+For the first pilot, mark success only against the concrete checklist in [FIRST-PILOT-SUCCESS-CRITERIA.md](./FIRST-PILOT-SUCCESS-CRITERIA.md).
+
 ## Stop conditions
 
 Pause expansion if replies show confusion about scope, a repeated product gap, a privacy/DNC concern, a P0/P1 issue or a promise that the product cannot currently honor. Review the message and product hypothesis with Lautaro before continuing.

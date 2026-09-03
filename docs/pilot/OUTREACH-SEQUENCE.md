@@ -2,9 +2,9 @@
 
 The sequence is a small, human-reviewed cadence. It is not a scheduler and it never sends automatically.
 
-## Current phase override — informational batch
+## Current phase override — no follow-up
 
-For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). The Day 2/3 and Day 6/7 examples below are **superseded for this phase**: do not follow up until the natural response rate of the first batch has been measured.
+The current outreach cohort has already been contacted. Do not use the Day 2/3 or Day 6/7 examples for this task: no follow-up or new prospect contact is authorized. Any reply stops the sequence and goes to Lautaro for classification and a proposed response.
 
 ## Day 0 — first contact
 

@@ -1,55 +1,45 @@
-# Guion de demo comercial
+# Guion de demo comercial de 5 minutos
 
-La demo usa el workspace ficticio y no conecta Supabase, WhatsApp, Evolution, n8n ni pagos. Es una conversación de valor, no una capacitación técnica.
+**Estado:** `DEMO_5_MIN_READY`
 
-## Versión de 5 minutos
+La demo está pensada para un dueño o responsable que ya respondió al outreach. Dura como máximo cinco minutos, usa datos ficticios y muestra el flujo de valor de Austral sin abrir checkout, crear una cuenta real ni confirmar una reserva real. La demo pública autorizada es <https://barberia-qa.cuchitron.lat/> cuando el entorno esté disponible y aprobado.
 
-**0:00–0:40 · Contexto.** “Contame cómo coordinás hoy los turnos y qué se te desordena más.” Repetir el problema con sus palabras.
+## Flujo recomendado
 
-**0:40–1:40 · Vista general.** Mostrar el resumen: agenda, clientes, servicios y equipo en un mismo lugar. Evitar explicar la infraestructura.
+| Tiempo | Pantalla que abrir | Qué mostrar | Beneficio a explicar | Frase sugerida |
+|---|---|---|---|---|
+| 00:00–00:35 | Landing / propuesta | La propuesta de Austral y el recorrido de reservas, agenda, clientes, servicios y equipo. | Tener la operación principal en un mismo lugar y reducir el ida y vuelta manual. | “La idea es que la barbería tenga un flujo más claro para recibir y ordenar turnos.” |
+| 00:35–01:20 | Reserva pública | Elegir servicio, barbero, fecha y horario disponibles en la demo. No completar datos reales ni confirmar un turno real. | El cliente puede ver opciones reales de disponibilidad y dejar sus datos en el flujo acordado. | “Acá la persona elige qué quiere, con quién y cuándo, sin tener que coordinar todo por mensaje.” |
+| 01:20–02:00 | Agenda | Mostrar un turno ficticio en el día elegido, con servicio, profesional y estado. | El equipo comparte una vista de trabajo y puede detectar qué está reservado. | “Lo que entra por la reserva queda visible en la agenda del equipo.” |
+| 02:00–02:35 | Clientes | Abrir un cliente ficticio y mostrar sus datos mínimos e historial de prueba. | La información útil queda ordenada para no depender de conversaciones sueltas. | “Así pueden encontrar al cliente y el contexto del turno desde el mismo lugar.” |
+| 02:35–03:05 | Servicios | Mostrar nombre, precio y duración de un servicio ficticio. | La disponibilidad y la expectativa del cliente parten de un catálogo claro. | “Cada servicio tiene su precio y duración, y eso ordena lo que se ofrece.” |
+| 03:05–03:35 | Barberos / equipo | Mostrar profesionales, servicios que realizan y horarios ficticios. | La agenda respeta quién trabaja, qué hace y cuándo está disponible. | “El equipo y sus horarios quedan relacionados con los servicios que realmente hacen.” |
+| 03:35–04:20 | Configuración | Mostrar horarios, breaks, días cerrados, bloqueos y branding de ejemplo. | El negocio define sus reglas antes de publicar disponibilidad. | “Antes de abrir reservas, dejamos cargadas las reglas reales de la barbería.” |
+| 04:20–05:00 | Facturación / trial | Mostrar únicamente el catálogo informativo: Austral, ARS 50.000 por mes y 15 días gratis. No abrir checkout ni pedir tarjeta. | Pueden probar con su operación y decidir la continuidad manualmente. | “La prueba dura 15 días; después vemos juntos si aporta valor. Si tienen más de una sucursal, lo vemos según el caso.” |
 
-**1:40–2:40 · Operación.** Abrir Agenda, elegir un día y mostrar un turno; luego mostrar un cliente y el servicio asociado. Señalar que la disponibilidad depende de horarios, breaks, bloqueos y turnos existentes.
+## Cierre y WhatsApp
 
-**2:40–3:40 · Reserva pública.** Abrir un enlace de reserva ficticio: servicio, profesional, fecha, hora y datos. No confirmar una reserva real durante la demo.
+Cerrar con una sola pregunta: “¿Qué parte de este flujo te serviría probar primero en tu barbería?”.
 
-**3:40–4:30 · Configuración.** Mostrar dónde se cargan servicios, profesionales y horarios. Aclarar que el dueño puede completar esos datos durante una prueba de 15 días.
+Si preguntan por WhatsApp, decir únicamente:
 
-**4:30–5:00 · Próximo paso.** “Si esto resuelve tu parte más pesada, podemos configurar tu negocio y probarlo 15 días. La continuidad se conversa manualmente.” Preguntar qué flujo quiere probar primero.
+> “También estamos preparando la integración de WhatsApp para automatizar parte de la gestión de turnos. Todavía no la presento como una función live ni como disponibilidad general.”
 
-## Flujo exacto para una demo de cinco minutos
+WhatsApp no es requisito para validar el primer MVP comercial: primero se valida reserva web, agenda, clientes, servicios y equipo.
 
-**00:00–01:00 · Problema del dueño.** “¿Cómo coordinás hoy los turnos y qué se te desordena más?” Escuchar y resumir una sola necesidad.
+## Guardas de la demo
 
-**01:00–02:00 · Booking público.** Abrir el enlace de Austral Barber Demo, elegir un servicio, profesional, fecha y horario disponible. Decir: “La persona ve sólo opciones reales y deja sus datos para confirmar”. No completar datos reales.
+- No usar datos reales de otra barbería, credenciales, QR, pagos ni links de pago.
+- No crear un tenant, trial o reserva real durante la demo.
+- No afirmar que WhatsApp responde automáticamente ni que los pagos están automatizados.
+- No mencionar Supabase, Evolution, n8n, tenant, RLS, API ni otros detalles técnicos al prospecto.
+- Si una pantalla falla, describir el estado real y continuar sólo con una lectura segura; nunca convertir un error en una promesa.
+- Registrar las preguntas y el próximo paso en el CRM después de la revisión humana, sin responder automáticamente.
 
-**02:00–03:00 · Agenda.** Volver al workspace y mostrar cómo el turno aparece con fecha, hora, servicio, profesional y estado. “Así el equipo comparte la misma agenda.”
+## Checklist previa
 
-**03:00–04:00 · Clientes y equipo.** Abrir el cliente ficticio y luego Servicios/Equipo. “Cada servicio tiene duración y precio; cada profesional tiene sus horarios.”
-
-**04:00–05:00 · WhatsApp y cierre.** “WhatsApp se configura aparte y te mostramos el estado real; no prometemos respuestas automáticas sin habilitarlo.” Cerrar: “Podés probar 15 días y después decidís con tu operación real”.
-
-## Versión de 10 minutos
-
-Usar los primeros cinco minutos y sumar:
-
-1. Recorrer un servicio con precio y duración.
-2. Mostrar dos profesionales y sus horarios/bloqueos.
-3. Buscar un cliente y revisar su historial ficticio.
-4. Simular un cambio de estado de un turno, sin afirmar que una acción externa se ejecutó.
-5. Mostrar Facturación sólo como catálogo informativo: Austral ARS 50.000/mes; trial gratuito de 15 días y continuidad manual. Si preguntan por varias sucursales: “lo vemos según el caso”.
-6. Preguntar qué dato necesitaría para decidir una prueba.
-
-## Versión extendida de diez minutos
-
-Después del flujo de cinco minutos, dedicar aproximadamente un minuto a cada punto: configuración de horarios; alta de servicios y precios; profesionales y relaciones; clientes e historial; Billing/trial; preguntas del prospecto y próximo paso. Mantener la conversación sobre su operación y volver al booking cuando una pregunta quede abstracta. No convertir la extensión en una explicación técnica.
-
-## Frases útiles
-
-- “Primero ordenemos el flujo que hoy te lleva más tiempo.”
-- “Esto es una demo con datos ficticios; en tu cuenta cargaríamos sólo información de tu negocio.”
-- “La reserva se confirma según la disponibilidad real que cargues.”
-- “WhatsApp puede requerir una configuración aparte; no te voy a prometer automatizaciones que todavía no estén activas.”
-
-## Evitar
-
-No usar Supabase, Evolution, tenant, RLS, RPC, Edge Functions, webhook ni otros términos técnicos con el cliente. No decir “te garantiza más reservas”, “no vas a perder clientes”, “se integra solo” ni “queda cobrado”. No abrir checkout ni enviar mensajes durante la demo.
+- [ ] Entorno de demo y URL autorizada verificados.
+- [ ] Fixture ficticio con agenda, cliente, servicios, equipo y configuración coherentes.
+- [ ] Landing, reserva pública, agenda, clientes, servicios, equipo, configuración y facturación accesibles.
+- [ ] Demo ensayada en menos de cinco minutos.
+- [ ] Precio, trial y alcance de WhatsApp preparados con la respuesta vigente.

@@ -1,52 +1,62 @@
-# Alta y onboarding de un negocio
+# Alta y onboarding express de un negocio
 
-Guía para acompañar al dueño sin cargar datos ficticios ni prometer funciones que todavía no están activas.
+**Estado:** `FIRST_CLIENT_ONBOARDING_READY`
 
-## ANTES DE ALTA
+Checklist para dejar una barbería lista para recibir reservas web reales en aproximadamente 15 minutos, una vez que producción esté autorizada. Se completa junto al responsable, con consentimiento explícito y datos reales del propio negocio. No crea cuentas, tenants, trials ni reservas automáticamente.
 
-- Confirmar nombre del negocio, persona de contacto, email y canal preferido.
-- Confirmar rubro/vertical, país, moneda y zona horaria. Para Argentina, usar `America/Argentina/Buenos_Aires` si corresponde.
-- Acordar qué problema quiere resolver primero: agenda, reservas públicas, clientes, equipo u horarios.
-- Explicar que la prueba es gratuita por 15 días, sin tarjeta para empezar, y que la continuidad se coordina manualmente.
-- Confirmar consentimiento para usar los datos del negocio durante la prueba y quién será responsable de la cuenta.
-- No pedir contraseñas por chat. Crear la cuenta desde el flujo normal y completar la verificación de email.
+## Datos mínimos a solicitar
 
-## DURANTE ALTA
+- [ ] Nombre comercial del negocio.
+- [ ] Responsable y rol.
+- [ ] Email de acceso verificado.
+- [ ] WhatsApp comercial del negocio.
+- [ ] Logo autorizado.
+- [ ] Color principal y color secundario.
+- [ ] Servicios que quiere probar.
+- [ ] Precio de cada servicio.
+- [ ] Duración de cada servicio en minutos.
+- [ ] Barberos/profesionales y servicios que realiza cada uno.
+- [ ] Horarios por barbero o del equipo.
+- [ ] Breaks por barbero o generales.
+- [ ] Días cerrados, feriados y bloqueos conocidos.
+- [ ] Zona horaria `America/Argentina/Buenos_Aires` y moneda ARS, si corresponde.
 
-1. Registrar o invitar al dueño desde el flujo normal.
-2. Completar el onboarding: nombre, rubro, país, idioma, zona horaria, moneda y branding opcional.
-3. Verificar que se cree el workspace correcto y que el trial tenga fecha de inicio y vencimiento del servidor.
-4. Cargar sólo los servicios reales que el negocio quiera probar: nombre, precio, duración y estado activo.
-5. Cargar profesionales/empleados reales autorizados, sus servicios y horarios.
-6. Revisar breaks, bloqueos y reglas de reserva antes de publicar el enlace.
-7. Cargar clientes sólo con consentimiento y datos necesarios. Evitar importar historiales completos durante la primera sesión.
-8. Probar una reserva pública con datos acordados y confirmar que el dueño sabe cancelarla o gestionarla desde la agenda según los permisos disponibles.
-9. Mostrar WhatsApp como una conexión que puede requerir configuración adicional. Durante el piloto, mantener cualquier automatización en modo controlado/shadow.
+No pedir contraseñas, tokens, conversaciones completas, agenda exportada ni contactos de terceros. El WhatsApp no es requisito para validar primero reservas web.
 
-## VALIDACIÓN CON DUEÑO
+## Secuencia de 15 minutos
 
-- El dueño puede ingresar, cerrar sesión y volver a entrar.
-- Reconoce dónde ver Agenda, Clientes, Servicios, Equipo, Configuración y Facturación.
-- Puede crear un servicio, asignar un profesional y definir un horario sin ayuda.
-- Entiende qué datos son propios de su negocio y que el acceso está separado de otros negocios.
-- Abre el enlace de reservas, elige servicio/profesional/fecha/hora y entiende que la confirmación depende de la disponibilidad real.
-- Sabe que los precios publicados son los cargados en su catálogo, no recomendaciones automáticas.
-- Entiende que la prueba dura 15 días y que cualquier continuidad se conversa manualmente.
-- Entiende qué está activo en WhatsApp y qué no: no hay promesa de auto-respuesta ni de reservas automáticas.
+| Minutos | Acción | Comprobación |
+|---|---|---|
+| 00:00–02:00 | Confirmar negocio, responsable, email, consentimiento, zona horaria y moneda. | El responsable sabe quién tendrá acceso y qué se va a probar. |
+| 02:00–05:00 | Cargar nombre, logo y colores autorizados. | La identidad visible corresponde al negocio correcto. |
+| 05:00–08:00 | Cargar servicios con precio, duración y profesionales habilitados. | Cada servicio tiene datos correctos y al menos uno queda disponible para prueba. |
+| 08:00–11:00 | Cargar barberos/profesionales, servicios que realizan y horarios. | No hay profesionales sin horario ni servicios sin responsable. |
+| 11:00–13:00 | Configurar breaks, días cerrados, feriados y bloqueos. | La disponibilidad refleja las reglas comunicadas por el negocio. |
+| 13:00–15:00 | Abrir la reserva pública, elegir servicio/profesional/fecha/hora y revisar la agenda. | El flujo es accesible; la reserva de smoke se hace sólo con datos acordados y no sustituye una reserva real. |
 
-## LISTO PARA OPERAR
+## Checklist de listo para operar
 
-Marcar sólo cuando todos estén confirmados:
+- [ ] Acceso del responsable verificado.
+- [ ] Nombre, branding, zona horaria y moneda revisados.
+- [ ] Servicios, precios y duraciones correctos.
+- [ ] Barberos/profesionales y servicios relacionados correctamente.
+- [ ] Horarios, breaks, días cerrados y bloqueos revisados.
+- [ ] Reserva pública accesible y disponibilidad coherente.
+- [ ] Agenda refleja el flujo de prueba.
+- [ ] Clientes cargados sólo con consentimiento y datos mínimos.
+- [ ] Trial de 15 días y continuidad manual explicados.
+- [ ] Facturación sin cobro automático ni checkout.
+- [ ] Estado real de WhatsApp explicado; no se presenta automatización live.
 
-- [ ] Email verificado y acceso del dueño probado.
-- [ ] Nombre, rubro, zona horaria y moneda revisados.
-- [ ] Al menos un servicio con precio y duración correctos.
-- [ ] Al menos un profesional con servicio y horario correctos.
-- [ ] Reglas de reserva, breaks y bloqueos revisados.
-- [ ] Enlace público probado sin confirmar datos no autorizados.
-- [ ] Clientes cargados sólo con consentimiento.
-- [ ] Dueño conoce el canal de soporte y la fecha de revisión del día 1.
-- [ ] Trial y continuidad manual explicados.
-- [ ] WhatsApp, billing y cualquier integración externa quedaron descritos con su estado real.
+Si un punto falla, dejar el onboarding como `PENDING` y registrar qué falta. No marcarlo listo por cortesía.
 
-Si un punto falla, dejar el alta como “pendiente” y registrar qué falta; no marcarla operativa por cortesía.
+## Mensaje de kickoff
+
+> “Buenísimo. Vamos a configurar tu negocio juntos y vas a tener 15 días de prueba para usar agenda, servicios, equipo, clientes y reservas online con tus propios datos. Primero validamos el flujo web; WhatsApp se evalúa por separado y no lo presento como automatización activa.”
+
+## Límites comerciales
+
+- Austral tiene un único plan de ARS 50.000 por mes y 15 días gratis.
+- Si tienen más de una sucursal: “Si tienen más de una sucursal, lo vemos según el caso.”
+- No prometer precio por sucursal, descuentos, precio enterprise ni cobros automáticos.
+- No iniciar el trial ni publicar el enlace real hasta contar con autorización operativa y consentimiento del negocio.

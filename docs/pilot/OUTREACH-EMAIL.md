@@ -2,9 +2,9 @@
 
 Send manually from the approved Austral commercial account only. One email per business, no BCC, no automatic sending, and no contact until the recipient passes the public-identity, DNC, prior-negative and duplicate preflight. Keep each email below 120 words.
 
-## Current phase override — informational only
+## Current phase override — post-outreach
 
-For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). The email sequence below is reusable later and is **not active for this phase**: no price or links in the first message, no product access, QA, immediate functional demo, trial, WhatsApp connection, QR or payment. No follow-up yet.
+The approved email outreach to Marcelli, Pikaros, Pelizzari and Firulete is complete. This file is now a response/demo library only: do not start a new email, follow-up or additional prospect batch in the current task. Every reply requires human review.
 
 ## Subject options
 

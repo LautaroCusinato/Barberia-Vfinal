@@ -5,7 +5,7 @@ Checklist breve antes de compartir pantalla. La demo usa datos ficticios y el ad
 ## Antes de empezar
 
 - [ ] Sesión/profil de navegador correcto y sin pestañas con producción.
-- [ ] Ruta `/demo` o entorno de demo identificado; tenant demo = Austral Barber Demo.
+- [ ] Entorno de demo identificado; URL autorizada = `https://barberia-qa.cuchitron.lat/`.
 - [ ] Agenda contiene turnos relativos a la fecha actual.
 - [ ] Servicios, profesionales, horarios, breaks y bloqueos se ven coherentes.
 - [ ] Reserva pública demo abre y ofrece disponibilidad sin enviar datos reales.

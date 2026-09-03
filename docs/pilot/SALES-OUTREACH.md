@@ -2,9 +2,9 @@
 
 Textos breves para personalizar con información observada y consentimiento. Enviar manualmente, con frecuencia razonable y opción clara de no continuar. No inventar que se investigó un negocio ni usar datos sensibles. Para el kit completo, ver [OUTREACH-WHATSAPP.md](./OUTREACH-WHATSAPP.md), [OUTREACH-INSTAGRAM.md](./OUTREACH-INSTAGRAM.md), [OUTREACH-EMAIL.md](./OUTREACH-EMAIL.md) y [OUTREACH-SEQUENCE.md](./OUTREACH-SEQUENCE.md).
 
-## Fase informativa vigente
+## Fase operativa actual — respuestas y demo
 
-Para la primera tanda autorizada, usar [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). El copy de este archivo es material general/reutilizable y no habilita demo inmediata, acceso, trial, links, precio en el primer mensaje ni follow-up en esta fase.
+El outreach autorizado ya fue ejecutado para Axel, BMA Barber, Marcelli, Pikaros, Pelizzari y Firulete. Este archivo queda como biblioteca de respuestas y demos: no iniciar nuevos contactos ni follow-ups en esta tarea.
 
 `HUMAN_REVIEW_REQUIRED` es obligatorio. Lautaro revisa identidad del destinatario, DNC, duplicados, canal y texto final antes de cada contacto. No enviar a `AGENCY`, `SOFTWARE_PROVIDER` o `UNKNOWN`.
 

@@ -2,9 +2,9 @@
 
 Manual DM only, after human review of the public account and recipient identity. Keep it shorter than email and avoid a feature list. Do not scrape private profiles or move a personal account into the commercial pipeline without consent.
 
-## Current phase override — informational only
+## Current phase override — post-outreach
 
-For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). The copy below is reusable later and is **not active for this phase**: no product access, QA, immediate functional demo, trial, WhatsApp connection, QR, payment or links. No follow-up yet.
+The approved outreach is complete for the current cohort. This file is a reusable response/demo library only: do not start new Instagram contacts or follow-ups in the current task. Every reply requires human review.
 
 ## Primer mensaje
 
@@ -14,7 +14,7 @@ For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-IN
 
 > Buenísimo. Te puedo compartir una demo breve y después me decís si tiene sentido para la barbería. ¿Querés que te la pase?
 
-Share `https://barberia.cuchitron.lat/demo` only when `DEMO COMMERCIAL READY` is confirmed.
+Share `https://barberia-qa.cuchitron.lat/` only when `DEMO_5_MIN_READY` is confirmed and Lautaro has reviewed the reply.
 
 ## Si preguntan precio
 

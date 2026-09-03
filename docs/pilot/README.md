@@ -17,7 +17,7 @@ El contacto comercial por WhatsApp del sitio debe resolver su destino desde `VIT
 ## Cómo usar este kit
 
 1. Preparar el negocio con [CLIENT-ONBOARDING.md](./CLIENT-ONBOARDING.md).
-2. Ejecutar la demo de [DEMO-SCRIPT.md](./DEMO-SCRIPT.md).
+2. Ejecutar la demo de cinco minutos de [DEMO-SCRIPT.md](./DEMO-SCRIPT.md).
 3. Usar el escenario ficticio de [DEMO-TENANT.md](./DEMO-TENANT.md) y el relato de [DEMO-STORY.md](./DEMO-STORY.md).
 4. Acompañar los 15 días con [15-DAY-PILOT-PLAN.md](./15-DAY-PILOT-PLAN.md) y [FIRST-24-HOURS.md](./FIRST-24-HOURS.md).
 5. Registrar prospectos en el PlatformCRM existente según [FIRST-20-PROSPECTS.md](./FIRST-20-PROSPECTS.md).
@@ -25,7 +25,7 @@ El contacto comercial por WhatsApp del sitio debe resolver su destino desde `VIT
 7. Medir con [PILOT-METRICS.md](./PILOT-METRICS.md) y atender incidentes con [SUPPORT-RUNBOOK.md](./SUPPORT-RUNBOOK.md).
 8. Si vuelve el acceso al servidor/cloud, seguir [PILOT-LAUNCH-RUNBOOK.md](./PILOT-LAUNCH-RUNBOOK.md).
 9. Usar la checklist de [DEMO-SAFETY.md](./DEMO-SAFETY.md), la ficha [FIRST-CLIENT-DATA.md](./FIRST-CLIENT-DATA.md), el [PILOT-KICKOFF.md](./PILOT-KICKOFF.md) y [POST-DEMO-FOLLOWUP.md](./POST-DEMO-FOLLOWUP.md).
-10. Tomar la decisión con [GO-NO-GO.md](./GO-NO-GO.md).
+10. Tomar la decisión con [GO-NO-GO.md](./GO-NO-GO.md) y [FIRST-PILOT-SUCCESS-CRITERIA.md](./FIRST-PILOT-SUCCESS-CRITERIA.md).
 
 ## First customer sales kit
 
@@ -37,9 +37,9 @@ La primera tanda preparada para revisión humana está en [FIRST-REAL-PROSPECT-B
 
 El paquete individual de Axel The Barber está en [AXEL-FIRST-CONTACT.md](./AXEL-FIRST-CONTACT.md). La fase informativa de hasta cinco negocios está en [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). Ambos son material para aprobación humana: no abren conversaciones ni crean drafts.
 
-La segunda tanda con demo preparada para revisión humana está en [SECOND-PROSPECT-BATCH.md](./SECOND-PROSPECT-BATCH.md). Incluye diez negocios con evidencia comercial pública, top 5 priorizado y copy por canal; no ejecuta ningún envío.
+La segunda tanda está registrada en [SECOND-PROSPECT-BATCH.md](./SECOND-PROSPECT-BATCH.md). Incluye diez negocios con evidencia comercial pública, top 5 priorizado, copy por canal y el registro de los cuatro emails y BMA enviados. No se autorizó una tercera tanda.
 
-La fase informativa anterior sólo presentaba la idea y medía respuestas. La segunda tanda habilita preparar una demo pública y mencionar 15 días gratis, siempre con revisión humana por negocio; no inicia trials, no habilita QA/producción, no usa QR/pagos y no programa follow-ups.
+La fase informativa anterior sólo presentaba la idea y medía respuestas. La segunda tanda habilitó una demo pública y mencionar 15 días gratis, siempre con revisión humana por negocio; no inicia trials, no habilita QA/producción, no usa QR/pagos y no programa follow-ups. La fase actual es esperar respuestas y convertir al primer interesado con [DEMO-SCRIPT.md](./DEMO-SCRIPT.md), [CLIENT-ONBOARDING.md](./CLIENT-ONBOARDING.md) y [SALES-RESPONSE-PLAYBOOK.md](./SALES-RESPONSE-PLAYBOOK.md).
 
 Este kit exige revisión humana de Lautaro, una cuenta por negocio, datos comerciales públicos y ningún envío automático. [PROSPECT-TRACKER.csv](./PROSPECT-TRACKER.csv) permanece vacío hasta que un prospecto tenga fuente y permiso operativo revisados.
 
@@ -54,7 +54,14 @@ Este kit exige revisión humana de Lautaro, una cuenta por negocio, datos comerc
 
 ## Criterio de éxito
 
-El piloto es exitoso cuando el dueño puede configurar lo esencial, entiende el valor, usa agenda/reservas con datos propios, recibe soporte claro y expresa intención de continuar. Las métricas y la clasificación completa están en [PILOT-METRICS.md](./PILOT-METRICS.md); no se declara éxito por cantidad de mensajes o por promesas de automatización.
+El piloto es exitoso cuando cumple los mínimos de [FIRST-PILOT-SUCCESS-CRITERIA.md](./FIRST-PILOT-SUCCESS-CRITERIA.md): negocio configurado, reserva pública accesible, primer turno real, agenda visible, cliente registrado, trial activo y cero errores críticos. No se declara éxito por cantidad de mensajes, una demo solicitada ni por promesas de automatización.
+
+## Readiness del primer cliente
+
+- `DEMO_5_MIN_READY`: guion máximo de cinco minutos listo.
+- `FIRST_CLIENT_ONBOARDING_READY`: checklist express de aproximadamente 15 minutos lista.
+- `HOT_LEAD_RESPONSES_READY`: respuestas revisadas para interés, demo, prueba, precio, funcionamiento, WhatsApp y sistemas existentes.
+- `FIRST_PILOT_SUCCESS_CRITERIA_READY`: criterios mínimos y evidencia de éxito definidos.
 
 ## Estado de esta documentación
 

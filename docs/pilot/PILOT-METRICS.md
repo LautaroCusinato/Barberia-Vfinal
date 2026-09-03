@@ -31,6 +31,8 @@ Registrar la fuente de cada número y el período. No unir tenants ni prospectos
 
 ## Clasificación
 
+- Para el primer cliente, usar además los mínimos verificables de [FIRST-PILOT-SUCCESS-CRITERIA.md](./FIRST-PILOT-SUCCESS-CRITERIA.md): negocio configurado, reserva pública, primer turno real, agenda visible, cliente registrado, trial activo y cero errores críticos.
+
 - **PILOT SUCCESS:** onboarding completado, operación básica usada, sin P0/P1 abiertos, feedback positivo verificable y al menos una decisión informada de continuidad; el número exacto de cuentas se define al aprobar la cohorte.
 - **PILOT PARTIAL:** producto usable con bloqueos P2 o feedback mixto; hay aprendizajes claros y una lista priorizada antes de ampliar.
 - **PILOT FAILED:** P0/P1, pérdida de aislamiento/datos, errores que impiden la operación básica o señales de contacto no consentido. Frenar la cohorte y seguir soporte/rollback.

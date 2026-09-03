@@ -2,7 +2,7 @@
 
 Enviar manualmente y adaptar una sola frase a lo que la persona comentó. No iniciar una secuencia automática.
 
-Esta guía es posterior a una demo ya realizada. No usarla para la primera fase informativa; allí no se ofrece acceso, demo funcional inmediata ni trial.
+Esta guía es posterior a una demo ya realizada. No usarla para un lead que todavía no pidió demo ni para iniciar contactos nuevos; cualquier seguimiento requiere revisión humana.
 
 ## A. Interesado
 

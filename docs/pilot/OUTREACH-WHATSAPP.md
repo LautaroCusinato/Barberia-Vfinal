@@ -2,9 +2,9 @@
 
 This document prepares copy for manual use only. `HUMAN_REVIEW_REQUIRED` is mandatory: Lautaro reviews the business, recipient identity, DNC, duplicate status and final wording before every message. Never use Evolution `miwsp`, Reply Only, n8n, product bots or an automatic queue.
 
-## Current phase override — informational only
+## Current phase override — post-outreach
 
-For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). The variants below are reusable later and are **not active for this phase**: do not offer product access, QA, an immediate functional demo, trial, WhatsApp connection, QR, payment or links. Do not follow up yet; wait for natural responses from the first batch.
+The approved outreach to Axel and BMA Barber is complete for the current cohort. The variants below are a reusable response/demo library only: do not start new WhatsApp contacts or follow-ups in the current task. Every reply requires human review.
 
 ## Gate before copying a message
 
@@ -59,7 +59,7 @@ The employee is not treated as the owner unless their role is confirmed. Do not 
 
 > Dale, te puedo pasar la demo y responderte cualquier duda puntual. ¿Querés que te la comparta?
 
-Only include the demo link after the technical owner confirms `DEMO COMMERCIAL READY`.
+Only include `https://barberia-qa.cuchitron.lat/` after `DEMO_5_MIN_READY` is confirmed and Lautaro has reviewed the reply.
 
 ## If they ask price
 
