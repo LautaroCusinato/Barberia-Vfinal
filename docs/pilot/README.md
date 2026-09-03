@@ -35,7 +35,9 @@ El flujo de respuesta y seguimiento está en [SALES-RESPONSE-PLAYBOOK.md](./SALE
 
 La primera tanda preparada para revisión humana está en [FIRST-REAL-PROSPECT-BATCH.md](./FIRST-REAL-PROSPECT-BATCH.md). Incluye sólo evidencia comercial pública, copy pendiente de aprobación y gates de identidad; no contiene envíos ni drafts ejecutados.
 
-El paquete individual de Axel The Barber está en [AXEL-FIRST-CONTACT.md](./AXEL-FIRST-CONTACT.md). Es material para aprobación humana: no abre conversaciones ni crea drafts.
+El paquete individual de Axel The Barber está en [AXEL-FIRST-CONTACT.md](./AXEL-FIRST-CONTACT.md). La fase informativa de hasta cinco negocios está en [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). Ambos son material para aprobación humana: no abren conversaciones ni crean drafts.
+
+La fase vigente sólo presenta la idea y mide respuestas: no ofrece acceso, QA, demo funcional inmediata, trial, QR, pago ni links, y no programa follow-ups.
 
 Este kit exige revisión humana de Lautaro, una cuenta por negocio, datos comerciales públicos y ningún envío automático. [PROSPECT-TRACKER.csv](./PROSPECT-TRACKER.csv) permanece vacío hasta que un prospecto tenga fuente y permiso operativo revisados.
 

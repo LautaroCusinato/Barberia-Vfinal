@@ -2,6 +2,8 @@
 
 Manual routine for Lautaro while Austral enters its first pilot. Stop if a gate fails; quality and consent matter more than volume.
 
+For the current informational phase, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md): no product access, links, price in the first message, immediate demo, trial, payment or follow-up.
+
 ## 0–5 min — safety and pipeline
 
 - Open the CRM source of truth and review due actions.
@@ -27,13 +29,14 @@ Manual routine for Lautaro while Austral enters its first pilot. Stop if a gate 
 
 - Lautaro reviews business, recipient, channel, DNC, duplicate and exact copy.
 - Contact only a `BUSINESS_DIRECT` or `EMPLOYEE_BUSINESS` recipient that passes all gates.
-- Send manually, one business at a time, or leave the draft pending.
+- Send manually, one business at a time, only after approval; otherwise leave the copy pending in documentation. Do not create drafts.
 - Never use Evolution, Reply Only, n8n, product bots, BCC or bulk sends.
 
 ## 35–45 min — record and respond
 
 - Record timestamp, channel, message, delivery/bounce and next action.
 - Stop follow-ups for any reply.
+- Do not schedule follow-ups for the first informational batch; wait for natural responses.
 - Classify with [SALES-RESPONSE-PLAYBOOK.md](./SALES-RESPONSE-PLAYBOOK.md).
 - Escalate interest, trial, call, negotiation, technical uncertainty and complaints to Lautaro.
 - Review one learning for tomorrow; do not change the whole sequence after one anecdote.

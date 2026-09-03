@@ -1,96 +1,89 @@
-# Axel The Barber — first contact
+# Axel The Barber — first informational outreach
 
-Paquete de WhatsApp preparado para revisión humana de Lautaro. No es un draft de Gmail, no abre un chat y no autoriza ningún envío.
+Paquete de WhatsApp preparado para la fase informativa y revisión humana de Lautaro. No es un draft de Gmail, no abre un chat y no autoriza ningún envío por sí solo.
 
-**Estado:** `AXEL_FIRST_CONTACT_READY_FOR_HUMAN_APPROVAL`
+**Estado:** `AXEL_INFORMATIONAL_OUTREACH_READY_FOR_HUMAN_REVIEW`
 
-**Canal recomendado:** WhatsApp comercial publicado por la marca
+**Canal recomendado:** WhatsApp comercial publicado por la marca, reconfirmar antes de cualquier envío
 
 **Envíos realizados:** `0`
 
-## 1. Evidencia usada
+## Evidencia usada
 
-Se usa exclusivamente lo ya documentado en [FIRST-REAL-PROSPECT-BATCH.md](./FIRST-REAL-PROSPECT-BATCH.md):
+Se usa únicamente lo documentado en [FIRST-REAL-PROSPECT-BATCH.md](./FIRST-REAL-PROSPECT-BATCH.md):
 
 - **Nombre comercial:** Axel The Barber.
 - **Ubicación pública:** Villa Devoto.
-- **Canal público recomendado:** WhatsApp comercial publicado en el sitio de la marca; también figura Instagram.
+- **Canal público:** WhatsApp comercial publicado por el sitio de la marca; también figura Instagram.
 - **Reserva observada:** el sitio indica que atiende con turno previo por WhatsApp.
-- **Detalles útiles:** el sitio publica atención personalizada, 7 años de oficio y servicios de corte, barba y combo.
-- **Límites:** no se afirma cantidad de clientes, ingresos, empleados, software actual ni un problema interno. La carga manual de coordinar por WhatsApp es sólo una hipótesis a validar.
-- **Identidad:** el canal debe volver a comprobarse manualmente antes de cualquier contacto. `contact_owner_type = BUSINESS_DIRECT` sólo si el chat sigue siendo el canal comercial directo de la marca.
+- **Detalles útiles:** atención personalizada, 7 años de oficio y servicios de corte, barba y combo.
+- **Límites:** no se afirma cantidad de clientes, ingresos, empleados, software actual ni un problema interno. La coordinación manual por WhatsApp es sólo una hipótesis.
 
-## 2. Versión A — ultracorta
+## Mensaje informativo recomendado
 
-> Hola, ¿cómo va? Soy Lautaro.<br>
-> Estoy armando Austral, un sistema para ordenar turnos y agenda de barberías, con 15 días de prueba.<br>
-> Vi que trabajan con turno previo por WhatsApp en Villa Devoto.<br>
-> Si querés te lo muestro en 5 minutos y ves si te puede servir.
+> Hola, ¿cómo va? Soy Lautaro. Estoy armando Austral, un sistema pensado para barberías para ordenar reservas, agenda y clientes y simplificar un poco todo el manejo de los turnos.
+>
+> Vi que ustedes trabajan con turnos por WhatsApp y por eso pensé que les podía resultar interesante. Estamos terminando de preparar las primeras pruebas con barberías y me interesaba saber si algo así les podría servir a ustedes.
+>
+> No te quiero vender nada por acá, más que nada quería contarte la idea y ver si les resulta interesante.
 
-## 3. Versión B — natural
+La observación es pública y no afirma que WhatsApp sea un problema. El objetivo es conseguir una respuesta, no vender el producto, iniciar un trial ni agendar una demo inmediata.
 
-> Hola, ¿cómo va? Soy Lautaro. Estoy armando Austral, un sistema para barberías que ayuda a ordenar reservas, agenda, clientes y equipo, para bajar el ida y vuelta manual de los turnos. Vi que en Axel The Barber trabajan con turno previo por WhatsApp en Villa Devoto. Tenemos una prueba de 15 días. Si querés te lo muestro en 5 minutos y ves si te puede servir.
+## Versión más corta
 
-## 4. Versión C — más personalizada
+> Hola! Soy Lautaro. Estoy armando Austral, un sistema para barberías que ordena reservas, agenda y clientes y busca simplificar la gestión de turnos.
+>
+> Vi que ustedes trabajan con turnos por WhatsApp y quería saber si algo así les podría interesar cuando esté listo.
 
-> Hola, ¿cómo va? Soy Lautaro. Vi que en Axel The Barber reservan turno previo por WhatsApp y que ofrecen corte, barba y combo en Villa Devoto. Estoy armando Austral para ordenar reservas y agenda, con clientes y equipo más organizados, sin cambiar todo de entrada. Tenemos una prueba de 15 días. Si querés te lo muestro en 5 minutos y ves si te puede servir.
+## Respuestas de esta fase
 
-## 5. RECOMMENDED MESSAGE
+### “¿Cuánto va a salir?”
 
-> Hola, ¿cómo va? Soy Lautaro. Estoy armando Austral, un sistema para barberías que ayuda a ordenar reservas, agenda, clientes y equipo, para bajar el ida y vuelta manual de los turnos. Vi que en Axel The Barber trabajan con turno previo por WhatsApp en Villa Devoto. Tenemos una prueba de 15 días. Si querés te lo muestro en 5 minutos y ves si te puede servir.
+> La idea inicial es ARS 50.000 por mes y vamos a dar 15 días gratis para que la barbería pueda probarlo antes de decidir.
 
-Es la mejor opción porque combina una observación pública concreta con una explicación simple del beneficio. Mantiene un solo CTA, no enumera funciones de más y deja la decisión abierta sin prometer automatización de WhatsApp.
+Si pregunta por sucursales:
 
-## 6. Respuestas inmediatas
+> Si tienen más de una sucursal, eso lo vemos según el caso.
 
-### A. “Dale, contame”
+### “¿Qué hace?”
 
-> Dale, gracias. Austral ayuda a ordenar reservas y agenda de barberías, para bajar el ida y vuelta manual de los turnos. Si querés te lo muestro en 5 minutos y ves si te puede servir.
+> La idea es tener en un mismo lugar las reservas, la agenda, los clientes, servicios y el equipo de la barbería, y después ir simplificando también la gestión que hoy suele hacerse por WhatsApp.
 
-### B. “¿Cuánto sale?”
+### “Quiero verlo”
 
-> Sale ARS 50.000 por mes. Antes tenés 15 días gratis para probarlo y ver si realmente te sirve.
+> Dale, buenísimo. Estamos terminando de cerrar la versión para las primeras barberías. Si querés te tengo en cuenta y apenas la tengamos lista te escribo para mostrártela tranquilo.
 
-Si pregunta por múltiples sucursales:
+Marcar `INTERESTED_FOR_DEMO`. No enviar link ni ofrecer demo funcional inmediata.
 
-> Si tienen más de una sucursal, lo vemos según el caso.
+### “Quiero probarlo”
 
-### C. “¿Qué hace?”
+> Genial. Justamente estamos armando el primer grupo de barberías para probarlo. Todavía estoy terminando la preparación técnica, pero si querés te anoto entre los primeros y te contacto apenas abramos las pruebas.
 
-> Ordena reservas, agenda, clientes y equipo de una barbería para que los turnos no dependan tanto del ida y vuelta manual. Se puede probar 15 días.
+Marcar `INTERESTED_FOR_PILOT`. No crear trial ni cuenta.
 
-### D. “Mandame info”
+### “¿Y WhatsApp?”
 
-> Dale. Austral es un sistema para barberías que ordena reservas y agenda, con clientes y equipo más organizados. Si querés te lo muestro en 5 minutos y ves si te puede servir.
+> Sí, estamos trabajando una integración de WhatsApp para simplificar consultas y turnos, pero esa parte la estamos habilitando de forma controlada en los primeros pilotos.
 
-No adjuntar links ni información adicional sin revisión; el enlace de demo se usa sólo cuando esté confirmado `DEMO COMMERCIAL READY`.
+No prometer disponibilidad inmediata ni automatización general.
 
-### E. “Ya uso otro sistema”
+### “No me interesa”
 
-> Perfecto, entonces no tendría sentido cambiar por cambiar. Podemos comparar el flujo actual con una demo corta y ver si Austral aporta algo; no hace falta asumir una migración.
+> Dale, gracias por responder!
 
-### F. “No me interesa”
+Marcar `LOST` y no insistir.
 
-> Entiendo, gracias por responder. No te escribo de nuevo.
+## Seguimiento
 
-Clasificar como `NOT_INTERESTED` y detener seguimiento. Si pide no volver a contactar, clasificar como `DNC`.
+No hacer follow-up en esta fase informativa. Esperar la respuesta natural de la primera tanda y marcar `STOP` ante un rechazo o pedido de no contacto.
 
-## 7. Follow-up 1 — después de 2/3 días sin respuesta
+## Checklist antes de enviar manualmente
 
-> Hola, ¿cómo va? Retomo por si se perdió el mensaje. Estoy armando Austral para ordenar reservas y bajar el ida y vuelta manual de los turnos. Si querés te lo muestro en 5 minutos y ves si te puede servir.
-
-## 8. Follow-up 2 — último contacto varios días después
-
-> Último mensaje por acá, no quiero molestar. Si en algún momento te interesa ver Austral, te lo muestro en 5 minutos y ves si te puede servir. Si no, no te escribo más.
-
-Después de este mensaje: `STOP / DO_NOT_CONTACT` hasta que exista una nueva señal explícita del negocio. Cualquier respuesta detiene follow-ups y requiere clasificación humana.
-
-## Aprobación humana previa
-
-- Confirmar que el WhatsApp sigue publicado por Axel The Barber y pertenece al negocio.
+- Confirmar que el WhatsApp sigue publicado por Axel The Barber y pertenece directamente al negocio.
 - Confirmar `contact_owner_type = BUSINESS_DIRECT`.
 - Revisar DNC, duplicados y respuestas previas en CRM.
-- Elegir una sola versión y una sola CTA.
-- No enviar, no crear draft y no automatizar.
+- Elegir este único canal y este único mensaje.
+- No incluir precio, links, QA, credenciales, QR, trial, pago ni acceso al producto en el primer mensaje.
+- Enviar sólo después de aprobación humana de Lautaro; nunca automatizar.
 
-**Resultado:** `AXEL FIRST CONTACT READY FOR HUMAN APPROVAL`
+**Resultado:** `AXEL FIRST INFORMATIONAL OUTREACH READY / WAITING FOR HUMAN APPROVAL`

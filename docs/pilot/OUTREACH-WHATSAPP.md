@@ -2,6 +2,10 @@
 
 This document prepares copy for manual use only. `HUMAN_REVIEW_REQUIRED` is mandatory: Lautaro reviews the business, recipient identity, DNC, duplicate status and final wording before every message. Never use Evolution `miwsp`, Reply Only, n8n, product bots or an automatic queue.
 
+## Current phase override — informational only
+
+For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). The variants below are reusable later and are **not active for this phase**: do not offer product access, QA, an immediate functional demo, trial, WhatsApp connection, QR, payment or links. Do not follow up yet; wait for natural responses from the first batch.
+
 ## Gate before copying a message
 
 - Business is active through a public source.

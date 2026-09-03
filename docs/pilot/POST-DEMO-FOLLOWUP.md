@@ -2,6 +2,8 @@
 
 Enviar manualmente y adaptar una sola frase a lo que la persona comentó. No iniciar una secuencia automática.
 
+Esta guía es posterior a una demo ya realizada. No usarla para la primera fase informativa; allí no se ofrece acceso, demo funcional inmediata ni trial.
+
 ## A. Interesado
 
 > Hola, [nombre]. Gracias por la charla. Te puedo acompañar a configurar servicios, equipo y horarios para probar Austral 15 días. ¿Querés que coordinemos el alta?

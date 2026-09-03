@@ -2,6 +2,8 @@
 
 This plan is deliberately small: learn from a few conversations before expanding. The CRM remains the source of truth; [PROSPECT-TRACKER.csv](./PROSPECT-TRACKER.csv) is an empty preparation template, not a second CRM.
 
+The current first-contact phase is informational: use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md), wait for natural replies and do not offer access, links, immediate demo, trial or payment.
+
 ## Sequence
 
 1. Prepare 20 qualified prospects with public evidence and identity classification.

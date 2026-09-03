@@ -2,6 +2,8 @@
 
 Guion para el momento en que una barbería acepta probar Austral.
 
+Este documento se usa sólo después de que el negocio haya expresado interés y se haya aprobado el piloto. No es copy de primer contacto informativo.
+
 > “Buenísimo. Vamos a configurar tu negocio juntos y vas a tener 15 días de prueba para usar la agenda, los servicios, el equipo, los clientes y las reservas online con tus propios datos. No hace falta cargar una tarjeta para empezar.”
 
 ## Cómo seguimos

@@ -2,9 +2,13 @@
 
 Human review remains mandatory. When any prospect replies, stop all scheduled follow-ups, classify the response, prepare a short suggested reply and wait for Lautaro when the context involves interest, negotiation, trial, a meeting, technical scope, complaint or special condition.
 
+## Current phase override — informational outreach
+
+For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). Do not offer product access, QA, an immediate functional demo, trial, WhatsApp connection, QR, payment or links. A reply is classified and reviewed; it does not trigger an automatic next step.
+
 ## “Sí, contame”
 
-“Dale. Austral ordena agenda, reservas, servicios, profesionales y clientes en un solo lugar. Si querés, te paso una demo breve y después vemos si encaja.”
+“Dale. Austral busca ordenar reservas, agenda, clientes, servicios y equipo de una barbería. Estamos terminando de preparar las primeras pruebas; quería saber si una idea así les podría servir.”
 
 ## “¿Cuánto sale?”
 
@@ -28,7 +32,7 @@ Human review remains mandatory. When any prospect replies, stop all scheduled fo
 
 ## “Mandame info”
 
-“Dale. Te paso una explicación corta y, si te sirve, una demo. Austral ordena agenda, reservas, servicios, profesionales y clientes.”
+“Dale. Austral busca ordenar reservas, agenda, clientes, servicios y equipo de una barbería. Estamos terminando de preparar las primeras pruebas y, cuando la versión esté lista, te escribo para mostrártela.”
 
 ## “Ahora no”
 
@@ -52,7 +56,7 @@ Human review remains mandatory. When any prospect replies, stop all scheduled fo
 
 ## “¿Tenés demo?”
 
-“Sí. Cuando la demo esté confirmada como lista, te paso el enlace oficial y te explico sólo lo que está disponible.”
+“Estamos terminando de cerrar la versión para las primeras barberías. Si querés te tengo en cuenta y apenas la tengamos lista te escribo para mostrártela tranquilo.”
 
 ## “¿Tengo que cambiar mi WhatsApp?”
 
@@ -64,7 +68,11 @@ Human review remains mandatory. When any prospect replies, stop all scheduled fo
 
 ## “¿Puedo probarlo?”
 
-“Sí, podemos evaluar un trial de 15 días. Antes necesitamos confirmar negocio, contacto, servicios, profesionales y el problema que quieren probar.”
+“Genial. Estamos armando el primer grupo de barberías para probarlo. Todavía estoy terminando la preparación técnica, pero si querés te anoto entre los primeros y te contacto apenas abramos las pruebas.”
+
+## “Tenemos varias sucursales”
+
+“Si tienen más de una sucursal, eso lo vemos según el caso. Primero entendemos cómo trabajan y qué necesitan probar.”
 
 ## Classification and escalation
 

@@ -2,6 +2,10 @@
 
 The sequence is a small, human-reviewed cadence. It is not a scheduler and it never sends automatically.
 
+## Current phase override — informational batch
+
+For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). The Day 2/3 and Day 6/7 examples below are **superseded for this phase**: do not follow up until the natural response rate of the first batch has been measured.
+
 ## Day 0 — first contact
 
 Use one approved WhatsApp, Instagram DM or email variant, chosen for the verified public channel. One business, one channel, one CTA. Record timestamp, copy, source, owner type and reviewer.

@@ -2,6 +2,10 @@
 
 Send manually from the approved Austral commercial account only. One email per business, no BCC, no automatic sending, and no contact until the recipient passes the public-identity, DNC, prior-negative and duplicate preflight. Keep each email below 120 words.
 
+## Current phase override — informational only
+
+For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). The email sequence below is reusable later and is **not active for this phase**: no price or links in the first message, no product access, QA, immediate functional demo, trial, WhatsApp connection, QR or payment. No follow-up yet.
+
 ## Subject options
 
 1. Una consulta rápida sobre los turnos de [BARBERÍA]

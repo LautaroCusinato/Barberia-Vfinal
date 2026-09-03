@@ -1,5 +1,7 @@
 # Demo CTA
 
+This CTA is for a later interest/demo stage. It is not active in the first informational outreach phase; do not offer an immediate functional demo or send a link from the first message.
+
 ## Recommended
 
 > Si querés, te muestro cómo funciona en 5 minutos.

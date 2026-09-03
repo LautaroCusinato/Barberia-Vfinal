@@ -2,6 +2,10 @@
 
 Manual DM only, after human review of the public account and recipient identity. Keep it shorter than email and avoid a feature list. Do not scrape private profiles or move a personal account into the commercial pipeline without consent.
 
+## Current phase override — informational only
+
+For the first authorized batch, use [FIRST-INFORMATIONAL-OUTREACH.md](./FIRST-INFORMATIONAL-OUTREACH.md). The copy below is reusable later and is **not active for this phase**: no product access, QA, immediate functional demo, trial, WhatsApp connection, QR, payment or links. No follow-up yet.
+
 ## Primer mensaje
 
 > Hola, ¿cómo va? Soy Lautaro, de Austral. Vi [detalle público concreto] y quería mostrarles una forma simple de ordenar turnos y reservas. ¿Les interesa que les pase una demo?
