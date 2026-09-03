@@ -259,15 +259,16 @@ La verificación previa en Gmail y en `PROSPECT-TRACKER.csv` no encontró envío
 | Pikaros Barbería | email | 2026-09-03 10:49:56 -03:00 | `CONTACTED` | `approved_personalized_email` | `YES` | `NONE` |
 | Barbería Pelizzari | email | 2026-09-03 10:50:05 -03:00 | `CONTACTED` | `approved_personalized_email` | `YES` | `NONE` |
 | Firulete Barbería | email | 2026-09-03 10:50:13 -03:00 | `CONTACTED` | `approved_personalized_email` | `YES` | `NONE` |
+| BMA Barber | WhatsApp | 2026-09-03 10:56 -03:00 | `CONTACTED` | `approved_bma_whatsapp` | `YES` | `NONE` |
 
-No follow-up fue enviado. No se contactó a los otros cinco prospectos. BMA Barber quedó con el chat público `+54 9 11 2593-7529` confirmado y el mensaje preparado sin enviar (`READY_TO_SEND`), pendiente de aprobación humana.
+No follow-up fue enviado. No se contactó a Bulldog, Lion, Mala Testa, Att' ni Pana. BMA Barber quedó con el chat público `+54 9 11 2593-7529` confirmado; el mensaje fue enviado y WhatsApp lo marcó como `Entregado`.
 
 ## Gate final
 
 - `READY_TO_CONTACT`: los diez por identidad directa documentada; top 5 priorizados arriba.
 - `CONTACT_IDENTITY_REVIEW`: ninguno por ahora; si el canal cambia o deja de estar vinculado al sitio oficial, volver a este estado.
 - `HUMAN_REVIEW_REQUIRED`: cumplida para los cuatro emails; BMA pendiente.
-- `OUTREACH_SENT`: `4` emails; `BMA` no enviado.
+- `OUTREACH_SENT`: `4` emails + `BMA` por WhatsApp; ningún otro prospecto contactado.
 - No follow-up automático; cualquier respuesta se clasifica y se trae a Lautaro antes de contestar.
 
-**Estado:** `SECOND OUTREACH BATCH SENT / WAITING FOR RESPONSES AND BMA APPROVAL`
+**Estado:** `SECOND OUTREACH BATCH SENT / WAITING FOR RESPONSES`
