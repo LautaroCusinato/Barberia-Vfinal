@@ -9,20 +9,23 @@ export function normalizeCommercialBillingMode(value) {
 // exposed by the current commercial experience.
 export const COMMERCIAL_BILLING_MODE = normalizeCommercialBillingMode(import.meta.env?.VITE_COMMERCIAL_BILLING_MODE)
 export const COMMERCIAL_TRIAL_DAYS = 15
+// Keep the legacy code for the existing subscription/RPC contract while
+// exposing a single, product-level commercial name to customers.
+export const COMMERCIAL_PLAN_CODE = 'starter'
+export const COMMERCIAL_PLAN_NAME = 'Austral'
+export const COMMERCIAL_MONTHLY_PRICE = 50000
 export const TRIAL_CONTINUATION_MESSAGE = 'Hola! Terminé mi prueba de 15 días de Austral y quiero seguir usando el software. ¿Cómo puedo continuar?'
 
 // Catálogo comercial vigente mientras Mercado Pago permanece pausado. Este
 // archivo es la única fuente de precios para superficies públicas y fallback;
 // no habilita checkout ni sustituye el catálogo/guard del backend.
 export const COMMERCIAL_CATALOG = Object.freeze([
-  Object.freeze({ codigo: 'starter', nombre: 'Starter', descripcion: 'Agenda, clientes y reservas online para ordenar la operación.', precio_mensual: 30000, moneda: 'ARS', periodicidad: 'monthly', trial_dias: COMMERCIAL_TRIAL_DAYS, funcionalidades: ['Agenda y reservas públicas', 'Clientes, servicios y horarios', `Prueba gratuita de ${COMMERCIAL_TRIAL_DAYS} días`] }),
-  Object.freeze({ codigo: 'pro', nombre: 'Pro', descripcion: 'Más herramientas para equipos que necesitan crecer con contexto.', precio_mensual: 60000, moneda: 'ARS', periodicidad: 'monthly', trial_dias: COMMERCIAL_TRIAL_DAYS, funcionalidades: ['Todo Starter', 'Equipo y operación avanzada', 'Automatizaciones preparadas'] }),
-  Object.freeze({ codigo: 'premium', nombre: 'Premium', descripcion: 'La experiencia completa para una operación más exigente.', precio_mensual: 100000, moneda: 'ARS', periodicidad: 'monthly', trial_dias: COMMERCIAL_TRIAL_DAYS, funcionalidades: ['Todo Pro', 'Gestión avanzada y soporte prioritario', 'Automatizaciones preparadas'] }),
+  Object.freeze({ codigo: COMMERCIAL_PLAN_CODE, nombre: COMMERCIAL_PLAN_NAME, descripcion: 'Agenda, clientes y reservas online para ordenar la operación.', precio_mensual: COMMERCIAL_MONTHLY_PRICE, moneda: 'ARS', periodicidad: 'monthly', trial_dias: COMMERCIAL_TRIAL_DAYS, funcionalidades: ['Agenda y reservas públicas', 'Clientes, servicios y horarios', `Prueba gratuita de ${COMMERCIAL_TRIAL_DAYS} días`] }),
 ])
 
 export function getSalesWhatsAppMessage(plan = null) {
-  const selected = plan || COMMERCIAL_CATALOG[0]
-  return `Hola! Quiero contratar el plan ${selected.nombre} de Austral por $${Number(selected.precio_mensual).toLocaleString('es-AR')} mensuales.`
+  const selected = plan ? catalogPlan(plan.codigo) : COMMERCIAL_CATALOG[0]
+  return `Hola! Quiero conocer ${selected.nombre}: ${selected.trial_dias} días gratis y luego $${Number(selected.precio_mensual).toLocaleString('es-AR')} mensuales.`
 }
 
 export function getSalesWhatsAppHref(plan = null) {

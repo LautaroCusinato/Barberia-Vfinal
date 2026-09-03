@@ -87,16 +87,15 @@ assert.match(functionSource, /owner_admin_required/)
 assert.match(app, /connected = state === 'CONNECTED'/)
 assert.doesNotMatch(panel, /receiver_number.*CONNECTED|CONNECTED.*receiver_number/i)
 
-for (const [amount, plan] of [['30000', 'starter'], ['60000', 'pro'], ['100000', 'premium']]) {
-  assert.match(catalog, new RegExp(`codigo: '${plan}'`))
-  assert.match(catalog, new RegExp(`precio_mensual: ${amount}`))
-}
+assert.equal(COMMERCIAL_CATALOG.length, 1, 'la superficie comercial debe exponer un único plan')
+assert.equal(COMMERCIAL_CATALOG[0].nombre, 'Austral')
+assert.equal(COMMERCIAL_CATALOG[0].precio_mensual, 50000)
+assert.equal(COMMERCIAL_CATALOG[0].trial_dias, 15)
+assert.match(catalog, /COMMERCIAL_PLAN_CODE/) // legacy subscription code remains an internal compatibility detail
 assert.match(catalog, /moneda: 'ARS'/)
 assert.match(catalog, /VITE_SALES_WHATSAPP_NUMBER/)
 assert.match(catalog, /wa\.me/)
-assert.equal(getSalesWhatsAppMessage(COMMERCIAL_CATALOG[0]), 'Hola! Quiero contratar el plan Starter de Austral por $30.000 mensuales.')
-assert.equal(getSalesWhatsAppMessage(COMMERCIAL_CATALOG[1]), 'Hola! Quiero contratar el plan Pro de Austral por $60.000 mensuales.')
-assert.equal(getSalesWhatsAppMessage(COMMERCIAL_CATALOG[2]), 'Hola! Quiero contratar el plan Premium de Austral por $100.000 mensuales.')
+assert.equal(getSalesWhatsAppMessage(COMMERCIAL_CATALOG[0]), 'Hola! Quiero conocer Austral: 15 días gratis y luego $50.000 mensuales.')
 assert.match(assistant, /catalogPlan/)
 assert.match(assistant, /currency: plan\.moneda/)
 assert.doesNotMatch(assistant, /currency:\s*['"]USD|USD\s*10|BASE_BY_VERTICAL/)
