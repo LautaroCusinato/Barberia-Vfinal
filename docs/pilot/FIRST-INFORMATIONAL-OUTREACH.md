@@ -1,6 +1,6 @@
 # First informational outreach batch
 
-Fase informativa autorizada para una tanda máxima de cinco barberías. Este documento prepara copy y control; no envía WhatsApp, email ni DM, no crea drafts, no abre cuentas, no comparte links y no inicia trials.
+Fase informativa autorizada para una tanda máxima de cinco barberías. Este documento prepara copy y control; el único envío ejecutado hasta ahora (Axel The Barber) queda registrado en `AXEL-FIRST-CONTACT.md`. No crear drafts, abrir cuentas, compartir links ni iniciar trials.
 
 **Estado:** `FIRST_INFORMATIONAL_OUTREACH_READY_FOR_HUMAN_REVIEW`
 
@@ -10,7 +10,7 @@ Fase informativa autorizada para una tanda máxima de cinco barberías. Este doc
 
 **Follow-ups automáticos:** no
 
-**Envíos realizados desde este documento:** `0`
+**Envíos ejecutados en la tanda:** `1` (sólo Axel The Barber; registrado por separado)
 
 ## Verdad de producto para esta fase
 
@@ -36,9 +36,9 @@ Personalizar como máximo una frase con evidencia pública real. El primer objet
 
 ## Tabla de la primera tanda
 
-| Orden | Barbería | Canal natural | Evidencia pública ya documentada | Frase personalizada | `contact_owner_type` | Estado antes de enviar |
+| Orden | Barbería | Canal natural | Evidencia pública ya documentada | Frase personalizada | `contact_owner_type` | Estado |
 |---:|---|---|---|---|---|---|
-| 1 | Axel The Barber — Villa Devoto | WhatsApp comercial | Sitio de la marca publica turno previo por WhatsApp | “Vi que ustedes trabajan con turnos por WhatsApp y por eso pensé que les podía resultar interesante.” | `BUSINESS_DIRECT` sujeto a reconfirmación | `READY_FOR_HUMAN_REVIEW` |
+| 1 | Axel The Barber — Villa Devoto | WhatsApp comercial | Sitio de la marca publica turno previo por WhatsApp | “Vi que ustedes trabajan con turnos por WhatsApp y por eso pensé que les podía resultar interesante.” | `BUSINESS_DIRECT` confirmado por coincidencia con el número publicado | `CONTACTED` · 2026-09-02 22:12:53 -03:00 · `Entregado` |
 | 2 | La Guarida Barbería — CABA | WhatsApp comercial | Sitio de la marca recomienda WhatsApp y también muestra reserva online | “Vi que ustedes trabajan con WhatsApp y también tienen reserva online, por eso pensé que les podía resultar interesante.” | `BUSINESS_DIRECT` sujeto a reconfirmación | `READY_FOR_HUMAN_REVIEW` |
 | 3 | TwinCam.Studio — Ramos Mejía | Instagram comercial | Ficha pública muestra Instagram `@twincam.studio`; no confirma booking | “Vi que tienen un perfil público en Instagram en Ramos Mejía y por eso pensé que les podía resultar interesante.” | `UNKNOWN` hasta confirmar cuenta directa | `CONTACT_IDENTITY_REVIEW` |
 | 4 | Coco barber shop — Palermo | Instagram comercial | Fuente secundaria muestra local y horarios; no confirma perfil directo | “Vi que Coco barber shop está en Palermo y por eso pensé que les podía resultar interesante.” | `UNKNOWN` | `CONTACT_IDENTITY_REVIEW` |
@@ -160,4 +160,4 @@ No almacenar conversaciones completas ni datos personales privados.
 - Identificarse como Lautaro; no fingir “equipo comercial”, “soporte” o “representante”.
 - No enviar follow-up en esta fase.
 
-**Estado final documental:** `FIRST INFORMATIONAL OUTREACH BATCH READY / WAITING FOR HUMAN REVIEW`
+**Estado final documental:** `AXEL CONTACTED / OTHER FOUR WAITING FOR HUMAN REVIEW`

@@ -1,12 +1,18 @@
 # Axel The Barber — first informational outreach
 
-Paquete de WhatsApp preparado para la fase informativa y revisión humana de Lautaro. No es un draft de Gmail, no abre un chat y no autoriza ningún envío por sí solo.
+Registro del primer contacto informativo de WhatsApp, ejecutado manualmente después de la aprobación explícita de Lautaro. No autoriza follow-up ni nuevos contactos por sí solo.
 
-**Estado:** `AXEL_INFORMATIONAL_OUTREACH_READY_FOR_HUMAN_REVIEW`
+**Estado:** `CONTACTED`
 
-**Canal recomendado:** WhatsApp comercial publicado por la marca, reconfirmar antes de cualquier envío
+**Canal usado:** WhatsApp comercial público validado por coincidencia entre el número del chat y el enlace de reservas del sitio oficial
 
-**Envíos realizados:** `0`
+**Envíos realizados:** `1`
+
+**Registro de envío:** `2026-09-02 22:12:53 -03:00` · WhatsApp mostró `Entregado`
+
+**Respuesta recibida:** `NONE`
+
+**Follow-up:** `STOP / DO NOT CONTACT`
 
 ## Evidencia usada
 
@@ -77,13 +83,12 @@ Marcar `LOST` y no insistir.
 
 No hacer follow-up en esta fase informativa. Esperar la respuesta natural de la primera tanda y marcar `STOP` ante un rechazo o pedido de no contacto.
 
-## Checklist antes de enviar manualmente
+## Controles cumplidos
 
-- Confirmar que el WhatsApp sigue publicado por Axel The Barber y pertenece directamente al negocio.
-- Confirmar `contact_owner_type = BUSINESS_DIRECT`.
-- Revisar DNC, duplicados y respuestas previas en CRM.
-- Elegir este único canal y este único mensaje.
-- No incluir precio, links, QA, credenciales, QR, trial, pago ni acceso al producto en el primer mensaje.
-- Enviar sólo después de aprobación humana de Lautaro; nunca automatizar.
+- El WhatsApp usado coincide con el canal de reservas publicado por Axel The Barber.
+- `contact_owner_type = BUSINESS_DIRECT`.
+- Se usó un único canal y un único mensaje, sin links, precio, QA, credenciales, QR, trial, pago ni acceso al producto.
+- El envío fue manual y posterior a la aprobación humana de Lautaro.
+- No enviar segundo mensaje ni follow-up; esperar una respuesta natural.
 
-**Resultado:** `AXEL FIRST INFORMATIONAL OUTREACH READY / WAITING FOR HUMAN APPROVAL`
+**Resultado:** `AXEL FIRST INFORMATIONAL OUTREACH CONTACTED / WAITING FOR REPLY`
