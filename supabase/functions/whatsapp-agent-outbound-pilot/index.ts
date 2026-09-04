@@ -1,15 +1,16 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
 import {
-  QA_AGENT_OUTBOUND_INSTANCE,
-  QA_AGENT_OUTBOUND_TENANT_ID,
   PROTECTED_WHATSAPP_INSTANCE,
   agentOutboundGuard,
   buildAgentOutboundOperationId,
+  isQaAgentOutboundTenantAllowed,
   isPersistedConversationScope,
   isRealPersistedSourceMetadata,
   isQaAgentOutboundRuntime,
+  parseQaAgentOutboundTenantAllowlist,
+  qaAgentOutboundInstanceForTenant,
 } from '../_shared/whatsappAgentOutboundPilot.mjs'
-import { buildEvolutionSendTextPath, normalizeRecipient, sanitizeProviderResult } from '../_shared/whatsappOutboundPilot.mjs'
+import { buildQaEvolutionSendTextPath, normalizeRecipient, sanitizeProviderResult } from '../_shared/whatsappOutboundPilot.mjs'
 
 const MAX_EVENT_AGE_MS = 30 * 60 * 1000
 
@@ -68,34 +69,41 @@ Deno.serve(async (request) => {
     if (!operationId) return json({ error: 'event_id_required', outbound_allowed: false }, 422)
 
     const admin = adminClient()
+    const { data: sourceRun, error: sourceError } = await admin
+      .from('saas_automation_shadow_runs')
+      .select('id,tenant_id,integration_id,event_id,intent,metadata,observed_at')
+      .eq('event_id', eventId)
+      .maybeSingle()
+    if (sourceError) return json({ error: 'source_lookup_failed', outbound_allowed: false }, 502)
+    if (!sourceRun) return json({ error: 'real_persisted_source_required', outbound_allowed: false }, 404)
+
+    const tenantId = Number(sourceRun.tenant_id)
+    const integrationId = Number(sourceRun.integration_id)
+    const allowedTenantIds = parseQaAgentOutboundTenantAllowlist(Deno.env.get('WHATSAPP_AGENT_OUTBOUND_ALLOWED_TENANT_IDS'))
+    const tenantAllowlisted = isQaAgentOutboundTenantAllowed(tenantId, allowedTenantIds)
+    if (!tenantAllowlisted) return json({ error: 'qa_tenant_not_allowlisted', outbound_allowed: false }, 403)
+    const expectedInstance = qaAgentOutboundInstanceForTenant(tenantId)
+    if (!expectedInstance || expectedInstance === PROTECTED_WHATSAPP_INSTANCE) return json({ error: 'qa_instance_required', outbound_allowed: false }, 403)
+
     const { data: connection, error: connectionError } = await admin
       .from('saas_whatsapp_connections')
       .select('id,barberia_id,integration_id,provider,environment,state,instance_name')
-      .eq('barberia_id', QA_AGENT_OUTBOUND_TENANT_ID)
+      .eq('barberia_id', tenantId)
+      .eq('integration_id', integrationId)
       .eq('provider', 'evolution')
       .eq('environment', 'qa')
-      .eq('instance_name', QA_AGENT_OUTBOUND_INSTANCE)
       .maybeSingle()
     if (connectionError) return json({ error: 'connection_lookup_failed', outbound_allowed: false }, 502)
-    if (!connection || connection.state !== 'CONNECTED' || connection.instance_name === PROTECTED_WHATSAPP_INSTANCE) return json({ error: 'qa_connection_not_connected', outbound_allowed: false }, 409)
+    if (!connection || Number(connection.barberia_id) !== tenantId || Number(connection.integration_id) !== integrationId || connection.state !== 'CONNECTED' || connection.instance_name !== expectedInstance || connection.instance_name === PROTECTED_WHATSAPP_INSTANCE) return json({ error: 'qa_connection_not_connected', outbound_allowed: false }, 409)
 
     const { data: integration, error: integrationError } = await admin
       .from('saas_integraciones')
       .select('id,barberia_id,proveedor,integration_type,estado')
       .eq('id', connection.integration_id)
-      .eq('barberia_id', QA_AGENT_OUTBOUND_TENANT_ID)
+      .eq('barberia_id', tenantId)
       .maybeSingle()
     if (integrationError) return json({ error: 'integration_lookup_failed', outbound_allowed: false }, 502)
 
-    const { data: sourceRun, error: sourceError } = await admin
-      .from('saas_automation_shadow_runs')
-      .select('id,tenant_id,integration_id,event_id,intent,metadata,observed_at')
-      .eq('tenant_id', QA_AGENT_OUTBOUND_TENANT_ID)
-      .eq('integration_id', connection.integration_id)
-      .eq('event_id', eventId)
-      .maybeSingle()
-    if (sourceError) return json({ error: 'source_lookup_failed', outbound_allowed: false }, 502)
-    if (!sourceRun) return json({ error: 'real_persisted_source_required', outbound_allowed: false }, 404)
     const metadata = sourceRun.metadata && typeof sourceRun.metadata === 'object' ? sourceRun.metadata as Record<string, unknown> : {}
     const proposedReply = safeString(metadata.proposed_reply)
     const sourceObservedAt = new Date(String(sourceRun.observed_at || '')).getTime()
@@ -118,7 +126,8 @@ Deno.serve(async (request) => {
     const guard = agentOutboundGuard({
       enabled: pilotEnabled,
       runtimeValid,
-      tenantId: Number(connection.barberia_id),
+      tenantAllowlisted,
+      tenantId,
       environment: connection.environment,
       connectionState: connection.state,
       integrationProvider: integration?.proveedor,
@@ -127,8 +136,10 @@ Deno.serve(async (request) => {
       instance: connection.instance_name,
       sourceEventPresent: true,
       sourceEventReal,
-      sourceTenantId: Number(sourceRun.tenant_id),
-      sourceIntegrationId: Number(sourceRun.integration_id),
+      sourceTenantId: tenantId,
+      sourceIntegrationId: integrationId,
+      connectionIntegrationId: Number(connection.integration_id),
+      sourceInstance: safeString(metadata.instance),
       sourceFromMe: metadata.from_me === true,
       sourceEnvironment: safeString(metadata.environment),
       senderHashMatches: senderMatches,
@@ -148,7 +159,7 @@ Deno.serve(async (request) => {
     const claimRow = Array.isArray(claim) ? claim[0] : claim
     if (!claimRow?.acquired) return json({ sent: false, duplicate: true, operation_id: operationId, outbound_allowed: false }, 202)
 
-    const path = buildEvolutionSendTextPath(Deno.env.get('EVOLUTION_BASE_URL'), QA_AGENT_OUTBOUND_INSTANCE)
+    const path = buildQaEvolutionSendTextPath(Deno.env.get('EVOLUTION_BASE_URL'), connection.instance_name)
     const apiKey = safeString(Deno.env.get('EVOLUTION_API_KEY'))
     if (!path || !apiKey) return json({ error: 'evolution_send_not_configured', operation_id: operationId, outbound_allowed: false }, 503)
 

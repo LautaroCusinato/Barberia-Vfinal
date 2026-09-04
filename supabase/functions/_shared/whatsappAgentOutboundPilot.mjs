@@ -1,10 +1,26 @@
-export const QA_AGENT_OUTBOUND_TENANT_ID = 1
-export const QA_AGENT_OUTBOUND_INSTANCE = 'austral-qa-tenant-1'
 export const QA_AGENT_OUTBOUND_ALLOWED_INTENTS = Object.freeze(['services_query', 'price_query', 'availability_query', 'general_query', 'booking_intent'])
 export const PROTECTED_WHATSAPP_INSTANCE = 'miwsp'
 
 const textFrom = (value) => String(value ?? '').trim()
 const allowedIntents = new Set(QA_AGENT_OUTBOUND_ALLOWED_INTENTS)
+
+export function parseQaAgentOutboundTenantAllowlist(value) {
+  const ids = String(value ?? '')
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((id) => Number.isSafeInteger(id) && id > 0)
+  return Object.freeze([...new Set(ids)])
+}
+
+export function isQaAgentOutboundTenantAllowed(tenantId, allowlist) {
+  const id = Number(tenantId)
+  return Number.isSafeInteger(id) && id > 0 && Array.isArray(allowlist) && allowlist.includes(id)
+}
+
+export function qaAgentOutboundInstanceForTenant(tenantId) {
+  const id = Number(tenantId)
+  return Number.isSafeInteger(id) && id > 0 ? `austral-qa-tenant-${id}` : null
+}
 
 export function buildAgentOutboundOperationId(eventId) {
   const clean = textFrom(eventId).replace(/[^a-zA-Z0-9_.:-]/g, '').slice(0, 160)
@@ -79,6 +95,7 @@ export function isSafePersistedReply({ intent, reply, metadata = {} }) {
 export function agentOutboundGuard({
   enabled,
   runtimeValid,
+  tenantAllowlisted,
   tenantId,
   environment,
   connectionState,
@@ -90,6 +107,8 @@ export function agentOutboundGuard({
   sourceEventReal,
   sourceTenantId,
   sourceIntegrationId,
+  connectionIntegrationId,
+  sourceInstance,
   sourceFromMe,
   sourceEnvironment,
   senderHashMatches,
@@ -100,12 +119,14 @@ export function agentOutboundGuard({
 }) {
   if (runtimeValid !== true) return { allowed: false, reason: 'qa_shadow_runtime_required' }
   if (enabled !== true) return { allowed: false, reason: 'agent_outbound_pilot_disabled' }
-  if (tenantId !== QA_AGENT_OUTBOUND_TENANT_ID || sourceTenantId !== QA_AGENT_OUTBOUND_TENANT_ID) return { allowed: false, reason: 'qa_tenant_required' }
+  if (tenantAllowlisted !== true) return { allowed: false, reason: 'qa_tenant_not_allowlisted' }
+  if (!Number.isSafeInteger(Number(tenantId)) || Number(tenantId) <= 0 || Number(sourceTenantId) !== Number(tenantId)) return { allowed: false, reason: 'qa_tenant_required' }
   if (environment !== 'qa' || sourceEnvironment !== 'qa') return { allowed: false, reason: 'qa_environment_required' }
   if (connectionState !== 'CONNECTED') return { allowed: false, reason: 'qa_connection_not_connected' }
   if (integrationProvider !== 'evolution' || integrationType !== 'whatsapp' || integrationState !== 'conectado') return { allowed: false, reason: 'qa_integration_not_connected' }
-  if (instance !== QA_AGENT_OUTBOUND_INSTANCE || instance === PROTECTED_WHATSAPP_INSTANCE) return { allowed: false, reason: 'qa_instance_required' }
-  if (sourceIntegrationId !== undefined && sourceIntegrationId !== null && sourceIntegrationId !== 1) return { allowed: false, reason: 'qa_integration_required' }
+  if (instance !== qaAgentOutboundInstanceForTenant(tenantId) || instance === PROTECTED_WHATSAPP_INSTANCE) return { allowed: false, reason: 'qa_instance_required' }
+  if (textFrom(sourceInstance) !== textFrom(instance)) return { allowed: false, reason: 'qa_instance_required' }
+  if (!Number.isSafeInteger(Number(sourceIntegrationId)) || !Number.isSafeInteger(Number(connectionIntegrationId)) || Number(sourceIntegrationId) !== Number(connectionIntegrationId)) return { allowed: false, reason: 'qa_integration_required' }
   if (sourceEventPresent !== true || sourceEventReal !== true) return { allowed: false, reason: 'real_persisted_source_required' }
   if (!isRealPersistedSourceMetadata(sourceMetadata)) return { allowed: false, reason: 'real_persisted_source_required' }
   if (sourceFromMe === true) return { allowed: false, reason: 'from_me_ignored' }

@@ -33,6 +33,19 @@ export function buildEvolutionSendTextPath(baseUrl, instance = QA_OUTBOUND_INSTA
   return `${url.toString().replace(/\/$/, '')}/message/sendText/${encodeURIComponent(instance)}`
 }
 
+export function buildQaEvolutionSendTextPath(baseUrl, instance) {
+  const rawInstance = textFrom(instance)
+  const match = /^austral-qa-tenant-(\d+)$/.exec(rawInstance)
+  if (!match || rawInstance === PROTECTED_INSTANCE) return null
+  const tenantId = Number(match[1])
+  if (!Number.isSafeInteger(tenantId) || tenantId <= 0) return null
+  const raw = textFrom(baseUrl)
+  let url
+  try { url = new URL(raw) } catch { return null }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.hostname.toLowerCase() !== 'evolution.cuchitron.lat') return null
+  return `${url.toString().replace(/\/$/, '')}/message/sendText/${encodeURIComponent(rawInstance)}`
+}
+
 export function buildEvolutionTextPayload(number, text) {
   return { number, text }
 }

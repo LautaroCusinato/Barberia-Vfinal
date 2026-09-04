@@ -2,32 +2,41 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {
   QA_AGENT_OUTBOUND_ALLOWED_INTENTS,
-  QA_AGENT_OUTBOUND_INSTANCE,
   agentOutboundGuard,
   buildAgentOutboundOperationId,
+  isQaAgentOutboundTenantAllowed,
   isAllowedAgentIntent,
   isPersistedConversationScope,
   isRealPersistedSourceMetadata,
   isQaAgentOutboundRuntime,
   hasAuthoritativePriceSource,
   isSafePersistedReply,
+  parseQaAgentOutboundTenantAllowlist,
+  qaAgentOutboundInstanceForTenant,
 } from '../supabase/functions/_shared/whatsappAgentOutboundPilot.mjs'
+import { buildQaEvolutionSendTextPath } from '../supabase/functions/_shared/whatsappOutboundPilot.mjs'
 
-const metadata = { source: 'evolution', event: 'MESSAGES_UPSERT', environment: 'qa', from_me: false, mutation_allowed: false, outbound_allowed: false, mutation_blocked: true, outbound_send: false }
+const tenantId = 819
+const integrationId = 36
+const instance = qaAgentOutboundInstanceForTenant(tenantId)
+const metadata = { source: 'evolution', event: 'MESSAGES_UPSERT', environment: 'qa', from_me: false, instance, mutation_allowed: false, outbound_allowed: false, mutation_blocked: true, outbound_send: false }
 const base = {
   enabled: true,
   runtimeValid: true,
-  tenantId: 1,
+  tenantAllowlisted: true,
+  tenantId,
   environment: 'qa',
   connectionState: 'CONNECTED',
   integrationProvider: 'evolution',
   integrationType: 'whatsapp',
   integrationState: 'conectado',
-  instance: QA_AGENT_OUTBOUND_INSTANCE,
+  instance,
   sourceEventPresent: true,
   sourceEventReal: true,
-  sourceTenantId: 1,
-  sourceIntegrationId: 1,
+  sourceTenantId: tenantId,
+  sourceIntegrationId: integrationId,
+  connectionIntegrationId: integrationId,
+  sourceInstance: instance,
   sourceFromMe: false,
   sourceEnvironment: 'qa',
   senderHashMatches: true,
@@ -39,6 +48,15 @@ const base = {
 
 assert.deepEqual(QA_AGENT_OUTBOUND_ALLOWED_INTENTS, ['services_query', 'price_query', 'availability_query', 'general_query', 'booking_intent'])
 assert.equal(buildAgentOutboundOperationId('evt-1'), 'agent-outbound:evt-1')
+assert.deepEqual(parseQaAgentOutboundTenantAllowlist('819, 819, 0, nope, 1'), [819, 1])
+assert.equal(isQaAgentOutboundTenantAllowed(819, [819]), true)
+assert.equal(isQaAgentOutboundTenantAllowed(1, [819]), false)
+assert.equal(qaAgentOutboundInstanceForTenant(819), 'austral-qa-tenant-819')
+assert.equal(qaAgentOutboundInstanceForTenant('nope'), null)
+assert.match(buildQaEvolutionSendTextPath('https://evolution.cuchitron.lat', instance), /austral-qa-tenant-819$/)
+assert.match(buildQaEvolutionSendTextPath('https://evolution.cuchitron.lat', 'austral-qa-tenant-1'), /\/message\/sendText\/austral-qa-tenant-1$/)
+assert.equal(buildQaEvolutionSendTextPath('https://evolution.cuchitron.lat', 'miwsp'), null)
+assert.equal(buildQaEvolutionSendTextPath('https://evolution.cuchitron.lat', 'arbitrary'), null)
 assert.equal(isQaAgentOutboundRuntime({ projectRef: 'cmsymmszlzikqpvfqjre', provisioningEnv: 'qa', whatsappMode: 'shadow', pilotMode: 'shadow' }), true)
 assert.equal(isQaAgentOutboundRuntime({ projectRef: 'ssagttjdgtypxjcgdnrw', provisioningEnv: 'qa', whatsappMode: 'shadow', pilotMode: 'shadow' }), false)
 assert.equal(isRealPersistedSourceMetadata(metadata), true)
@@ -64,12 +82,11 @@ assert.equal(hasAuthoritativePriceSource(metadata), false)
 assert.equal(isSafePersistedReply({ intent: 'booking_intent', reply: 'Tu turno fue confirmado.', metadata }), false)
 const conversationMetadata = {
   ...metadata,
-  instance: QA_AGENT_OUTBOUND_INSTANCE,
-  conversation_scope: { tenant_id: 1, integration_id: 1, instance: QA_AGENT_OUTBOUND_INSTANCE, sender_hash: 'sha256:0123456789ab', environment: 'qa' },
-  conversation_state: { tenant_id: 1, integration_id: 1, instance: QA_AGENT_OUTBOUND_INSTANCE, sender_hash: 'sha256:0123456789ab', environment: 'qa' },
+  conversation_scope: { tenant_id: tenantId, integration_id: integrationId, instance, sender_hash: 'sha256:0123456789ab', environment: 'qa' },
+  conversation_state: { tenant_id: tenantId, integration_id: integrationId, instance, sender_hash: 'sha256:0123456789ab', environment: 'qa' },
 }
-assert.equal(isPersistedConversationScope(conversationMetadata, { tenantId: 1, integrationId: 1, instance: QA_AGENT_OUTBOUND_INSTANCE, senderHash: 'sha256:0123456789ab' }), true)
-assert.equal(isPersistedConversationScope(conversationMetadata, { tenantId: 2, integrationId: 1, instance: QA_AGENT_OUTBOUND_INSTANCE, senderHash: 'sha256:0123456789ab' }), false)
+assert.equal(isPersistedConversationScope(conversationMetadata, { tenantId, integrationId, instance, senderHash: 'sha256:0123456789ab' }), true)
+assert.equal(isPersistedConversationScope(conversationMetadata, { tenantId: 2, integrationId, instance, senderHash: 'sha256:0123456789ab' }), false)
 assert.equal(agentOutboundGuard(base).allowed, true)
 const priceBase = {
   ...base,
@@ -87,6 +104,7 @@ assert.equal(agentOutboundGuard({ ...base, sourceMetadata: { ...metadata, enviro
 
 for (const [key, value, reason] of [
   ['enabled', false, 'agent_outbound_pilot_disabled'],
+  ['tenantAllowlisted', false, 'qa_tenant_not_allowlisted'],
   ['tenantId', 2, 'qa_tenant_required'],
   ['sourceTenantId', 2, 'qa_tenant_required'],
   ['environment', 'production', 'qa_environment_required'],
@@ -95,6 +113,9 @@ for (const [key, value, reason] of [
   ['integrationType', 'api', 'qa_integration_not_connected'],
   ['integrationState', 'desactivado', 'qa_integration_not_connected'],
   ['instance', 'miwsp', 'qa_instance_required'],
+  ['sourceInstance', 'austral-qa-tenant-1', 'qa_instance_required'],
+  ['sourceInstance', undefined, 'qa_instance_required'],
+  ['sourceIntegrationId', 1, 'qa_integration_required'],
   ['sourceFromMe', true, 'from_me_ignored'],
   ['sourceEventPresent', false, 'real_persisted_source_required'],
   ['sourceEventReal', false, 'real_persisted_source_required'],
@@ -111,12 +132,15 @@ for (const [key, value, reason] of [
 const oneShotSource = fs.readFileSync(new URL('../supabase/functions/whatsapp-agent-outbound-pilot/index.ts', import.meta.url), 'utf8')
 assert.match(oneShotSource, /event_id_only/)
 assert.match(oneShotSource, /saas_automation_shadow_runs/)
-assert.match(oneShotSource, /\.eq\('tenant_id', QA_AGENT_OUTBOUND_TENANT_ID\)/)
-assert.match(oneShotSource, /\.eq\('integration_id', connection\.integration_id\)/)
+assert.match(oneShotSource, /WHATSAPP_AGENT_OUTBOUND_ALLOWED_TENANT_IDS/)
+assert.match(oneShotSource, /parseQaAgentOutboundTenantAllowlist/)
+assert.match(oneShotSource, /qaAgentOutboundInstanceForTenant/)
+assert.match(oneShotSource, /\.eq\('integration_id', integrationId\)/)
 assert.match(oneShotSource, /\.eq\('event_id', eventId\)/)
 assert.match(oneShotSource, /claim_whatsapp_event/)
 assert.match(oneShotSource, /finish_whatsapp_event/)
-assert.match(oneShotSource, /buildEvolutionSendTextPath/)
+assert.match(oneShotSource, /buildQaEvolutionSendTextPath/)
+assert.doesNotMatch(oneShotSource, /QA_AGENT_OUTBOUND_TENANT_ID|QA_AGENT_OUTBOUND_INSTANCE/)
 assert.match(oneShotSource, /JSON\.stringify\(\{ number: recipient, text: proposedReply \}\)/)
 assert.doesNotMatch(oneShotSource, /textMessage\s*:/)
 assert.doesNotMatch(oneShotSource, /setTimeout|retryFetch|fetchWithRetry/i)

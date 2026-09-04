@@ -157,6 +157,7 @@ const unsafeModelMetadata = {
 assert.equal(agentOutboundGuard({
   enabled: true,
   runtimeValid: true,
+  tenantAllowlisted: true,
   tenantId: 1,
   environment: 'qa',
   connectionState: 'CONNECTED',
@@ -168,6 +169,8 @@ assert.equal(agentOutboundGuard({
   sourceEventReal: true,
   sourceTenantId: 1,
   sourceIntegrationId: 1,
+  connectionIntegrationId: 1,
+  sourceInstance: scope.instance,
   sourceFromMe: false,
   sourceEnvironment: 'qa',
   senderHashMatches: true,
