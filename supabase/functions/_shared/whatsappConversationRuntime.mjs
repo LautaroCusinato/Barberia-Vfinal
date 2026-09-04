@@ -15,6 +15,7 @@ import {
   interpretRequestedDate,
   normalizeCustomerReply,
   parseRequestedTime,
+  resolveRequestedBarbers,
   resolveRequestedServices,
 } from './whatsappAgentShadow.mjs'
 
@@ -36,30 +37,51 @@ function serviceName(services, serviceId) {
  * Extracts only deterministic, tenant-scoped booking fields from one message.
  * The caller supplies the already tenant-scoped services and timezone.
  */
-export function extractConversationTurn({ text, pendingIntent = null, services = [], timezone, now = new Date() } = {}) {
+export function extractConversationTurn({ text, pendingIntent = null, services = [], barbers = [], timezone, now = new Date() } = {}) {
   const intent = classifyShadowIntent(text)
-  const request = interpretRequestedDate(text, timezone, now)
   const parsedTime = parseRequestedTime(text)
+  const normalized = textFrom(text).toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\bqiero\b/g, 'quiero').replace(/\bcortarme\b/g, 'corte')
+  const colloquialHour = normalized.match(/\btipo\s+([1-6])\b/)
+  const safeColloquialAfternoon = colloquialHour
+    && (intent === 'booking_intent' || pendingIntent === 'booking_intent')
+    && /\b(corte|barba|servicio|turno|reserv)/.test(normalized)
+    && String(timezone || 'America/Argentina/Buenos_Aires').toLowerCase() === 'america/argentina/buenos_aires'
+  const effectiveTime = safeColloquialAfternoon
+    ? { requested_time: `${String(Number(colloquialHour[1]) + 12).padStart(2, '0')}:00`, requested_daypart: 'afternoon', time_ambiguous: false, time_candidate: null }
+    : parsedTime
+  const parsedDate = interpretRequestedDate(text, timezone, now)
+  const request = safeColloquialAfternoon
+    ? { ...parsedDate, requested_time: effectiveTime.requested_time, requested_daypart: effectiveTime.requested_daypart, time_period: effectiveTime.requested_daypart, time_ambiguous: false, time_candidate: null }
+    : parsedDate
   const serviceResolution = resolveRequestedServices(text, services)
+  const barberResolution = resolveRequestedBarbers(text, barbers)
   const fields = {}
+  fields.last_intent = intent
   if (intent === 'booking_intent' || pendingIntent === 'booking_intent') fields.pending_intent = 'booking_intent'
   if (serviceResolution.status === 'matched') fields.service_id = serviceResolution.matches[0].id
+  if (barberResolution.status === 'matched') {
+    fields.barber_id = barberResolution.matches[0].id
+    fields.barber_selection_pending = false
+  } else if (/\b(con|barbero|barbera)\b/.test(normalized) && /\b(otro|alguien|cualquiera)\b/.test(normalized)) {
+    fields.barber_id = null
+    fields.barber_selection_pending = true
+  }
   if (request.requested_date) fields.requested_date = request.requested_date
-  if (parsedTime.requested_time) fields.requested_time = parsedTime.requested_time
-  if (parsedTime.requested_daypart) fields.daypart = parsedTime.requested_daypart
-  return { intent, fields, request: { ...request, requested_time: parsedTime.requested_time, requested_daypart: parsedTime.requested_daypart }, serviceResolution }
+  if (effectiveTime.requested_time) fields.requested_time = effectiveTime.requested_time
+  if (effectiveTime.requested_daypart) fields.daypart = effectiveTime.requested_daypart
+  return { intent, fields, request, serviceResolution, barberResolution }
 }
 
 /**
  * Applies one inbound turn to the persisted deterministic state. No network,
  * LLM, Evolution or booking calls occur here.
  */
-export function advanceConversationTurn({ state = null, scope, eventId, text, messageType = 'text', fromMe = false, isGroup = false, isBroadcast = false, services = [], timezone, now = new Date() } = {}) {
+export function advanceConversationTurn({ state = null, scope, eventId, text, messageType = 'text', fromMe = false, isGroup = false, isBroadcast = false, services = [], barbers = [], timezone, now = new Date() } = {}) {
   const acceptedInput = classifyConversationInput({ messageType, text, fromMe, isGroup, isBroadcast })
   if (!acceptedInput.accepted) return { accepted: false, reason: acceptedInput.reason, state }
 
   const pendingIntent = state?.pending_intent || null
-  const extracted = extractConversationTurn({ text, pendingIntent, services, timezone, now })
+  const extracted = extractConversationTurn({ text, pendingIntent, services, barbers, timezone, now })
   const incomingConfirmation = state?.confirmation_state === 'awaiting_confirmation' && parseExplicitConfirmation(text)
   if (incomingConfirmation) {
     const confirmation = applyConfirmation({ state, expectedScope: scope, text, eventId, now, proposalId: state.proposal_id, proposalVersion: state.confirmation_version })
@@ -77,7 +99,7 @@ export function advanceConversationTurn({ state = null, scope, eventId, text, me
   return { accepted: true, duplicate: false, reason: null, state: merged.state, action, intent: merged.state.pending_intent || extracted.intent, extracted, confirmed: false }
 }
 
-export function buildConversationProposal({ state, action, availability = null, services = [], businessName = 'la barbería' } = {}) {
+export function buildConversationProposal({ state, action, availability = null, services = [], barbers = [], businessName = 'la barbería' } = {}) {
   const safeBusinessName = textFrom(businessName) || 'la barbería'
   const service = serviceName(services, state?.service_id)
   const date = dateLabel(state?.requested_date)
@@ -90,6 +112,12 @@ export function buildConversationProposal({ state, action, availability = null, 
       proposedReply = '¿Qué servicio querés reservar?'
       requestedAction = 'booking_collect_service'
       break
+    case 'ask_barber': {
+      const names = barbers.filter((barber) => barber?.activo !== false).map((barber) => textFrom(barber?.nombre)).filter(Boolean).slice(0, 3)
+      proposedReply = names.length ? `¿Con qué barbero preferís? ${names.join(', ')}.` : '¿Con qué barbero preferís?'
+      requestedAction = 'booking_collect_barber'
+      break
+    }
     case 'ask_date':
       proposedReply = `¿Qué día te gustaría reservar${service ? ` para ${service}` : ''}?`
       requestedAction = 'booking_collect_date'

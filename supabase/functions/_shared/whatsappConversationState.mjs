@@ -24,6 +24,7 @@ export const CONVERSATION_INTENTS = Object.freeze([
   'availability_query',
   'general_query',
   'price_query',
+  'duration_query',
   'booking_intent',
   'booking_change_request',
   'empty_query',
@@ -33,6 +34,12 @@ const DAYPARTS = new Set(['morning', 'afternoon', 'evening'])
 const intents = new Set(CONVERSATION_INTENTS)
 const CONFIRMATIONS = new Set([
   'si',
+  'dale',
+  'si dale',
+  'dale de una',
+  'bueno',
+  'bueno dale',
+  'perfecto',
   'confirmo',
   'confirmar',
   'confirmar turno',
@@ -46,6 +53,10 @@ const EMPTY_STATE_FIELDS = Object.freeze({
   requested_time: null,
   daypart: null,
   barber_id: null,
+  barber_selection_pending: false,
+  last_intent: null,
+  availability_slots: [],
+  availability_reference_time: null,
   confirmation_required: false,
   confirmation_state: 'collecting',
   last_event_id: null,
@@ -144,6 +155,19 @@ function normalizeExtracted(extracted = {}) {
     output.daypart = daypart
   }
   if (Object.prototype.hasOwnProperty.call(extracted, 'barber_id')) output.barber_id = extracted.barber_id === null || extracted.barber_id === '' ? null : positiveInteger(extracted.barber_id, 'barber_id')
+  if (Object.prototype.hasOwnProperty.call(extracted, 'barber_selection_pending')) output.barber_selection_pending = extracted.barber_selection_pending === true
+  if (Object.prototype.hasOwnProperty.call(extracted, 'last_intent')) {
+    const lastIntent = textFrom(extracted.last_intent) || null
+    if (lastIntent !== null && !intents.has(lastIntent)) throw new TypeError('last_intent is not supported')
+    output.last_intent = lastIntent
+  }
+  if (Object.prototype.hasOwnProperty.call(extracted, 'availability_slots')) {
+    if (!Array.isArray(extracted.availability_slots)) throw new TypeError('availability_slots must be an array')
+    output.availability_slots = extracted.availability_slots
+      .map((slot) => textFrom(slot?.hora || slot).slice(0, 5))
+      .filter((slot) => /^([01]\d|2[0-3]):[0-5]\d$/.test(slot))
+      .slice(0, 8)
+  }
   return output
 }
 
@@ -261,7 +285,7 @@ export function mergeConversationTurn({ state, expectedScope, eventId, extracted
     return { accepted: false, duplicate: false, reason: 'invalid_extracted_fields', state }
   }
   const next = { ...cloneState(state), ...fields }
-  const changedBookingField = ['service_id', 'requested_date', 'requested_time', 'daypart', 'barber_id'].some((field) => Object.prototype.hasOwnProperty.call(fields, field) && fields[field] !== state[field])
+  const changedBookingField = ['service_id', 'requested_date', 'requested_time', 'daypart', 'barber_id', 'barber_selection_pending'].some((field) => Object.prototype.hasOwnProperty.call(fields, field) && fields[field] !== state[field])
   const proposalMustReset = changedBookingField || state.confirmation_state === 'awaiting_confirmation'
   const nextVersion = Number(state.version || 1) + 1
   const nowIso = iso(now, 'now')
@@ -272,6 +296,8 @@ export function mergeConversationTurn({ state, expectedScope, eventId, extracted
     next.proposal_id = null
     next.availability_snapshot_id = null
     next.availability_checked_at = null
+    next.availability_slots = []
+    next.availability_reference_time = null
     next.requested_slot_available = null
     next.ready_for_booking_mutation = false
   }
@@ -283,7 +309,7 @@ export function mergeConversationTurn({ state, expectedScope, eventId, extracted
   return { accepted: true, duplicate: false, reason: null, state: next }
 }
 
-export function recordAvailabilityResult({ state, expectedScope, source = 'authoritative_rpc', available, snapshotId, now = new Date(), proposalId = null }) {
+export function recordAvailabilityResult({ state, expectedScope, source = 'authoritative_rpc', available, snapshotId, now = new Date(), proposalId = null, slots = [] }) {
   if (!state || typeof state !== 'object') return { accepted: false, reason: 'conversation_missing', state: null }
   if (!matchesExpectedScope(state, expectedScope)) return { accepted: false, reason: 'conversation_scope_invalid', state }
   if (!isConversationStateFresh(state, now)) return { accepted: false, reason: 'conversation_expired', state: markExpired(state) }
@@ -291,7 +317,10 @@ export function recordAvailabilityResult({ state, expectedScope, source = 'autho
   if (!hasRequiredFields(state)) return { accepted: false, reason: 'required_fields_missing', state }
   if (typeof available !== 'boolean') return { accepted: false, reason: 'availability_result_required', state }
   if (!textFrom(snapshotId)) return { accepted: false, reason: 'availability_snapshot_required', state }
-  const next = { ...cloneState(state), availability_snapshot_id: textFrom(snapshotId) || null, availability_checked_at: iso(now, 'now'), requested_slot_available: available, updated_at: iso(now, 'now'), mutation_allowed: false }
+  const normalizedSlots = Array.isArray(slots)
+    ? slots.map((slot) => textFrom(slot?.hora || slot).slice(0, 5)).filter((slot) => /^([01]\d|2[0-3]):[0-5]\d$/.test(slot)).slice(0, 8)
+    : []
+  const next = { ...cloneState(state), availability_snapshot_id: textFrom(snapshotId) || null, availability_checked_at: iso(now, 'now'), availability_slots: normalizedSlots, availability_reference_time: textFrom(state.requested_time) || normalizedSlots[0] || null, requested_slot_available: available, updated_at: iso(now, 'now'), mutation_allowed: false }
   if (available) {
     next.confirmation_required = true
     next.confirmation_state = 'awaiting_confirmation'
@@ -348,6 +377,7 @@ export function nextConversationAction(state, { expectedScope, availabilityStatu
   if (!matchesExpectedScope(state, expectedScope)) return { action: 'restart_conversation', reason: 'conversation_scope_invalid', mutation_allowed: false }
   if (!isConversationStateFresh(state, now)) return { action: 'restart_conversation', reason: 'conversation_expired', mutation_allowed: false }
   const missing = deriveMissingFields(state)
+  if (state.barber_selection_pending === true) return { action: 'ask_barber', missing_fields: missing, mutation_allowed: false }
   if (missing.includes('service_id')) return { action: 'ask_service', missing_fields: missing, mutation_allowed: false }
   if (missing.includes('requested_date')) return { action: 'ask_date', missing_fields: missing, mutation_allowed: false }
   if (missing.includes('requested_time')) return { action: 'ask_time', missing_fields: missing, mutation_allowed: false }

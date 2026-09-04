@@ -69,7 +69,7 @@ assert.equal(nextConversationAction(availability.state, { expectedScope: scope, 
 assert.equal(recordAvailabilityResult({ state: timeTurn.state, expectedScope: scope, source: 'client_claim', available: true, now }).reason, 'authoritative_availability_required')
 assert.equal(recordAvailabilityResult({ state: timeTurn.state, expectedScope: scope, source: 'authoritative_rpc', available: true, now }).reason, 'availability_snapshot_required')
 
-for (const [text, expected] of [['Sí', true], ['sí, confirmo', true], ['confirmar turno', true], ['dale', false], ['ok', false], ['puede ser', false], ['creo que sí', false]]) {
+for (const [text, expected] of [['Sí', true], ['sí, confirmo', true], ['confirmar turno', true], ['dale', true], ['sí dale', true], ['bueno', true], ['perfecto', true], ['dale de una', true], ['ok', false], ['puede ser', false], ['creo que sí', false]]) {
   assert.equal(parseExplicitConfirmation(text), expected, `confirmation: ${text}`)
 }
 const confirmed = applyConfirmation({ state: availability.state, expectedScope: scope, text: 'Sí', eventId: 'evt-confirm', now, proposalVersion: availability.state.confirmation_version })

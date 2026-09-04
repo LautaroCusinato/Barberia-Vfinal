@@ -169,6 +169,51 @@ async function loadAvailability(admin: ReturnType<typeof adminClient>, context: 
   return { status: 'ready', request, slots, requested_slot_available: requestedSlotAvailable, rpc_executed: true, service_resolution: serviceResolution }
 }
 
+async function loadRelativeAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, state: Record<string, unknown>, text: string) {
+  const dateKey = safeString(state.requested_date)
+  if (!dateKey) return { status: 'date_required', request: { date_key: null }, slots: [], rpc_executed: false }
+  const serviceId = Number(state.service_id)
+  const services = Number.isSafeInteger(serviceId) && serviceId > 0
+    ? context.services.filter((service: Record<string, unknown>) => Number(service.id) === serviceId)
+    : context.services
+  if (!context.business.slug || !services.length) return { status: 'service_required', request: { date_key: dateKey }, slots: [], rpc_executed: false }
+  const requestedDaypart = safeString(state.daypart) || null
+  const results = await Promise.all(services.map(async (service: Record<string, unknown>) => {
+    const { data, error } = await admin.rpc('horarios_disponibles_reserva_publica', {
+      p_slug: context.business.slug,
+      p_servicio_id: service.id,
+      p_fecha: dateKey,
+    })
+    if (error) throw new Error('availability_rpc_failed')
+    return (data || [])
+      .filter((slot: Record<string, unknown>) => matchesTimePeriod(slot.hora, requestedDaypart))
+      .map((slot: Record<string, unknown>) => ({
+        service_id: service.id,
+        service_name: service.nombre,
+        barbero_id: slot.barbero_id,
+        barbero_nombre: slot.barbero_nombre,
+        duracion_min: slot.duracion_min,
+        hora: slot.hora,
+      }))
+  }))
+  const allSlots = results.flat()
+  const normalized = safeString(text).toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const reference = timeMinutes(state.availability_reference_time || state.requested_time || state.availability_slots?.[0])
+  const slots = normalized.includes('mas tarde') && reference !== null
+    ? allSlots.filter((slot: Record<string, unknown>) => (timeMinutes(slot.hora) ?? -1) > reference)
+    : normalized.includes('mas temprano') && reference !== null
+      ? allSlots.filter((slot: Record<string, unknown>) => (timeMinutes(slot.hora) ?? Number.MAX_SAFE_INTEGER) < reference)
+      : allSlots
+  return {
+    status: 'ready',
+    request: { date_key: dateKey, requested_date: dateKey, requested_time: null, requested_daypart: requestedDaypart, time_period: requestedDaypart, time_ambiguous: false, timezone: safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires' },
+    slots,
+    requested_slot_available: null,
+    rpc_executed: true,
+    service_resolution: Number.isSafeInteger(serviceId) && serviceId > 0 ? { status: 'matched', match_type: 'conversation_state', matches: services } : { status: 'none', matches: [], match_type: null },
+  }
+}
+
 async function loadConversationAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, state: Record<string, unknown>) {
   const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
   const request = {
@@ -277,6 +322,7 @@ async function processInboundMessage({
     isGroup: inbound.isGroup,
     isBroadcast: inbound.isBroadcast,
     services: context.services,
+    barbers: context.barbers,
     timezone,
   })
   if (!conversation.accepted) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: conversation.reason, duplicate: conversation.duplicate === true, mutation_blocked: true, outbound_send: false }, status: conversation.duplicate ? 202 : 422 }
@@ -295,6 +341,7 @@ async function processInboundMessage({
           available: availability.requested_slot_available === true,
           snapshotId: `rpc:${inbound.eventId}`,
           proposalId: `proposal:${conversationState.conversation_id}:${conversationState.version}`,
+          slots: availability.slots,
         })
         if (availabilityResult.accepted) conversationState = availabilityResult.state
       }
@@ -303,16 +350,24 @@ async function processInboundMessage({
     }
   }
   const proposal = bookingFlow
-    ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, services: context.services, businessName: context.business.nombre })
-    : await (async () => {
-        let standaloneAvailability = null
+    ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, services: context.services, barbers: context.barbers, businessName: context.business.nombre })
+      : await (async () => {
         const initialIntent = classifyShadowIntent(inbound.text)
         if (initialIntent === 'availability_query') {
-          try { standaloneAvailability = await loadAvailability(admin, context, inbound.text, initialIntent) } catch { standaloneAvailability = { status: 'error', request: interpretRequestedDate(inbound.text, timezone), slots: [], rpc_executed: false } }
+          try { availability = await loadAvailability(admin, context, inbound.text, initialIntent) } catch { availability = { status: 'error', request: interpretRequestedDate(inbound.text, timezone), slots: [], rpc_executed: false } }
+        } else if (conversationState?.last_intent === 'availability_query' && /\b(mas tarde|mas temprano|otro horario|otro dia)\b/i.test(inbound.text)) {
+          try { availability = await loadRelativeAvailability(admin, context, conversationState, inbound.text) } catch { availability = { status: 'error', request: { date_key: conversationState.requested_date }, slots: [], rpc_executed: false } }
+        }
+        if (availability?.rpc_executed === true) {
+          conversationState = {
+            ...conversationState,
+            availability_slots: availability.slots.map((slot: Record<string, unknown>) => safeString(slot.hora).slice(0, 5)).filter(Boolean).slice(0, 8),
+            availability_reference_time: safeString(availability.slots?.[0]?.hora).slice(0, 5) || conversationState?.availability_reference_time || null,
+          }
         }
         return generateShadowProposal({
           text: inbound.text,
-          context: { ...context, availability: standaloneAvailability },
+          context: { ...context, availability, conversation: conversationState },
           apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
           model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
         })
@@ -358,9 +413,9 @@ async function processInboundMessage({
         },
       },
       proposed_reply: proposal.proposed_reply,
-      conversation_state: bookingFlow ? conversationState : null,
+      conversation_state: conversationState,
       conversation_action: bookingFlow ? (proposal.requested_action || conversation.action?.action || null) : null,
-      conversation_scope: bookingFlow ? { tenant_id: connection.barberia_id, integration_id: connection.integration_id, instance, sender_hash: senderHashValue, environment: 'qa' } : null,
+      conversation_scope: { tenant_id: connection.barberia_id, integration_id: connection.integration_id, instance, sender_hash: senderHashValue, environment: 'qa' },
       mutation_blocked: true,
       outbound_send: false,
       mutation_allowed: false,

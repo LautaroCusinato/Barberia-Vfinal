@@ -43,6 +43,10 @@ function normalizedSearchText(value) {
     .toLocaleLowerCase('es-AR')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    // Conservative colloquial corrections. These only normalize exact
+    // standalone tokens and never perform fuzzy catalog matching.
+    .replace(/\bqiero\b/g, 'quiero')
+    .replace(/\bcortarme\b/g, 'corte')
 }
 
 function normalizedServiceText(value) {
@@ -127,6 +131,20 @@ export function resolveRequestedServices(text, services = []) {
   })
   if (tokenMatches.length > 1) return { status: 'ambiguous', matches: tokenMatches, match_type: 'tokens' }
   if (tokenMatches.length === 1) return { status: 'matched', matches: tokenMatches, match_type: 'tokens' }
+  return { status: 'none', matches: [], match_type: null }
+}
+
+/**
+ * Resolves professionals only from the already tenant-scoped list supplied
+ * by the caller. Names are matched case/accent-insensitively, without fuzzy
+ * or cross-tenant lookup.
+ */
+export function resolveRequestedBarbers(text, barbers = []) {
+  const candidates = barbers.filter((barber) => barber?.activo !== false && textFrom(barber?.nombre))
+  const normalizedMessage = normalizedServiceText(text)
+  const matches = candidates.filter((barber) => containsServicePhrase(normalizedMessage, normalizedServiceText(barber.nombre)))
+  if (matches.length > 1) return { status: 'ambiguous', matches, match_type: 'exact' }
+  if (matches.length === 1) return { status: 'matched', matches, match_type: 'exact' }
   return { status: 'none', matches: [], match_type: null }
 }
 
@@ -244,7 +262,8 @@ export function extractInboundText(payload) {
 
 export function classifyShadowIntent(text) {
   const normalized = normalizedSearchText(text)
-  if (/\b(cancelar|cancelo|cancelacion|cambiar|reprogramar)\b/.test(normalized)) return 'booking_change_request'
+  if (/\b(cancelar|cancelo|cancelame|cancelacion|cambiar|reprogramar)\b/.test(normalized)) return 'booking_change_request'
+  if (/\b(dura|duracion|tarda|demora)\b/.test(normalized)) return 'duration_query'
   const bookingVerb = /\b(quiero|necesito|me gustaria|reservame|agendame|sacar|hacer)\b/.test(normalized)
   const bookingNoun = /\b(reservar|reserva|reservame|turno|agendar|agendame)\b/.test(normalized)
   const bookingDateCue = /\b(hoy|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/.test(normalized)
@@ -252,8 +271,9 @@ export function classifyShadowIntent(text) {
   const bookingTimeCue = /\b(?:a las|tipo)?\s*(?:\d{1,2}(?::\d{2})?|una|uno|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\b/.test(normalized)
   const bookingAction = bookingVerb && (bookingNoun || (bookingDateCue && bookingServiceCue))
     || bookingDateCue && bookingServiceCue && bookingTimeCue
+    || /\b(quiero|reservame|mejor)\s+con\b/.test(normalized)
   if (bookingAction) return 'booking_intent'
-  if (/\b(turno|turnos|disponib|horario|horarios|hay lugar|libre|libres)\b/.test(normalized)) return 'availability_query'
+  if (/\b(turno|turnos|disponib|horario|horarios|hay lugar|libre|libres|trabajan|atienden|abren|domingo|domingos)\b/.test(normalized)) return 'availability_query'
   if (/\b(precio|precios|cuanto|cuantos|costo|sale)\b/.test(normalized)) return 'price_query'
   if (/\b(servicio|servicios|ofrecen|catalogo)\b/.test(normalized)) return 'services_query'
   return normalized ? 'general_query' : 'empty_query'
@@ -261,6 +281,10 @@ export function classifyShadowIntent(text) {
 
 function safeServiceName(service) {
   return textFrom(service?.nombre).replace(/[\r\n]/g, ' ').slice(0, 120)
+}
+
+function safeBarberName(barber) {
+  return textFrom(barber?.nombre).replace(/[\r\n]/g, ' ').slice(0, 120)
 }
 
 function formatPrice(service, currency) {
@@ -282,6 +306,31 @@ function formatAvailabilitySlot(slot) {
   const barber = textFrom(slot?.barbero_nombre)
   const detail = [service, barber].filter(Boolean).join(' · ')
   return detail ? `${time} (${detail})` : time
+}
+
+function isBusinessHoursQuestion(text) {
+  const normalized = normalizedSearchText(text)
+  return /\b(trabajan|atienden|abren)\b/.test(normalized) && /\bdomingo|domingos|lunes|martes|miercoles|jueves|viernes|sabado\b/.test(normalized)
+}
+
+function requestedWeekday(text) {
+  const normalized = normalizedSearchText(text)
+  const weekdays = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+  return weekdays.find((weekday) => new RegExp(`\\b${weekday}s?\\b`).test(normalized)) || null
+}
+
+function businessHoursReply(text, schedules = []) {
+  const weekday = requestedWeekday(text)
+  if (!weekday) return null
+  const weekdayIndex = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'].indexOf(weekday)
+  const ranges = schedules
+    .filter((schedule) => schedule?.activo !== false && Number(schedule?.day_of_week) === weekdayIndex)
+    .map((schedule) => `${textFrom(schedule?.start_time).slice(0, 5)} a ${textFrom(schedule?.end_time).slice(0, 5)}`)
+    .filter((range) => !range.startsWith(' a '))
+  const dayLabel = weekday === 'lunes' || weekday === 'martes' || weekday === 'miercoles' || weekday === 'jueves' || weekday === 'viernes' ? weekday : `${weekday}s`
+  return ranges.length
+    ? `Los ${dayLabel} atendemos de ${ranges.join(' y ')}.`
+    : `Los ${dayLabel} no atendemos.`
 }
 
 function availabilityReply({ intent, businessName, availability }) {
@@ -329,11 +378,17 @@ function availabilityReply({ intent, businessName, availability }) {
   return `${prefix}: ${listed}. ¿Cuál te conviene?`
 }
 
-export function buildDeterministicShadowProposal({ text, business = {}, services = [], barbers = [], schedules = [], blocks = [], availability = null }) {
-  const intent = classifyShadowIntent(text)
+export function buildDeterministicShadowProposal({ text, business = {}, services = [], barbers = [], schedules = [], blocks = [], availability = null, conversation = null }) {
+  const classifiedIntent = classifyShadowIntent(text)
+  const followupAvailability = conversation?.last_intent === 'availability_query'
+    && /\b(mas tarde|mas temprano|otro horario|otro dia)\b/.test(normalizedSearchText(text))
+  const intent = followupAvailability ? 'availability_query' : classifiedIntent
   const activeServices = services.filter((service) => service?.activo !== false && safeServiceName(service))
+  const activeBarbers = barbers.filter((barber) => barber?.activo !== false && safeBarberName(barber))
   const businessName = textFrom(business?.nombre).replace(/[\r\n]/g, ' ').slice(0, 120) || 'la barbería'
   const currency = textFrom(business?.moneda).slice(0, 8) || 'ARS'
+  const requestedBarber = resolveRequestedBarbers(text, activeBarbers)
+  const barberReference = /\b(con|barbero|barbera)\b/.test(normalizedSearchText(text))
   let proposedReply = ''
   let requestedAction = 'answer_information'
   let toolsConsidered = ['tenant_context_read']
@@ -347,8 +402,11 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
     toolsConsidered = ['tenant_context_read', 'services_read']
   } else if (intent === 'price_query') {
     const resolution = resolveRequestedServices(text, activeServices)
-    if (resolution.status === 'matched') {
-      const service = resolution.matches[0]
+    const contextualService = conversation?.service_id
+      ? activeServices.find((service) => Number(service.id) === Number(conversation.service_id))
+      : null
+    if (resolution.status === 'matched' || contextualService) {
+      const service = resolution.status === 'matched' ? resolution.matches[0] : contextualService
       proposedReply = `El ${safeServiceName(service)} sale ${formatPrice(service, currency)}.`
     } else if (resolution.status === 'ambiguous') {
       const options = resolution.matches.map(safeServiceName).filter(Boolean).slice(0, 3)
@@ -368,8 +426,30 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
           : '¿Qué servicio querés consultar?'
     }
     toolsConsidered = ['tenant_context_read', 'services_read']
+  } else if (intent === 'duration_query') {
+    const resolution = resolveRequestedServices(text, activeServices)
+    const contextualService = conversation?.service_id
+      ? activeServices.find((service) => Number(service.id) === Number(conversation.service_id))
+      : null
+    const service = resolution.status === 'matched' ? resolution.matches[0] : contextualService
+    if (service && Number.isFinite(Number(service.duracion_min))) {
+      proposedReply = `El ${safeServiceName(service)} dura ${Number(service.duracion_min)} minutos.`
+    } else {
+      proposedReply = '¿De qué servicio querés saber la duración?'
+    }
+    toolsConsidered = ['tenant_context_read', 'services_read']
   } else if (intent === 'availability_query' || intent === 'booking_intent') {
-    proposedReply = availabilityReply({ intent, businessName, availability })
+    const hoursReply = intent === 'availability_query' && isBusinessHoursQuestion(text)
+      ? businessHoursReply(text, schedules)
+      : null
+    if (hoursReply) proposedReply = hoursReply
+    else if (barberReference && intent === 'booking_intent' && requestedBarber.status === 'none') {
+      const names = activeBarbers.map(safeBarberName).filter(Boolean).slice(0, 3)
+      const options = names.length ? ` Puedo ofrecerte ${names.join(' o ')}.` : ''
+      proposedReply = /\b(otro|alguien|cualquiera)\b/.test(normalizedSearchText(text))
+        ? `¿Con qué barbero preferís?${options}`
+        : `No encuentro ese barbero.${options}`
+    } else proposedReply = availabilityReply({ intent, businessName, availability })
     requestedAction = intent === 'booking_intent' ? 'booking_read_only_proposal' : 'read_availability_only'
     toolsConsidered = ['tenant_context_read', 'services_read', 'barbers_read', 'schedules_read', 'blocks_read']
     if (availability?.rpc_executed) toolsConsidered.push('availability_rpc_read')
@@ -404,6 +484,8 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
       requested_daypart: availability?.request?.requested_daypart || null,
       requested_slot_available: availability?.requested_slot_available ?? null,
       time_ambiguous: availability?.request?.time_ambiguous || false,
+      service_id: conversation?.service_id || null,
+      barber_id: conversation?.barber_id || null,
     },
     provider: 'qa_deterministic_shadow',
     model: 'shadow-safe-v1',
@@ -422,7 +504,7 @@ export function assertShadowAgentConfiguration(env = {}) {
 
 export async function generateShadowProposal({ text, context = {}, apiKey = '', model = 'deepseek-chat', fetchImpl = globalThis.fetch }) {
   const deterministic = buildDeterministicShadowProposal({ text, ...context })
-  if (!textFrom(apiKey) || ['availability_query', 'booking_intent', 'services_query', 'price_query'].includes(deterministic.intent)) return deterministic
+  if (!textFrom(apiKey) || ['availability_query', 'booking_intent', 'services_query', 'price_query', 'duration_query'].includes(deterministic.intent)) return deterministic
 
   const system = buildCustomerSystemPrompt(context)
   const response = await fetchImpl('https://api.deepseek.com/chat/completions', {
@@ -442,7 +524,7 @@ export async function generateShadowProposal({ text, context = {}, apiKey = '', 
   try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { throw new Error('llm_invalid_json') }
   const reply = normalizeCustomerReply(parsed?.reply)
   if (!reply) throw new Error('llm_unsafe_reply')
-  const allowedIntents = new Set(['general_query', 'services_query', 'price_query', 'availability_query', 'booking_intent', 'booking_change_request', 'empty_query'])
+  const allowedIntents = new Set(['general_query', 'services_query', 'price_query', 'duration_query', 'availability_query', 'booking_intent', 'booking_change_request', 'empty_query'])
   const intent = allowedIntents.has(parsed?.intent) ? parsed.intent : deterministic.intent
   const action = textFrom(parsed?.requested_action).slice(0, 80) || deterministic.requested_action
   return { ...deterministic, intent, proposed_reply: reply, requested_action: action, provider: 'deepseek', model: model || 'deepseek-chat', confidence: 0.8, agent_prompt_version: CUSTOMER_FACING_PROMPT_VERSION }
