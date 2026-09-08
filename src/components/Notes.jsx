@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NotebookPen, StickyNote, Check, Search, X, Pencil, Trash2 } from 'lucide-react'
 import { normalizar } from '../lib/text'
+import { EmptyState } from './ui'
 
 const PACIENTE_GENERAL = 'General'
 const OTRO_PACIENTE = '__otro__'
@@ -163,15 +164,9 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
       </div>
 
       {notas.length === 0 ? (
-        <div className="empty-state">
-          <StickyNote size={26} style={{ color: 'var(--border-strong)' }} />
-          <p>Todavia no hay notas guardadas</p>
-        </div>
+        <EmptyState className="empty-state" icon={<StickyNote size={26} style={{ color: 'var(--border-strong)' }} />} description="Todavia no hay notas guardadas" />
       ) : notasFiltradas.length === 0 ? (
-        <div className="empty-state">
-          <Search size={26} style={{ color: 'var(--border-strong)' }} />
-          <p>Ninguna nota coincide con "{query}"</p>
-        </div>
+        <EmptyState className="empty-state" icon={<Search size={26} style={{ color: 'var(--border-strong)' }} />} description={`Ninguna nota coincide con "${query}"`} />
       ) : (
         notasFiltradas.map((n) => (
           <NoteCard key={n.id} nota={n} onUpdate={onUpdate} onDelete={onDelete} />

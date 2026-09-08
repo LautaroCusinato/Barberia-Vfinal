@@ -5,6 +5,7 @@ import { normalizar, soloDigitos, formatTelefonoDisplay, formatFechaVisible } fr
 import PatientDetailModal from './PatientDetailModal'
 import EditPatientModal from './EditPatientModal'
 import NewPatientModal from './NewPatientModal'
+import { EmptyState } from './ui'
 
 export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente }) {
   const [query, setQuery] = useState('')
@@ -54,15 +55,9 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
       </div>
 
       {pacientes.length === 0 ? (
-        <div className="empty-state">
-          <Users size={26} style={{ color: 'var(--border-strong)' }} />
-          <p>Todavia no hay clientes registrados</p>
-        </div>
+        <EmptyState className="empty-state" icon={<Users size={26} style={{ color: 'var(--border-strong)' }} />} description="Todavia no hay clientes registrados" />
       ) : filtrados.length === 0 ? (
-        <div className="empty-state">
-          <Search size={26} style={{ color: 'var(--border-strong)' }} />
-          <p>Ningun cliente coincide con "{query}"</p>
-        </div>
+        <EmptyState className="empty-state" icon={<Search size={26} style={{ color: 'var(--border-strong)' }} />} description={`Ningun cliente coincide con "${query}"`} />
       ) : (
         <div className="table-scroll clients-desktop-table">
         <table className="table management-table">
