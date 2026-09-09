@@ -5,7 +5,7 @@ import { classifyBillingFailure } from '../lib/runtimeStability.js'
 import { getBillingReturnState } from '../lib/billingReturnState.js'
 import { COMMERCIAL_BILLING_MODE, COMMERCIAL_CATALOG, COMMERCIAL_TRIAL_DAYS, catalogPlan, getTrialContinuationWhatsAppHref } from '../lib/commercialCatalog.js'
 import { trialHasExpired, trialRemainingDays } from '../lib/trial.js'
-import { Skeleton } from '../components/ui'
+import { EmptyState, Skeleton } from '../components/ui'
 
 const MercadoPagoCardTokenForm = lazy(() => import('../components/billing/MercadoPagoCardTokenForm.jsx'))
 
@@ -338,8 +338,8 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
       </section>
 
       <section className="billing-history-grid">
-        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Pagos</h2><p className="panel-subtitle">Confirmados por el proveedor mediante webhook verificado.</p></div></div>{portal?.payments?.length ? <div className="billing-history-list">{portal.payments.map((payment) => <div className="billing-history-row" key={payment.id}><span>{PROVIDER_LABELS[payment.provider] || payment.provider}</span><strong>{formatMoney(payment.amount, payment.currency)}</strong><span className="status-pill">{payment.status}</span><small>{formatDate(payment.paid_at)}</small></div>)}</div> : <div className="empty-state">Todavía no hay pagos registrados.</div>}</div>
-        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Comprobantes</h2><p className="panel-subtitle">Los enlaces provienen del proveedor; nunca guardamos tarjetas.</p></div></div>{portal?.invoices?.length ? <div className="billing-history-list">{portal.invoices.map((invoice) => <div className="billing-history-row" key={invoice.id}><span>{invoice.provider}</span><strong>{formatMoney(invoice.amount, invoice.currency)}</strong><span className="status-pill">{invoice.status}</span>{invoice.invoice_url ? <a href={invoice.invoice_url} target="_blank" rel="noreferrer" aria-label="Abrir comprobante"><ExternalLink size={15} /></a> : <small>{formatDate(invoice.issued_at)}</small>}</div>)}</div> : <div className="empty-state">Todavía no hay comprobantes.</div>}</div>
+        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Pagos</h2><p className="panel-subtitle">Confirmados por el proveedor mediante webhook verificado.</p></div></div>{portal?.payments?.length ? <div className="billing-history-list">{portal.payments.map((payment) => <div className="billing-history-row" key={payment.id}><span>{PROVIDER_LABELS[payment.provider] || payment.provider}</span><strong>{formatMoney(payment.amount, payment.currency)}</strong><span className="status-pill">{payment.status}</span><small>{formatDate(payment.paid_at)}</small></div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay pagos registrados." />}</div>
+        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Comprobantes</h2><p className="panel-subtitle">Los enlaces provienen del proveedor; nunca guardamos tarjetas.</p></div></div>{portal?.invoices?.length ? <div className="billing-history-list">{portal.invoices.map((invoice) => <div className="billing-history-row" key={invoice.id}><span>{invoice.provider}</span><strong>{formatMoney(invoice.amount, invoice.currency)}</strong><span className="status-pill">{invoice.status}</span>{invoice.invoice_url ? <a href={invoice.invoice_url} target="_blank" rel="noreferrer" aria-label="Abrir comprobante"><ExternalLink size={15} /></a> : <small>{formatDate(invoice.issued_at)}</small>}</div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay comprobantes." />}</div>
       </section>
     </div>
   )

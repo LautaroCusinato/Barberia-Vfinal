@@ -4,6 +4,7 @@ import { es } from 'date-fns/locale'
 import { CalendarCheck, Wallet, Clock, ChevronRight, Users2, X } from 'lucide-react'
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
+import { EmptyState } from './ui'
 
 const money = (n) =>
   (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
@@ -190,10 +191,7 @@ export default function Barberos({
 
           <div className="equipo-detalle-lista">
             {agendaAgrupada.length === 0 ? (
-              <div className="empty-state">
-                <CalendarCheck size={26} style={{ color: 'var(--border-strong)' }} />
-                <p>No hay turnos agendados para este barbero</p>
-              </div>
+              <EmptyState className="empty-state" icon={<CalendarCheck size={26} style={{ color: 'var(--border-strong)' }} />} description="No hay turnos agendados para este barbero" />
             ) : (
               agendaAgrupada.map(([fecha, items]) => (
                 <div key={fecha} className="equipo-fecha-grupo">
