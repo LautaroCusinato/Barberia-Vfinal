@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { authorizeWebhookSecret } from './whatsapp-webhook-auth.mjs'
+import { buildDeterministicShadowProposal } from '../supabase/functions/_shared/whatsappAgentShadow.mjs'
+import './verify-whatsapp-qa-adversarial.mjs'
+import './verify-whatsapp-qa-workflow.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const WEBHOOK_SECRET_SENTINEL = 'offline-qa-webhook-sentinel'
@@ -27,15 +31,6 @@ const fixtures = Object.freeze({
 const normalizeDigits = (value) => String(value ?? '').replace(/\D/g, '') || null
 const normalizeInstance = (value) => String(value ?? '').trim().toLowerCase() || null
 
-const classifyIntent = (text) => {
-  const normalized = String(text ?? '').toLocaleLowerCase('es-AR')
-  if (/servicio|servicios/.test(normalized)) return 'services_query'
-  if (/precio|cu[aá]nto sale|cu[aá]nto cuesta/.test(normalized)) return 'price_query'
-  if (/turno|disponib|ma[ñn]ana|horario/.test(normalized)) return 'availability_query'
-  if (/reserv/.test(normalized)) return 'booking_intent'
-  return 'general_query'
-}
-
 const resolveTenant = ({ instance, receiver }) => {
   const normalizedInstance = normalizeInstance(instance)
   const normalizedReceiver = normalizeDigits(receiver)
@@ -49,11 +44,11 @@ const validateIdentity = ({ event, headerValue, expectedSecret }) => {
   const eventId = String(key.id ?? data?.eventId ?? data?.event_id ?? '').trim()
   const instance = normalizeInstance(data?.instance ?? payload?.instance)
   const receiver = normalizeDigits(data?.destination ?? payload?.destination)
-  const fromMe = Boolean(key.fromMe ?? data?.fromMe ?? payload?.fromMe)
+  const fromMe = key.fromMe ?? data?.fromMe ?? payload?.fromMe
   const valid = Boolean(
     payload
     && payload.event === 'MESSAGES_UPSERT'
-    && headerValue === expectedSecret
+    && authorizeWebhookSecret({ headerValue, expectedSecret }).ok
     && eventId
     && instance
     && receiver
@@ -97,7 +92,11 @@ const createProcessor = () => {
     if (claims.has(claimKey)) return { status: 'duplicate', reason: 'duplicate_event', tenantId: context.tenantId, mutationBlocked: true, outboundAllowed: false }
     claims.add(claimKey)
 
-    const intent = classifyIntent(fixture.text)
+    const proposal = buildDeterministicShadowProposal({ text: fixture.text,
+      services: [{ id: 43, nombre: 'Corte clásico', precio: 30000, duracion_min: 30, activo: true }],
+      business: { nombre: 'E2E_QA_BARBERIA_A', moneda: 'ARS' },
+    })
+    const intent = proposal.intent
     const result = {
       status: 'shadow_completed',
       tenantId: context.tenantId,
@@ -105,7 +104,7 @@ const createProcessor = () => {
       instance: context.instance,
       eventId: identity.eventId,
       intent,
-      proposedReply: `QA proposal for ${intent}`,
+      proposedReply: proposal.proposed_reply,
       mutationAllowed: false,
       outboundAllowed: false,
       mutationBlocked: true,

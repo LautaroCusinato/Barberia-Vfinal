@@ -522,11 +522,13 @@ export async function generateShadowProposal({ text, context = {}, apiKey = '', 
   const raw = body?.choices?.[0]?.message?.content
   let parsed
   try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { throw new Error('llm_invalid_json') }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('llm_invalid_json')
   const reply = normalizeCustomerReply(parsed?.reply)
   if (!reply) throw new Error('llm_unsafe_reply')
   const allowedIntents = new Set(['general_query', 'services_query', 'price_query', 'duration_query', 'availability_query', 'booking_intent', 'booking_change_request', 'empty_query'])
   const intent = allowedIntents.has(parsed?.intent) ? parsed.intent : deterministic.intent
-  const action = textFrom(parsed?.requested_action).slice(0, 80) || deterministic.requested_action
+  // Model text is not authority to choose a tool or a mutation route.
+  const action = deterministic.requested_action
   return { ...deterministic, intent, proposed_reply: reply, requested_action: action, provider: 'deepseek', model: model || 'deepseek-chat', confidence: 0.8, agent_prompt_version: CUSTOMER_FACING_PROMPT_VERSION }
 }
 

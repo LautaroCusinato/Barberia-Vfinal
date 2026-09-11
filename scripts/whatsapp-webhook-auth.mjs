@@ -21,6 +21,7 @@ export const constantTimeEqual = (actual, expected) => {
 
   const equalBytes = timingSafeEqual(actualPadded, expectedPadded)
   return equalBytes && actualBytes.length === expectedBytes.length && actualBytes.length > 0
+    && actualBytes.length <= MAX_SECRET_BYTES && expectedBytes.length <= MAX_SECRET_BYTES
 }
 
 /**

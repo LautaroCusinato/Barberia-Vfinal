@@ -119,6 +119,17 @@ export const validateAiDecision = (decision) => {
   if (!ALLOWED_REPLY_INTENTS.includes(intent)) throw new Error('La intención de IA no está permitida para reply-only.')
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw new Error('La confianza de IA es inválida.')
   if (!decision.arguments || typeof decision.arguments !== 'object' || Array.isArray(decision.arguments)) throw new Error('Los argumentos de IA son inválidos.')
+  const inspectArguments = (value, depth = 0) => {
+    if (depth > 8) throw new Error('Los argumentos de IA exceden el límite de profundidad.')
+    if (!value || typeof value !== 'object') return
+    for (const [key, nested] of Object.entries(value)) {
+      if (/^(tenant_?id|barberia_?id|integration_?id|instance|instance_?name|recipient|number|sql|tool|tools|mutation_?allowed|outbound_?allowed|__proto__|constructor|prototype)$/i.test(key)) {
+        throw new Error('La IA no puede elegir identidad, herramientas ni permisos.')
+      }
+      inspectArguments(nested, depth + 1)
+    }
+  }
+  inspectArguments(decision.arguments)
   return Object.freeze({
     intent,
     confidence,
@@ -172,13 +183,21 @@ export const maskSender = (sender) => {
   return `sha256:${digest}`
 }
 
+const safeMetadata = (metadata) => Object.fromEntries(Object.entries(metadata ?? {}).filter(([key, value]) => {
+  if (['duplicate', 'mutation_blocked', 'outbound_allowed'].includes(key)) return typeof value === 'boolean'
+  if (['latency_ms', 'tokens_input', 'tokens_output', 'http_status', 'attempt'].includes(key)) return typeof value === 'number' && Number.isFinite(value) && value >= 0
+  if (key === 'mode') return ['shadow', 'reply_only', 'booking_enabled'].includes(value)
+  if (key === 'stage') return ['auth', 'identity', 'tenant', 'claim', 'context', 'agent', 'availability', 'shadow', 'completed', 'failed'].includes(value)
+  return false
+}))
+
 export const observabilityEvent = ({ event, tenantId = null, integrationId = null, sender = null, correlationId = null, metadata = {} }) => ({
   event,
   tenant_id: tenantId,
   integration_id: integrationId,
   sender_hash: maskSender(sender),
   correlation_id: correlationId,
-  metadata: Object.fromEntries(Object.entries(metadata).filter(([key]) => !/secret|token|password|payload|message|phone/i.test(key))),
+  metadata: safeMetadata(metadata),
   occurred_at: new Date().toISOString(),
 })
 
