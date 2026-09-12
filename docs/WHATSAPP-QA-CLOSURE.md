@@ -1,5 +1,73 @@
 # WhatsApp QA closure manifest
 
+## Current checkpoint — 2026-09-12
+
+Status: **BLOCKED for real WhatsApp E2E**. The dated historical sections below
+describe earlier states, not the current publication/credential status.
+
+- QA workflow `4q45z4wI3fozB2VC` is now published with native Header Auth,
+  Supabase QA Custom Auth and DeepSeek Header Auth credentials. Secrets were
+  imported privately inside n8n, never added to the repository. Global
+  `N8N_BLOCK_ENV_ACCESS_IN_NODE=true` remains intact.
+- Fixed missing `webhookId`, which prevented the advertised route from being
+  registered, and adjacent closing braces that broke n8n expression parsing in
+  the shadow audit request. Both have static regression coverage.
+- An actual synthetic CLI execution reached `Logging seguro` successfully.
+  The HTTP suite completed seven synthetic conversations through the published
+  webhook, tenant resolver, Supabase QA, DeepSeek and shadow audit. It also
+  rejected missing authentication, duplicate processing, fromMe, missing event
+  identity and an unknown instance. This is NOT proof of WhatsApp delivery.
+- Runtime output exposed a quality blocker: services/price replies said
+  **USD 30.000**, whereas the approved tenant-819 fixture expects **ARS 30.000**.
+  A fresh resolver call confirmed `currency=USD`. The SQL contract takes
+  currency from `saas_planes.moneda`, falling back to USD, rather than a verified
+  service-catalog currency. The original amount-only HTTP assertion missed this;
+  it now requires ARS explicitly. Do not classify that earlier suite as a
+  conversation-quality PASS. No billing data, RPC or migration was changed.
+- Resolve the catalog-currency authority separately before sending any proposal.
+  Do not hardcode ARS into model prose or modify subscription billing to make a
+  test pass. This also affects the existing live-data verifier's hardcoded
+  `{ moneda: 'ARS' }` proposal fixture: it is not evidence of live resolver parity.
+- The QA response returns the proposal only to the authenticated HTTP caller;
+  the audit RPC still persists a result reference and length, not exact text.
+- Existing QA instances were observed open with distinct identities. Both still
+  route to the Supabase QA shadow webhook, not this n8n webhook. No route was
+  replaced. An automatic Evolution-to-n8n bridge and controlled outbound remain
+  unvalidated. A direct synthetic POST must not be reported as that bridge.
+- `mutationAllowed=false`, `outboundAllowed=false`; no send endpoint or booking
+  RPC exists in this QA workflow. No real WhatsApp message was sent in this stage.
+- The isolated CLI harness `australQaRuntimeHarness` remains inactive. Multi-turn
+  persistence and permanent exactly-once semantics are not certified.
+
+Reproducible tools (all plan-only unless explicitly opted in):
+
+- `scripts/configure-whatsapp-qa-native-credentials.cjs`: inside n8n, `--apply`
+  binds dedicated QA credentials; stops on existing-name/id collisions. Do not
+  rerun against the already configured instance.
+- `scripts/run-whatsapp-qa-runtime.cjs`: inside n8n, `--execute` imports/runs the
+  isolated inactive synthetic harness. QA event/audit bookkeeping only.
+- `scripts/verify-whatsapp-qa-http-runtime.cjs`: inside n8n, `--execute` tests the
+  authenticated HTTP route with synthetic events. Currently expected to expose
+  the currency mismatch. No phone pairing or message sends.
+
+Next step: establish an authoritative service-catalog currency contract without
+altering billing, then revalidate price output before considering any real send.
+
+Checkpoint checks: npm test, lint, build, diff-check and the repository secret
+scanner PASS. Offline QA harness: 140 node assertions, 128 adversarial assertions,
+10 fixtures. Live data reads: 30 slots; tenant-819 turnos=0, clientes=0;
+cross-tenant service rejection verified in both directions with tenant 1.
+Protected production/template workflow fingerprints match the pre-change
+snapshot. Both QA webhooks remain on Supabase shadow; both instances open;
+miwsp remains close and was not modified. Real outbound remains zero.
+The live conversation quality gate is NOT green because of the currency mismatch.
+The final replay with the stricter price assertion also stopped at a non-200
+price response (the old error message did not retain its exact status). Its
+cause is not established; the harness now reports the status without response
+payloads. Do not treat the earlier successful run as proof of runtime reliability.
+
+## Historical record (superseded where noted above)
+
 ## Scope
 
 - QA workflow: `Austral WhatsApp QA - Shadow No Outbound`

@@ -6,9 +6,11 @@
         "httpMethod": "POST",
         "path": "austral-qa-shadow-inbound",
         "authentication": "headerAuth",
+        "responseMode": "lastNode",
         "options": {}
       },
       "id": "d3a2aefb-0a5d-449d-bbe7-1d1d147dfefd",
+      "webhookId": "a41c90ae-6baa-48e6-a57b-17eaf98cd819",
       "name": "Webhook Evolution - plantilla",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -509,7 +511,7 @@
         "sendHeaders": false,
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({p_integration_id:$('Resolver tenant').first().json.integration_id,p_event_id:$('Validar identidad e idempotencia').first().json.eventId,p_intent:$('Validar respuesta IA').first().json.intent,p_proposed_result:$('Construir respuesta segura').first().json.resultReference,p_proposed_response_length:$('Construir respuesta segura').first().json.text.length,p_proposed_latency_ms:$('Construir respuesta segura').first().json.proposalLatencyMs,p_metadata:{mode:'shadow',mutation_allowed:false,outbound_allowed:false}}) }}",
+        "jsonBody": "={{ JSON.stringify({p_integration_id:$('Resolver tenant').first().json.integration_id,p_event_id:$('Validar identidad e idempotencia').first().json.eventId,p_intent:$('Validar respuesta IA').first().json.intent,p_proposed_result:$('Construir respuesta segura').first().json.resultReference,p_proposed_response_length:$('Construir respuesta segura').first().json.text.length,p_proposed_latency_ms:$('Construir respuesta segura').first().json.proposalLatencyMs,p_metadata:{mode:'shadow',mutation_allowed:false,outbound_allowed:false} }) }}",
         "options": {
           "timeout": 20000
         },
@@ -563,7 +565,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return [{json:{stage:'completed',tenant_id:$('Resolver tenant').first().json.tenant_id,integration_id:$('Resolver tenant').first().json.integration_id,mode:'shadow',mutationAllowed:false,outboundAllowed:false}}];"
+        "jsCode": "return [{json:{stage:'completed',event_id:$('Validar identidad e idempotencia').first().json.eventId,tenant_id:$('Resolver tenant').first().json.tenant_id,integration_id:$('Resolver tenant').first().json.integration_id,proposed_reply:$('Construir respuesta segura').first().json.text,mode:'shadow',mutationAllowed:false,outboundAllowed:false}}];"
       },
       "id": "edabcac1-f176-4fb5-ba7a-3091730a8f41",
       "name": "Logging seguro",

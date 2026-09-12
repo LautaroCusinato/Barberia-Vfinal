@@ -47,8 +47,17 @@ check(()=>assert.equal(run('Construir respuesta segura',{},values).text,'¡Hola!
 check(()=>assert.equal(run('Crear reserva centralizada').booking_created,false))
 check(()=>assert.equal(workflow.active,false))
 check(()=>assert.equal(node('Webhook Evolution - plantilla').parameters.authentication,'headerAuth'))
+// n8n prefixes the workflow ID/name when webhookId is absent, breaking the public path.
+check(()=>assert.match(node('Webhook Evolution - plantilla').webhookId,/^[a-f0-9-]{36}$/))
+check(()=>assert.equal(node('Webhook Evolution - plantilla').parameters.responseMode,'lastNode'))
+values['Construir respuesta segura']=[{text:'El Corte clásico sale ARS 30.000.'}]
+const webhookResult=run('Logging seguro',{},values)
+check(()=>assert.equal(webhookResult.proposed_reply,values['Construir respuesta segura'][0].text))
+check(()=>assert.equal(webhookResult.outboundAllowed,false))
+check(()=>assert.equal(webhookResult.mutationAllowed,false))
 check(()=>assert.equal(workflow.settings.saveDataErrorExecution,'none'))
 for(const n of workflow.nodes.filter(n=>n.type==='n8n-nodes-base.httpRequest')) {
+ if(n.parameters.jsonBody) check(()=>assert.equal(n.parameters.jsonBody.slice(0,-2).includes('}}'),false,'Nested adjacent braces terminate n8n interpolation early'))
  check(()=>assert.equal(n.parameters.authentication,'genericCredentialType'))
  check(()=>assert.equal(n.retryOnFail,false))
  check(()=>assert.equal(n.onError,'stopWorkflow'))

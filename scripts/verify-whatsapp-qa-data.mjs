@@ -46,8 +46,20 @@ assert.deepEqual(await rpc(-1, block.fecha), [])
 const foreign = await read(db.from('servicios').select('id').eq('barberia_id', 2).limit(1), 'foreign service identity only')
 assert.ok(foreign.length, 'Tenant B fixture required')
 assert.deepEqual(await rpc(foreign[0].id, block.fecha), [], 'Foreign service must never resolve against tenant 819 slug')
+const tenant1 = await read(db.from('barberias').select('id,slug').eq('id', 1).single(), 'QA tenant 1')
+const services1 = await read(db.from('servicios').select('id').eq('barberia_id', tenant1.id), 'QA tenant 1 services')
+assert.ok(services1.length)
+assert.ok(services1.every(s => !services.some(own => own.id === s.id)))
+assert.deepEqual(await rpc(services1[0].id, block.fecha), [], 'Tenant 1 service must not resolve for tenant 819')
+assert.deepEqual(await read(db.rpc('horarios_disponibles_reserva_publica', { p_slug: tenant1.slug, p_servicio_id: service.id, p_fecha: block.fecha }), 'reverse tenant availability'), [])
+const counts = {}
+for (const table of ['turnos', 'clientes']) {
+  const { count, error } = await db.from(table).select('id', { count: 'exact', head: true }).eq('barberia_id', tenant.id)
+  if (error) throw new Error(`QA count failed: ${table} (${error.code ?? 'unknown'})`)
+  counts[table] = count
+}
 const proposal = buildDeterministicShadowProposal({ text: '¿Cuánto sale el corte?', business: { moneda: 'ARS' }, services, barbers, schedules, blocks })
 assert.equal(proposal.proposed_reply, 'El Corte clásico sale ARS 30.000.')
 assert.equal(proposal.mutation_allowed, false)
 assert.equal(proposal.outbound_allowed, false)
-console.log(JSON.stringify({ tenant: 819, services: services.length, barbers: barbers.length, relations: relations.length, schedules: schedules.length, blocks: blocks.length, slots: slots.length, blocked_slots_absent: true, outside_hours_absent: true, unknown_service_rejected: true, cross_tenant_service_rejected: true, authoritative_price_reply: proposal.proposed_reply, writes: 0, result: 'PASS' }))
+console.log(JSON.stringify({ tenant: 819, services: services.length, barbers: barbers.length, relations: relations.length, schedules: schedules.length, blocks: blocks.length, slots: slots.length, counts, tenant1_isolation_both_directions: true, blocked_slots_absent: true, outside_hours_absent: true, unknown_service_rejected: true, cross_tenant_service_rejected: true, authoritative_price_reply: proposal.proposed_reply, writes: 0, result: 'PASS' }))

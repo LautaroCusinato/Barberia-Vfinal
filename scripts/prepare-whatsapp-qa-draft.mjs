@@ -27,8 +27,10 @@ export function prepareQaDraft(source) {
     }
   }
   const trigger = node('Webhook Evolution - plantilla')
+  trigger.webhookId = 'a41c90ae-6baa-48e6-a57b-17eaf98cd819'
   trigger.parameters.authentication = 'headerAuth'
   trigger.parameters.path = 'austral-qa-shadow-inbound'
+  trigger.parameters.responseMode = 'lastNode'
   trigger.notes = 'QA only. Header Auth credential required before publishing. Do not save execution payloads.'
   code('Validar identidad e idempotencia', `const input = $input.first()?.json ?? {};
 const body = input.body;
@@ -90,10 +92,10 @@ return [{json:{text,mode:'shadow',mutationAllowed:false,outboundAllowed:false,pr
   responder.disabled=false
   responder.parameters={ ...node('Finalizar evento').parameters,
     url:"https://cmsymmszlzikqpvfqjre.supabase.co/rest/v1/rpc/record_whatsapp_shadow_run",
-    jsonBody:"={{ JSON.stringify({p_integration_id:$('Resolver tenant').first().json.integration_id,p_event_id:$('Validar identidad e idempotencia').first().json.eventId,p_intent:$('Validar respuesta IA').first().json.intent,p_proposed_result:$('Construir respuesta segura').first().json.resultReference,p_proposed_response_length:$('Construir respuesta segura').first().json.text.length,p_proposed_latency_ms:$('Construir respuesta segura').first().json.proposalLatencyMs,p_metadata:{mode:'shadow',mutation_allowed:false,outbound_allowed:false}}) }}" }
+    jsonBody:"={{ JSON.stringify({p_integration_id:$('Resolver tenant').first().json.integration_id,p_event_id:$('Validar identidad e idempotencia').first().json.eventId,p_intent:$('Validar respuesta IA').first().json.intent,p_proposed_result:$('Construir respuesta segura').first().json.resultReference,p_proposed_response_length:$('Construir respuesta segura').first().json.text.length,p_proposed_latency_ms:$('Construir respuesta segura').first().json.proposalLatencyMs,p_metadata:{mode:'shadow',mutation_allowed:false,outbound_allowed:false} }) }}" }
   responder.notes='Shadow audit RPC only. No Evolution endpoint or outbound capability.'
   const logging=node('Logging seguro')
-  code(logging.name,"return [{json:{stage:'completed',tenant_id:$('Resolver tenant').first().json.tenant_id,integration_id:$('Resolver tenant').first().json.integration_id,mode:'shadow',mutationAllowed:false,outboundAllowed:false}}];")
+  code(logging.name,"return [{json:{stage:'completed',event_id:$('Validar identidad e idempotencia').first().json.eventId,tenant_id:$('Resolver tenant').first().json.tenant_id,integration_id:$('Resolver tenant').first().json.integration_id,proposed_reply:$('Construir respuesta segura').first().json.text,mode:'shadow',mutationAllowed:false,outboundAllowed:false}}];")
   for(const n of workflow.nodes) if(n.parameters.jsonBody) n.parameters.jsonBody=n.parameters.jsonBody.replaceAll(".item.json", ".first().json")
   const serialized=JSON.stringify(workflow)
   if(/\$env\b|sendText|crear_reserva_whatsapp|EVOLUTION_API_KEY|miwsp|Barberia Central/.test(serialized)) throw new Error('unsafe_qa_draft')
