@@ -1,6 +1,44 @@
 # WhatsApp QA closure manifest
 
-## Current checkpoint — 2026-09-13
+## Current checkpoint — supervised price and availability closure, 2026-09-13
+
+Status: **READY FOR REAL E2E** within the existing bounded QA harness. This
+certifies the two supervised cases below, not production rollout or general
+autonomous outbound. No workflow/code correction was needed after `cc7040f`.
+
+- Preflight: only QA workflow `4q45z4wI3fozB2VC`, published, 25 nodes, no send
+  endpoint and mutation flags false. Protected production workflow fingerprint
+  matched the saved baseline. Both QA instances open with distinct identities;
+  miwsp remained close and was not used or modified.
+- Price event `…725DEF3B`: real Evolution inbound -> authenticated n8n ->
+  tenant 819 -> Supabase catalog -> DeepSeek -> controlled Evolution reply.
+  Exact received response: `El Corte clásico sale ARS 30.000 y dura 30 minutos.
+  ¿Querés que te prepare una reserva?` Service/currency/amount guards PASS;
+  provider ACK and receiving-instance message record PASS.
+- Availability event `…74EE6274`, executed only after price PASS: exact response
+  `¡Hola! Claro, decime para qué servicio y qué fecha querés que consulte la disponibilidad.`
+  ACK and receipt PASS. This tests safe missing-service/date clarification; it
+  does not certify a dated availability/slot-selection conversation.
+- Each case rejected duplicate event processing and checked the actual stored
+  outgoing fromMe=true message. Replaying that record into n8n returned
+  invalid_inbound, with no additional send. An outgoing webhook callback was
+  not observed; guard replay is reported separately, not as a natural callback.
+  No loop was observed in the controlled window; no general outbound was enabled.
+- Exactly four sendText calls in this window: two questions plus two answers,
+  exclusively between the two QA instances. No automatic retry, external phone,
+  QR, booking mutation, customer mutation, billing action or production write.
+- Both shadow webhook configurations restored with readback after each case;
+  both QA instances remain open. Temporary bridge listener closed. Authoritative
+  final tenant-819 counts: turnos=0, clientes=0.
+- Regression harness: 149 workflow assertions, 128 adversarial assertions and
+  10 fixtures PASS. Tests/lint/build/diff-check/secret scan PASS. Only this
+  documentation checkpoint changed; local preexisting edits remain excluded.
+
+The previous real-price response assertion failure is not reproducible in this
+new case. Its unretained reply remains unknown; no retrospective root cause or
+PASS is claimed for that older event. Stop here; no further sends scheduled.
+
+## Historical checkpoint — 2026-09-13 (superseded above)
 
 Status: **READY FOR MANUAL E2E — bounded QA harness prepared, not a full E2E PASS**.
 Services completed a real round trip; the subsequent price case stopped before
