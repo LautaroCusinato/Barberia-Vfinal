@@ -10,6 +10,7 @@ const dir = fs.mkdtempSync('/dev/shm/austral-qa-runtime-')
 fs.chmodSync(dir, 0o700)
 const file = dir + '/qa.json'
 const eventId = 'E2E_QA_CLI_' + Date.now()
+const question = process.argv.includes('--price-only') ? '¿Cuánto sale el Corte clásico?' : '¿Qué servicios tienen?'
 function parseResult(raw) {
   for (let start = raw.indexOf('{'); start >= 0; start = raw.indexOf('{', start + 1)) {
     let depth = 0, string = false, escape = false
@@ -47,7 +48,7 @@ try {
   trigger.typeVersion = 2
   delete trigger.credentials
   delete trigger.webhookId
-  trigger.parameters = { jsCode: 'return [{json:{body:' + JSON.stringify({ event: 'MESSAGES_UPSERT', instance: 'austral-qa-tenant-819', data: { key: { id: eventId, fromMe: false, remoteJid: '5491100000099@s.whatsapp.net' }, message: { conversation: '¿Qué servicios tienen?' } } }) + '}}];' }
+  trigger.parameters = { jsCode: 'return [{json:{body:' + JSON.stringify({ event: 'MESSAGES_UPSERT', instance: 'austral-qa-tenant-819', data: { key: { id: eventId, fromMe: false, remoteJid: '5491100000099@s.whatsapp.net' }, message: { conversation: question } } }) + '}}];' }
   draft.nodes.push({ id: 'qa-manual-entry', name: 'QA Manual Entry', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {}, position: [-200, 0] })
   draft.connections['QA Manual Entry'] = { main: [[{ node: trigger.name, type: 'main', index: 0 }]] }
   fs.writeFileSync(file, JSON.stringify([draft]), { mode: 0o600 })

@@ -1,6 +1,72 @@
 # WhatsApp QA closure manifest
 
-## Current checkpoint — 2026-09-12
+## Current checkpoint — 2026-09-13
+
+Status: **READY FOR MANUAL E2E — bounded QA harness prepared, not a full E2E PASS**.
+Services completed a real round trip; the subsequent price case stopped before
+reply dispatch. Availability was deliberately not attempted. No production readiness
+or autonomous outbound enablement is implied by this checkpoint.
+
+- Catalog currency now comes from tenant-scoped `servicios -> barberias(id,moneda)`.
+  The resolver's subscription-plan currency is not used for service prices.
+  Missing/foreign business currency fails closed; no billing/RPC/schema changes.
+- Workflow regressions: 149 PASS, including ARS catalog with USD subscription,
+  real USD catalog, absent/foreign currency, provider LID with verified-format
+  `remoteJidAlt`, and rejection without that alternate identity. Evolution's
+  `destination` is a webhook URL, not a receiver number; it is no longer parsed
+  as a telephone hint. Tenant resolution remains server-side by instance.
+- Published QA workflow matches the repository's 25 nodes, webhookId and
+  connections. Eleven credential bindings use the existing three native QA
+  credentials; credential values are not versioned. Mutation/outbound flags remain false.
+- Authenticated price HTTP retest: 200, tenant 819, ARS 30.000. Latest isolated
+  retest took 3255 ms and answered `El Corte clásico sale ARS 30.000 y dura
+  30 minutos. ¿Querés que prepare una reserva?`. This is not WhatsApp delivery.
+  The older HTTP failure has no retained diagnostic sufficient to attribute a cause.
+- Controlled real test used only tenant-1 and tenant-819 identities. An internal,
+  secret-authenticated temporary bridge routed the selected event to n8n and
+  forwarded other events to the original QA shadow webhook. It never enabled
+  general outbound. Each run allowed at most one question and one exact validated reply.
+- First services attempt: one question, no response; provider LID identity was
+  observed and the identity normalization was corrected. Fresh services attempt
+  `…E2AAB956` completed n8n/Supabase/DeepSeek, rejected its duplicate, and sent
+  reply `…F020C09A`. Provider storage confirms sender-side fromMe=true and
+  recipient-side fromMe=false for the same reply ID. The exact reply was:
+  `Tenemos Corte clásico: E2E_QA_819 servicio natural para pruebas, 30 min, ARS 30000. ¿Querés reservar?`
+- The initial postcheck falsely required an outgoing webhook callback. Read-only
+  message lookup proved delivery; replaying the actual outgoing record into the
+  no-outbound n8n route returned HTTP 200 / invalid_inbound. The harness now checks
+  stored provider identity plus this guard replay, separately reporting callback
+  observation. This is not a claim of end-to-end autonomous loop certification.
+- The real price question completed n8n with tenant/event/disabled flags correct,
+  then failed a response assertion before any reply send. The initial generic
+  diagnostic did not retain which assertion or the text: its exact cause remains
+  UNKNOWN. Subsequent synthetic price PASS does not erase this failed real case.
+  Named safe guard diagnostics are now included for the next supervised test.
+  No automatic retry or availability send followed this failure.
+- Total authorized test sends in this stage: **4** (three questions, one answer),
+  all between the two existing QA identities. Final authoritative tenant-819
+  counts: turnos=0, clientes=0. No booking/billing/production operation or miwsp change.
+- Both QA instances are open. Original shadow webhooks restored and enabled;
+  restoration readback matched saved configuration after every run. Internal
+  bridge listener is closed. No phone, QR, new instance or permanent routing change.
+- Existing protected workflow fingerprints were verified unchanged. Local
+  tests/lint/build/diff-check/secret scan PASS; harness includes 128 adversarial
+  assertions and 10 fixtures. Preexisting provision/state-verifier edits are excluded.
+
+Tool: `scripts/run-whatsapp-qa-two-instance-e2e.cjs` is plan-only unless explicitly
+passed `--execute --case=services|price|availability` inside n8n. Do not run as a
+general outbound service. It snapshots secret configuration privately in RAM,
+restores on normal/error exit, never retries sends, and retains the private backup
+if restoration fails. Process/container termination still requires operator recovery;
+there is no independently supervised recovery daemon. Availability's current case
+tests missing-date clarification, not live delivery of dated authoritative slots.
+
+Next step: a supervised **new price case**, using the named guard diagnostics,
+before considering availability or any broader enablement. No physical pairing is
+needed with the two currently open QA instances. The exact failed reply cannot be
+recovered from n8n audit, which stores only reference/length rather than reply text.
+
+## Historical checkpoint — 2026-09-12 (superseded above)
 
 Status: **BLOCKED for real WhatsApp E2E**. The dated historical sections below
 describe earlier states, not the current publication/credential status.

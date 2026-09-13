@@ -16,21 +16,34 @@ const identity=run('Validar identidad e idempotencia',source)
 check(()=>assert.equal(identity.invalid,false))
 check(()=>assert.equal(identity.texto,'¿Qué servicios tienen?'))
 check(()=>assert.equal(Object.hasOwn(identity,'body'),false))
+const lid=structuredClone(source);lid.body.data.key.remoteJid='123456789@lid';lid.body.data.key.remoteJidAlt=source.body.data.key.remoteJid;lid.body.destination='http://n8n:5689/qa-123'
+check(()=>assert.equal(run('Validar identidad e idempotencia',lid).invalid,false))
+check(()=>assert.equal(run('Validar identidad e idempotencia',lid).receiverNumber,null))
+delete lid.body.data.key.remoteJidAlt
+check(()=>assert.equal(run('Validar identidad e idempotencia',lid).invalid,true))
 for(const fromMe of [true,'false',null,undefined,0]) {
  const payload=structuredClone(source);payload.body.data.key.fromMe=fromMe
  check(()=>assert.equal(run('Validar identidad e idempotencia',payload).invalid,true))
 }
 for(const patch of [{event:'connection.update'},{instance:''},{data:[]},{data:{key:{id:'x',fromMe:false,remoteJid:'status@broadcast'}}}]) check(()=>assert.equal(run('Validar identidad e idempotencia',{body:{...source.body,...patch}}).invalid,true))
 const values={
- 'Resolver tenant':[{tenant_id:819,integration_id:36,slug:'qa-fixture',business_name:'E2E_QA_819',timezone:'America/Argentina/Buenos_Aires',currency:'ARS'}],
+ 'Resolver tenant':[{tenant_id:819,integration_id:36,slug:'qa-fixture',business_name:'E2E_QA_819',timezone:'America/Argentina/Buenos_Aires',currency:'USD'}],
  'Validar identidad e idempotencia':[identity],
- 'Cargar servicios bajo demanda':[{id:43,nombre:'Corte clásico',precio:30000,duracion_min:30}],
+ 'Cargar servicios bajo demanda':[{id:43,nombre:'Corte clásico',precio:30000,duracion_min:30,barberias:{id:819,moneda:'ARS'}}],
  'Cargar empleados bajo demanda':[{id:42,nombre:'E2E_QA_BARBER'}],
  'Cargar horarios y pausas':[{}], 'Cargar bloqueos':[{}],
 }
 const prompt=run('Armar prompt modular',{},values)
 check(()=>assert.equal(prompt.user_message,identity.texto))
 check(()=>assert.equal(prompt.system_prompt.includes(identity.senderNumber),false))
+check(()=>assert.match(prompt.system_prompt,/"currency":"ARS"/))
+check(()=>assert.doesNotMatch(prompt.system_prompt,/USD/))
+for(const business of [undefined,{id:1,moneda:'ARS'},{id:819,moneda:''}]) {
+ const bad=structuredClone(values);bad['Cargar servicios bajo demanda'][0].barberias=business
+ check(()=>assert.throws(()=>run('Armar prompt modular',{},bad),/catalog_currency_unverified/))
+}
+const usd=structuredClone(values);usd['Cargar servicios bajo demanda'][0].barberias.moneda='USD'
+check(()=>assert.match(run('Armar prompt modular',{},usd).system_prompt,/"currency":"USD"/))
 const ai=(args,intent='availability')=>({choices:[{message:{content:JSON.stringify({intent,args,reply:'Voy a revisar las opciones.'})}}]})
 for(const args of [{tenant_id:2},{service_id:999},{barber_id:999},{fecha:'2030-02-30'},{hora:'25:00'},{tool:'billing'},{service_id:{tenant_id:2}}]) check(()=>assert.throws(()=>run('Validar respuesta IA',ai(args),values)))
 const decision=run('Validar respuesta IA',ai({service_id:43,barber_id:42,fecha:'2030-01-07',hora:'16:00'}),values)

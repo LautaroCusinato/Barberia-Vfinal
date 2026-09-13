@@ -16,7 +16,7 @@ const read = async (query, label) => {
   if (error) throw new Error(`QA read failed: ${label} (${error.code ?? 'unknown'})`)
   return data
 }
-const tenant = await read(db.from('barberias').select('id,slug,metadata').eq('id', 819).single(), 'tenant')
+const tenant = await read(db.from('barberias').select('id,slug,metadata,moneda').eq('id', 819).single(), 'tenant')
 assert.equal(tenant.metadata.environment, 'qa')
 assert.equal(tenant.metadata.e2e_prefix, 'E2E_QA_')
 const services = await read(db.from('servicios').select('id,nombre,precio,duracion_min,activo').eq('barberia_id', tenant.id).eq('activo', true), 'services')
@@ -58,7 +58,8 @@ for (const table of ['turnos', 'clientes']) {
   if (error) throw new Error(`QA count failed: ${table} (${error.code ?? 'unknown'})`)
   counts[table] = count
 }
-const proposal = buildDeterministicShadowProposal({ text: '¿Cuánto sale el corte?', business: { moneda: 'ARS' }, services, barbers, schedules, blocks })
+assert.equal(tenant.moneda, 'ARS', 'Approved QA catalog currency must come from the business row')
+const proposal = buildDeterministicShadowProposal({ text: '¿Cuánto sale el corte?', business: { moneda: tenant.moneda }, services, barbers, schedules, blocks })
 assert.equal(proposal.proposed_reply, 'El Corte clásico sale ARS 30.000.')
 assert.equal(proposal.mutation_allowed, false)
 assert.equal(proposal.outbound_allowed, false)
