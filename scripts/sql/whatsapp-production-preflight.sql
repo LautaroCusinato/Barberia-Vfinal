@@ -36,8 +36,9 @@ select version, name
 from supabase_migrations.schema_migrations
 where version = any(array[
   '20260806150000',
-  '20260824150000',
   '20260821090000',
+  '20260824150000',
+  '20260913110000',
   '20260913120000',
   '20260806163000',
   '20260807070000'
@@ -45,15 +46,13 @@ where version = any(array[
 order by version;
 
 select
-  count(*) filter (where c.integration_id is null) as missing_integration,
-  count(*) filter (where i.id is null and c.integration_id is not null) as mismatched_integration_tenant,
-  count(*) filter (where c.environment = 'production' and (to_jsonb(c) ->> 'automation_enabled')::boolean is true) as production_automation_enabled,
-  count(*) filter (where c.environment = 'production' and (to_jsonb(c) ->> 'outbound_enabled')::boolean is true) as production_outbound_enabled,
-  count(*) filter (where c.environment = 'production' and (to_jsonb(c) ->> 'booking_enabled')::boolean is true) as production_booking_enabled
-from public.saas_whatsapp_connections c
-left join public.saas_integraciones i
-  on i.id = c.integration_id
- and i.barberia_id = c.barberia_id;
+  to_regclass('public.saas_whatsapp_connections') is not null as connection_table_present,
+  count(*) filter (where c.column_name = 'automation_enabled') = 1 as automation_flag_present,
+  count(*) filter (where c.column_name = 'outbound_enabled') = 1 as outbound_flag_present,
+  count(*) filter (where c.column_name = 'booking_enabled') = 1 as booking_flag_present
+from information_schema.columns c
+where c.table_schema = 'public'
+  and c.table_name = 'saas_whatsapp_connections';
 
 select
   p.proname as function_name,

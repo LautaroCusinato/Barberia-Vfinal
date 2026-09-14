@@ -7,6 +7,7 @@ booking. All runtime flags introduced by the production contract default to
 
 ## Artifacts
 
+- Drift-safe connection prerequisite: `20260913110000_whatsapp_production_connection_prerequisite.sql`.
 - Database contract: `20260913120000_whatsapp_production_runtime_contract.sql`.
 - Authoritative metadata query: `scripts/sql/whatsapp-production-preflight.sql`.
 - Declared-policy verifier: `scripts/verify-production-rls-declarations.mjs`.
@@ -47,14 +48,24 @@ create a narrowly scoped migration from the observed policies and rerun this gat
 
 ## Gate 2: migrations and inactive runtime
 
-First require both `20260806150000_multitenant_whatsapp_contract.sql` and
-`20260821090000_whatsapp_tenant_provisioning.sql` to be present in the
-authoritative history. If either is absent, stop and review it as an explicit
-dependency before continuing.
+First inspect both migration history and live objects. Production can contain
+the `20260806150000_multitenant_whatsapp_contract.sql` objects without that
+historical version because its original schema predates the repository
+reconstruction. Do not repair history or replay that migration blindly. Require
+its integration columns, event table, unique event constraint, tenant resolver,
+claim/finalization RPCs, secure grants and helper functions to exist live.
+
+If `20260821090000_whatsapp_tenant_provisioning.sql` is absent from history and
+`saas_whatsapp_connections` is also absent, use the reviewed drift-safe
+`20260913110000_whatsapp_production_connection_prerequisite.sql`. It creates only
+the missing service-role connection boundary and fails if an incompatible table
+already exists. Do not apply both connection-table migrations.
 
 Apply only:
 
-1. `20260913120000_whatsapp_production_runtime_contract.sql`
+1. `20260913110000_whatsapp_production_connection_prerequisite.sql`, only when
+   the original connection migration and table are both absent.
+2. `20260913120000_whatsapp_production_runtime_contract.sql`.
 
 Do **not** apply `20260824150000_whatsapp_integration_state_sync.sql` to
 production. It is retained for QA history and contains QA-only reconciliation

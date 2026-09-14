@@ -4,6 +4,7 @@ import path from 'node:path'
 
 const root = process.cwd()
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const prerequisite = read('supabase/migrations/20260913110000_whatsapp_production_connection_prerequisite.sql')
 const migration = read('supabase/migrations/20260913120000_whatsapp_production_runtime_contract.sql')
 const preflight = read('scripts/sql/whatsapp-production-preflight.sql')
 const runbook = read('docs/WHATSAPP-FIRST-CUSTOMER-RUNBOOK.md')
@@ -36,6 +37,14 @@ const inboundPayload = (overrides = {}) => ({
   },
 })
 
+assert.match(prerequisite, /create table if not exists public\.saas_whatsapp_connections/i)
+assert.match(prerequisite, /unique \(barberia_id, environment\)/i)
+assert.match(prerequisite, /alter table public\.saas_whatsapp_connections enable row level security/i)
+assert.match(prerequisite, /revoke all on table public\.saas_whatsapp_connections from public, anon, authenticated/i)
+assert.match(prerequisite, /grant select, insert, update, delete on table public\.saas_whatsapp_connections to service_role/i)
+assert.match(prerequisite, /Incompatible saas_whatsapp_connections schema/i)
+assert.doesNotMatch(prerequisite, /cmsymmszlzikqpvfqjre|ssagttjdgtypxjcgdnrw|austral-qa-tenant-|miwsp|barberia_id\s*=\s*\d+/i)
+
 for (const flag of ['automation_enabled', 'outbound_enabled', 'booking_enabled']) {
   assert.match(migration, new RegExp(`add column if not exists ${flag} boolean not null default false`, 'i'))
 }
@@ -64,11 +73,16 @@ for (const table of ['barberias', 'servicios', 'barberos', 'barbero_servicios', 
 assert.doesNotMatch(preflight, /^\s*(insert|update|delete|alter|create|drop|truncate)\b/im)
 assert.match(preflight, /'20260806150000'/)
 assert.match(preflight, /'20260821090000'/)
+assert.match(preflight, /'20260913110000'/)
+assert.match(preflight, /to_regclass\('public\.saas_whatsapp_connections'\)/)
+assert.doesNotMatch(preflight, /from public\.saas_whatsapp_connections c/i)
+assert.match(runbook, /20260913110000_whatsapp_production_connection_prerequisite\.sql/)
 
 assert.match(rollback, /where automation_enabled or outbound_enabled or booking_enabled/i)
 assert.match(rollback, /raise exception 'Disable all WhatsApp runtime capabilities before rollback\.'/i)
 assert.doesNotMatch(rollback, /delete\s+from|truncate\s+table/i)
 assert.match(postflight, /begin transaction read only/i)
+assert.match(postflight, /'20260913110000'/)
 assert.match(postflight, /production_automation_enabled/i)
 assert.match(postflight, /invalid_outbound_without_automation/i)
 assert.match(postflight, /integration_tenant_mismatches/i)

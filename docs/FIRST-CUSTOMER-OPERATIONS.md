@@ -63,7 +63,11 @@ This is an engineering/release gate, not a missing secret or a UI toggle.
    booking in production without explicit approval.
 5. Keep billing manual/fail-closed. The presence of a Mercado Pago public key is
    not financial activation; do not enable provider/global/production flags.
-6. Complete the WhatsApp commercial gate above. Create a unique Evolution
+6. Complete the WhatsApp commercial gate above. Where production history lacks
+   the original connection-table migration, apply the reviewed drift-safe
+   `20260913110000_whatsapp_production_connection_prerequisite.sql` before the
+   runtime contract; never use migration repair or replay the QA-only state-sync
+   migration. Create a unique Evolution
    instance for this tenant; never reuse `miwsp` or another tenant's number.
 7. The owner scans the QR physically. Verify stable `CONNECTED`, refresh
    persistence, instance-to-tenant resolution and the configured webhook without

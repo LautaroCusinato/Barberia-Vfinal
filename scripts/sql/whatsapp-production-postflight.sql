@@ -4,9 +4,10 @@ begin transaction read only;
 
 select
   version,
-  version = '20260913120000' as expected_runtime_contract
+  version = any(array['20260913110000', '20260913120000']) as expected_runtime_migration
 from supabase_migrations.schema_migrations
-where version = '20260913120000';
+where version = any(array['20260913110000', '20260913120000'])
+order by version;
 
 select
   a.attname as column_name,
