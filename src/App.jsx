@@ -39,14 +39,11 @@ import {
 import { getDemoSnapshot, resetDemoSession, saveDemoSnapshot } from './lib/demoStore.js'
 import { reportClientError } from './lib/observability.js'
 import { initialWorkspaceCollection } from './lib/runtimeStability.js'
+import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './lib/whatsappProvisioning.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
 const N8N_SEND_WEBHOOK_URL = import.meta.env.VITE_N8N_SEND_WEBHOOK_URL || ''
-const QA_SUPABASE_HOST = 'cmsymmszlzikqpvfqjre.supabase.co'
-const QA_PROVISIONING_RUNTIME = (() => {
-  try { return new URL(import.meta.env.VITE_SUPABASE_URL || '').hostname === QA_SUPABASE_HOST } catch { return false }
-})()
 
 function nextLocalId(items) {
   return Math.max(0, ...items.map((item) => Number(item.id) || 0)) + 1
@@ -165,7 +162,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [turnoFechaPrefijada, setTurnoFechaPrefijada] = useState(null)
   const [notasFiltro, setNotasFiltro] = useState('')
   const [botActivo, setBotActivo] = useState(() => (demoMode ? false : !isSupabaseConfigured))
-  const [whatsappIntegration, setWhatsappIntegration] = useState(() => (demoMode ? { loading: false, configured: false, connected: false, estado: 'no_disponible' } : { loading: isSupabaseConfigured, configured: !isSupabaseConfigured, connected: !isSupabaseConfigured }))
+  const [whatsappIntegration, setWhatsappIntegration] = useState(() => (demoMode ? { loading: false, configured: false, connected: false, automationEnabled: false, estado: 'no_disponible' } : { loading: isSupabaseConfigured, configured: !isSupabaseConfigured, connected: !isSupabaseConfigured, automationEnabled: false }))
   const [whatsappEntitlement, setWhatsappEntitlement] = useState(() => (demoMode ? { loading: false, entitlementLoading: false, entitled: false, entitlement: 'blocked' } : { loading: isSupabaseConfigured, entitlementLoading: isSupabaseConfigured, entitled: !isSupabaseConfigured, entitlement: isSupabaseConfigured ? 'checking' : 'allowed' }))
   const [tenantBranding, setTenantBranding] = useState(() => demoSnapshot?.tenantBranding || null)
   const [horariosDefault, setHorariosDefault] = useState(() => demoSnapshot?.horariosDefault || ({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] }))
@@ -400,8 +397,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     async function cargarIntegracionWhatsApp() {
       let result
       try {
-        result = QA_PROVISIONING_RUNTIME
-          ? await supabase.functions.invoke('whatsapp-provision', { body: { action: 'status', tenant_id: barberiaId } })
+        result = MANAGED_WHATSAPP_PROVISIONING
+          ? await supabase.functions.invoke(WHATSAPP_PROVISION_FUNCTION, { body: { action: 'status', tenant_id: barberiaId } })
           : await supabase
             .from('saas_integraciones')
             .select('id, proveedor, estado, metadata')
@@ -425,19 +422,21 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         setBotActivo(false)
         return
       }
-      if (QA_PROVISIONING_RUNTIME) {
+      if (MANAGED_WHATSAPP_PROVISIONING) {
         const connection = data?.connection
         const state = String(connection?.state || 'NOT_CONFIGURED')
         const configured = state !== 'NOT_CONFIGURED'
         const connected = state === 'CONNECTED'
-        setWhatsappIntegration({ loading: false, configured, connected, estado: connected ? 'conectado' : state.toLowerCase(), connectionStatus: state, statusUnavailable: false })
-        if (!connected) setBotActivo(false)
+        const automationEnabled = connection?.automation_enabled === true
+        setWhatsappIntegration({ loading: false, configured, connected, automationEnabled, outboundEnabled: connection?.outbound_enabled === true, bookingEnabled: connection?.booking_enabled === true, estado: connected ? 'conectado' : state.toLowerCase(), connectionStatus: state, statusUnavailable: false })
+        if (!connected || !automationEnabled) setBotActivo(false)
         return
       }
       const configured = Boolean(data)
       const connected = data?.estado === 'conectado'
-      setWhatsappIntegration({ loading: false, configured, connected, estado: data?.estado || 'pendiente', connectionStatus: data?.estado || 'NOT_CONFIGURED', statusUnavailable: false })
-      if (!connected) setBotActivo(false)
+      const automationEnabled = data?.metadata?.automation_enabled === true
+      setWhatsappIntegration({ loading: false, configured, connected, automationEnabled, outboundEnabled: data?.metadata?.outbound_enabled === true, bookingEnabled: data?.metadata?.booking_enabled === true, estado: data?.estado || 'pendiente', connectionStatus: data?.estado || 'NOT_CONFIGURED', statusUnavailable: false })
+      if (!connected || !automationEnabled) setBotActivo(false)
     }
 
     async function cargarBloqueos() {

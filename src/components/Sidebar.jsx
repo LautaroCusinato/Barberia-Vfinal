@@ -37,6 +37,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
     statusUnavailable: whatsappStatus.statusUnavailable === true,
     entitlement: whatsappStatus.entitlement ?? (whatsappStatus.entitled === true ? 'allowed' : 'unknown'),
     entitlementLoading: whatsappStatus.entitlementLoading === true,
+    automationEnabled: whatsappStatus.automationEnabled === true,
     demoMode,
   })
   const whatsappState = whatsappDisplay.connectionState
@@ -46,6 +47,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
   const whatsappStatusDescriptionIds = [
     whatsappDisplay.connectionNotice ? 'whatsapp-connection-notice' : null,
     whatsappDisplay.entitlementLabel ? 'whatsapp-entitlement-status' : null,
+    whatsappDisplay.automationLabel ? 'whatsapp-automation-status' : null,
   ].filter(Boolean)
   const [mostrarMas, setMostrarMas] = useState(false)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
@@ -104,6 +106,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             </div>
             {whatsappDisplay.connectionNotice && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-connection-notice">{whatsappDisplay.connectionNotice}</span>}
             {whatsappDisplay.entitlementLabel && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-entitlement-status">{whatsappDisplay.entitlementLabel}</span>}
+            {whatsappDisplay.automationLabel && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-automation-status">{whatsappDisplay.automationLabel}</span>}
             {requiresPlan && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Ver facturación y planes</button>}
             {!requiresPlan && !billingUnavailable && !whatsappReady && whatsappDisplay.canConfigure && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
             {billingUnavailable && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Revisar facturación</button>}

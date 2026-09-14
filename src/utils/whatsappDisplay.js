@@ -28,6 +28,7 @@ export function getWhatsAppDisplayState({
   statusUnavailable = false,
   entitlement = 'allowed',
   entitlementLoading = false,
+  automationEnabled = false,
   demoMode = false,
 } = {}) {
   if (demoMode) {
@@ -37,6 +38,7 @@ export function getWhatsAppDisplayState({
       connectionTitle: 'WhatsApp en validación',
       connectionBadge: 'En validación',
       entitlementLabel: 'Disponible próximamente · sin mensajes reales',
+      automationLabel: null,
       requiresPlan: true,
       billingUnavailable: false,
       connectionUnavailable: false,
@@ -53,7 +55,8 @@ export function getWhatsAppDisplayState({
   const billingUnavailable = entitlement === 'unavailable'
   const technicallyConnected = technicalState === 'connected'
   const connectionUnavailable = technicalState === 'unavailable' || statusUnavailable
-  const whatsappReady = technicallyConnected && configured && entitlement === 'allowed' && !statusUnavailable
+  const runtimeEnabled = automationEnabled === true
+  const whatsappReady = technicallyConnected && configured && entitlement === 'allowed' && runtimeEnabled && !statusUnavailable
   const canConfigure = !connectionUnavailable && !entitlementLoading && ['needs-config', 'disconnected', 'error'].includes(technicalState)
   const copy = CONNECTION_COPY[connectionState] || CONNECTION_COPY.unavailable
   const entitlementLabel = requiresPlan
@@ -63,6 +66,9 @@ export function getWhatsAppDisplayState({
         : entitlement === 'unknown'
           ? 'Plan pendiente de verificación'
           : null
+  const automationLabel = technicallyConnected && !runtimeEnabled
+    ? 'Automatización pendiente de habilitación'
+    : null
 
   return {
     connectionState,
@@ -73,6 +79,7 @@ export function getWhatsAppDisplayState({
     connectionNotice: statusUnavailable && technicallyConnected ? 'No pudimos verificar el estado más reciente.' : null,
     canConfigure,
     entitlementLabel,
+    automationLabel,
     requiresPlan,
     billingUnavailable,
     entitlementLoading,

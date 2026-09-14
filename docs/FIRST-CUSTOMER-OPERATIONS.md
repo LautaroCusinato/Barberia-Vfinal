@@ -42,8 +42,9 @@ Before the first commercial WhatsApp tenant, an approved change must:
 4. keep outbound and booking behind separate, default-off server flags;
 5. preserve event claims, `fromMe` rejection, LID/PN identity validation,
    authoritative catalog currency and availability recheck;
-6. deploy only after `20260824150000_whatsapp_integration_state_sync.sql` is
-   authoritatively planned for production and its deferred migrations remain out;
+6. deploy only after `20260913120000_whatsapp_production_runtime_contract.sql`
+   is authoritatively planned for production, its provisioning dependency is
+   present and QA-only migration `20260824150000` remains out;
 7. pass one tenant-scoped production shadow test before any real reply, then one
    explicitly authorized reply-only E2E before booking is considered.
 
@@ -77,13 +78,16 @@ This is an engineering/release gate, not a missing secret or a UI toggle.
 ## REQUIRED CONFIGURATION NAMES
 
 Supabase server-side: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-`WHATSAPP_PROVISIONING_ENV`, `WHATSAPP_PROVISIONING_ADAPTER`, `WHATSAPP_MODE`,
-`PILOT_MODE`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`,
-`EVOLUTION_WEBHOOK_SECRET`, `DEEPSEEK_API_KEY`. Outbound/booking flags and tenant
-allow-lists are configured only for the approved stage and remain off otherwise.
+`WHATSAPP_RUNTIME_PROJECT_REF`, `WHATSAPP_RUNTIME_ENV`,
+`WHATSAPP_PROVISIONING_ENABLED`, `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`,
+`WHATSAPP_N8N_WEBHOOK_URL`, `WHATSAPP_N8N_WEBHOOK_SECRET`,
+`WHATSAPP_N8N_ALLOWED_HOST`, `WHATSAPP_PROTECTED_INSTANCES`, `APP_BASE_URL` and
+`DEEPSEEK_API_KEY`. Outbound/booking flags are tenant-scoped database flags and
+remain off unless their separate gate is approved.
 
 Cloudflare client build: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`,
-`VITE_APP_BASE_URL`, `VITE_SALES_WHATSAPP_NUMBER`. Never expose service-role,
+`VITE_APP_BASE_URL`, `VITE_SALES_WHATSAPP_NUMBER` and the non-secret selector
+`VITE_WHATSAPP_PROVISION_FUNCTION`. Never expose service-role,
 Evolution, DeepSeek, webhook or provider private keys through `VITE_*`.
 
 ## OBSERVABILITY
@@ -106,9 +110,8 @@ migrations. Confirm that other instances and production web traffic are intact.
 
 ## HUMAN ACTIONS
 
-Five gates remain before automatic WhatsApp can be sold to the first customer:
-verify the effective production RLS catalog; approve the production-safe
-implementation/release; approve and apply the single planned WhatsApp migration
-after a fresh backup; provide and scan the customer-controlled WhatsApp account;
-and authorize the first tenant-scoped production shadow/reply E2E. Payments stay
-manual unless separately authorized.
+Three human gates remain before automatic WhatsApp can be sold to the first
+customer: verify the effective production RLS catalog; approve the backup,
+single planned migration and inactive runtime deployment; provide/scan the
+customer-controlled WhatsApp account and authorize the first tenant-scoped
+shadow/reply E2E. Payments stay manual unless separately authorized.

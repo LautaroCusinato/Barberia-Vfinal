@@ -18,6 +18,9 @@ const publicBooking = read('supabase/migrations/20260731210000_public_booking.sq
 const provisioningSchema = read('supabase/migrations/20260821090000_whatsapp_tenant_provisioning.sql')
 const webhook = read('supabase/functions/whatsapp-evolution-webhook/index.ts')
 const provisioning = read('supabase/functions/whatsapp-provision/index.ts')
+const productionProvisioning = read('supabase/functions/whatsapp-production-provision/index.ts')
+const productionRuntime = read('supabase/migrations/20260913120000_whatsapp_production_runtime_contract.sql')
+const productionRunbook = read('docs/WHATSAPP-FIRST-CUSTOMER-RUNBOOK.md')
 const bookingFunction = read('supabase/functions/whatsapp-booking-mutation/index.ts')
 const outboundFunction = read('supabase/functions/whatsapp-agent-outbound-pilot/index.ts')
 const billing = read('supabase/functions/_shared/providers.ts') + '\n' + read('supabase/functions/billing-api/index.ts') + '\n' + read('scripts/billing-production-dry-run.mjs')
@@ -57,6 +60,15 @@ assert.match(bookingFunction, /WHATSAPP_BOOKING_MUTATION_PILOT_ENABLED|QA_BOOKIN
 assert.match(outboundFunction, /WHATSAPP_AGENT_OUTBOUND_PILOT_ENABLED/)
 assert.doesNotMatch(webhook, /message\/sendText/)
 
+// The production candidate is reproducible but remains undeployed and default-off.
+assert.match(productionRuntime, /automation_enabled boolean not null default false/i)
+assert.match(productionRuntime, /outbound_enabled boolean not null default false/i)
+assert.match(productionRuntime, /booking_enabled boolean not null default false/i)
+assert.match(productionProvisioning, /WHATSAPP_RUNTIME_ENV/)
+assert.match(productionProvisioning, /\['owner', 'admin'\]\.includes/)
+assert.match(productionProvisioning, /automation_enabled: false, outbound_enabled: false, booking_enabled: false/)
+assert.match(productionRunbook, /Controlled E2E/)
+
 // Billing remains a separate, explicit financial gate.
 assert.match(billing, /BILLING_PRODUCTION_ENABLED/)
 assert.match(billing, /BILLING_GLOBAL_PROVIDER_ENABLED/)
@@ -71,13 +83,11 @@ console.log(JSON.stringify({
   booking_database_contract: 'READY_FOR_QA',
   onboarding_contract: 'PASS',
   billing_default: 'FAIL_CLOSED',
-  production_whatsapp: 'BLOCKED_BY_EXPLICIT_RELEASE_GATE',
+  production_whatsapp: 'PREPARED_DEFAULT_OFF',
   required_manual_gates: [
-    'verify the effective production core-table RLS catalog against the QA contract',
-    'approve production-safe WhatsApp implementation and deploy',
-    'apply only the authorized WhatsApp production migration after backup',
-    'provide and pair the first customer WhatsApp account',
-    'authorize one tenant-scoped production E2E before enabling automation',
+    'verify the effective production RLS catalog',
+    'approve backup, the single production migration and inactive runtime deployment',
+    'provide and pair the customer number, then authorize the tenant-scoped E2E',
   ],
-  status: 'READY_FOR_SALE_MANUAL_STEPS_REMAINING',
+  status: 'READY_FOR_FIRST_CUSTOMER',
 }, null, 2))

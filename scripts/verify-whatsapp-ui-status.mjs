@@ -5,13 +5,18 @@ import { getWhatsAppDisplayState } from '../src/utils/whatsappDisplay.js'
 const cases = [
   {
     name: 'connected + allowed',
-    input: { configured: true, connected: true, entitlement: 'allowed' },
+    input: { configured: true, connected: true, entitlement: 'allowed', automationEnabled: true },
     expected: { connectionState: 'connected', connectionLabel: 'Conectado', entitlementLabel: null, whatsappReady: true },
   },
   {
     name: 'connected + blocked',
-    input: { configured: true, connected: true, entitlement: 'blocked' },
+    input: { configured: true, connected: true, entitlement: 'blocked', automationEnabled: true },
     expected: { connectionState: 'connected', connectionLabel: 'Conectado', entitlementLabel: 'Automatización requiere plan', whatsappReady: false },
+  },
+  {
+    name: 'connected but runtime not enabled',
+    input: { configured: true, connected: true, entitlement: 'allowed', automationEnabled: false },
+    expected: { connectionState: 'connected', connectionLabel: 'Conectado', automationLabel: 'Automatización pendiente de habilitación', whatsappReady: false },
   },
   {
     name: 'disconnected + blocked',
@@ -64,5 +69,6 @@ assert.match(panel, /workingRef\.current/)
 assert.match(panel, /statusUnavailable \|\| workingRef\.current/)
 assert.match(panel, /finally\s*\{/)
 assert.match(panel, /canConnect = !statusUnavailable/)
+assert.match(panel, /automation_enabled !== true/)
 assert.doesNotMatch(panel, /\['NOT_CONFIGURED', 'DISCONNECTED', 'ERROR', 'QR_READY', 'CONNECTING'\]/)
 console.log('WhatsApp UI connection/entitlement status: PASS')

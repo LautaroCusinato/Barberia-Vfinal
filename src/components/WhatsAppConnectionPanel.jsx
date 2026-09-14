@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, CircleAlert, Link2, LoaderCircle, MessageCircle, Power, RefreshCw, ShieldCheck, Unplug } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { provisioningAction, WHATSAPP_DISCONNECT_SUPPORTED, WHATSAPP_PROVISION_FUNCTION } from '../lib/whatsappProvisioning.js'
 
 const STATE_COPY = {
   NOT_CONFIGURED: { label: 'No configurado', tone: 'neutral', description: 'Conectá el canal desde acá cuando tu equipo esté listo.' },
@@ -32,7 +33,7 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
   const state = statusUnavailable && !connection ? 'STATUS_UNAVAILABLE' : connection?.state || 'NOT_CONFIGURED'
   const copy = STATE_COPY[state] || STATE_COPY.ERROR
   const canConnect = !statusUnavailable && !working && ['NOT_CONFIGURED', 'DISCONNECTED', 'ERROR'].includes(state)
-  const canDisconnect = !statusUnavailable && !working && ['CONNECTED', 'QR_READY', 'CONNECTING'].includes(state)
+  const canDisconnect = WHATSAPP_DISCONNECT_SUPPORTED && !statusUnavailable && !working && ['CONNECTED', 'QR_READY', 'CONNECTING'].includes(state)
   const qrVisible = Boolean(connection?.qr_available && connection?.qr)
 
   const invoke = useCallback(async (action) => {
@@ -40,7 +41,7 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
     workingRef.current = true
     setWorking(true); setError(''); setNotice('')
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('whatsapp-provision', { body: { action, tenant_id: barberiaId } })
+      const { data, error: invokeError } = await supabase.functions.invoke(WHATSAPP_PROVISION_FUNCTION, { body: { action: provisioningAction(action), tenant_id: barberiaId } })
       if (invokeError || data?.error) {
         setError(safeMessage(invokeError || data?.error))
       } else if (data?.connection) {
@@ -60,7 +61,7 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
     if (demoMode || !isSupabaseConfigured) { setLoading(false); return }
     setLoading(true); setError('')
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('whatsapp-provision', { body: { action: 'status', tenant_id: barberiaId } })
+      const { data, error: invokeError } = await supabase.functions.invoke(WHATSAPP_PROVISION_FUNCTION, { body: { action: 'status', tenant_id: barberiaId } })
       if (invokeError || data?.error) {
         setStatusUnavailable(true)
         setError(safeMessage(invokeError || data?.error))
@@ -95,6 +96,7 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
       <div className="whatsapp-connection-message"><ShieldCheck size={18} /><div><strong>{demoMode ? 'Disponible próximamente' : copy.label}</strong><p>{demoMode ? 'La demo no conecta servicios externos ni genera mensajes.' : copy.description}</p></div></div>
       {qrVisible && <div className="whatsapp-qr-wrap"><div className="whatsapp-qr-heading"><strong>Código temporal</strong><small>Vence en unos minutos. No compartas esta pantalla.</small></div><div className="whatsapp-qr-frame"><img src={connection.qr} alt="Código temporal para vincular WhatsApp" /></div></div>}
       {connection?.provisioning_mode === 'mock' && !demoMode && <div className="whatsapp-connection-note" role="status"><Link2 size={15} /> Este estado es una simulación QA; no requiere ni permite escaneo real.</div>}
+      {state === 'CONNECTED' && connection?.automation_enabled !== true && !demoMode && <div className="whatsapp-connection-note" role="status"><ShieldCheck size={15} /> WhatsApp está conectado, pero la automatización todavía requiere habilitación operativa.</div>}
     </div>
 
     <div className="whatsapp-connection-actions">
