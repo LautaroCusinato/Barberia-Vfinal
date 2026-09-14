@@ -40,6 +40,9 @@ function response(body: unknown, status: number, origin: string) {
   })
 }
 function instanceName(tenantId: number) { return `${INSTANCE_PREFIX}${tenantId}` }
+function safeErrorCode(error: unknown, fallback = 'provisioning_failed') {
+  return value((error as { message?: string })?.message).replace(/[^a-z0-9_:-]/gi, '').slice(0, 80) || fallback
+}
 function safeConnection(row: Record<string, unknown> | null) {
   if (!row) return { state: 'NOT_CONFIGURED', automation_enabled: false, outbound_enabled: false, booking_enabled: false }
   return {
@@ -47,6 +50,7 @@ function safeConnection(row: Record<string, unknown> | null) {
     provisioning_mode: row.provisioning_mode,
     last_verified_at: row.last_verified_at,
     qr_expires_at: row.qr_expires_at,
+    last_error_code: row.last_error_code || null,
     automation_enabled: row.automation_enabled === true,
     outbound_enabled: row.outbound_enabled === true,
     booking_enabled: row.booking_enabled === true,
@@ -141,6 +145,16 @@ async function connection(admin: SupabaseClient, tenantId: number) {
   if (error) throw Object.assign(new Error('connection_lookup_failed'), { status: 502 })
   return data as Record<string, unknown> | null
 }
+async function markConnectionError(admin: SupabaseClient, tenantId: number, connectionId: unknown, error: unknown) {
+  if (!connectionId) return
+  await admin.from('saas_whatsapp_connections').update({
+    state: 'ERROR',
+    qr_expires_at: null,
+    last_error_code: safeErrorCode(error),
+    last_error_message: null,
+    last_verified_at: new Date().toISOString(),
+  }).eq('id', connectionId).eq('barberia_id', tenantId).eq('environment', ENVIRONMENT)
+}
 async function ensureIntegration(admin: SupabaseClient, tenantId: number, expectedInstance: string) {
   const { data: rows, error } = await admin.from('saas_integraciones')
     .select('id,barberia_id,external_instance_id,metadata').eq('barberia_id', tenantId)
@@ -174,37 +188,45 @@ async function prepare(admin: SupabaseClient, tenantId: number) {
   if (protectedInstances.has(expectedInstance.toLowerCase())) throw Object.assign(new Error('protected_instance'), { status: 403 })
   const current = await connection(admin, tenantId)
   if (current && value(current.instance_name) && value(current.instance_name) !== expectedInstance) throw Object.assign(new Error('connection_identity_conflict'), { status: 409 })
+  if (current?.state === 'CONNECTED') return { connection: safeConnection(current) }
   const integrationId = await ensureIntegration(admin, tenantId, expectedInstance)
   const base = {
     barberia_id: tenantId, integration_id: integrationId, provider: PROVIDER, environment: ENVIRONMENT,
     provisioning_mode: 'live', instance_name: expectedInstance,
     automation_enabled: false, outbound_enabled: false, booking_enabled: false,
-    last_error_code: null, last_error_message: null,
+    qr_expires_at: null, last_error_code: null, last_error_message: null,
   }
   const write = current
     ? await admin.from('saas_whatsapp_connections').update({ ...base, state: 'CREATING_INSTANCE' }).eq('id', current.id).select('*').single()
     : await admin.from('saas_whatsapp_connections').insert({ ...base, state: 'CREATING_INSTANCE' }).select('*').single()
-  if (write.error) throw Object.assign(new Error('connection_prepare_failed'), { status: 502 })
+  if (write.error || !write.data) throw Object.assign(new Error('connection_prepare_failed'), { status: 502 })
+  const preparedConnection = write.data as Record<string, unknown>
 
-  const instances = evolutionInstances(await evolution('/instance/fetchInstances'))
-  const exists = instances.some((item) => evolutionInstanceName(item) === expectedInstance)
-  if (!exists) await evolution('/instance/create', { method: 'POST', body: { instanceName: expectedInstance, qrcode: true, integration: 'WHATSAPP-BAILEYS' } })
-  await configureWebhook(expectedInstance)
-  let qr: string | null = null
-  for (let attempt = 0; attempt < 3 && !qr; attempt += 1) {
-    qr = extractQr(await evolution(`/instance/connect/${encodeURIComponent(expectedInstance)}`))
-    if (!qr && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 750))
+  try {
+    const instances = evolutionInstances(await evolution('/instance/fetchInstances'))
+    const exists = instances.some((item) => evolutionInstanceName(item) === expectedInstance)
+    if (!exists) await evolution('/instance/create', { method: 'POST', body: { instanceName: expectedInstance, qrcode: true, integration: 'WHATSAPP-BAILEYS' } })
+    await configureWebhook(expectedInstance)
+    let qr: string | null = null
+    for (let attempt = 0; attempt < 3 && !qr; attempt += 1) {
+      qr = extractQr(await evolution(`/instance/connect/${encodeURIComponent(expectedInstance)}`))
+      if (!qr && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 750))
+    }
+    if (!qr) throw Object.assign(new Error('evolution_qr_missing'), { status: 502 })
+    const qrExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+    const { data, error: updateError } = await admin.from('saas_whatsapp_connections').update({ state: 'QR_READY', qr_expires_at: qrExpiresAt, last_verified_at: new Date().toISOString() })
+      .eq('id', preparedConnection.id).eq('barberia_id', tenantId).eq('environment', ENVIRONMENT).select('*').single()
+    if (updateError) throw Object.assign(new Error('connection_qr_state_failed'), { status: 502 })
+    return { connection: { ...safeConnection(data), qr_available: true, qr }, qr_expires_at: qrExpiresAt }
+  } catch (error) {
+    await markConnectionError(admin, tenantId, preparedConnection.id, error).catch(() => undefined)
+    throw error
   }
-  if (!qr) throw Object.assign(new Error('evolution_qr_missing'), { status: 502 })
-  const qrExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
-  const { data, error: updateError } = await admin.from('saas_whatsapp_connections').update({ state: 'QR_READY', qr_expires_at: qrExpiresAt, last_verified_at: new Date().toISOString() })
-    .eq('barberia_id', tenantId).eq('environment', ENVIRONMENT).select('*').single()
-  if (updateError) throw Object.assign(new Error('connection_qr_state_failed'), { status: 502 })
-  return { connection: { ...safeConnection(data), qr_available: true, qr }, qr_expires_at: qrExpiresAt }
 }
 async function status(admin: SupabaseClient, tenantId: number) {
   const current = await connection(admin, tenantId)
   if (!current || !current.instance_name) return { connection: safeConnection(current) }
+  if (current.state === 'ERROR') return { connection: safeConnection(current) }
   const providerState = normalizeState(await evolution(`/instance/connectionState/${encodeURIComponent(value(current.instance_name))}`))
   if (!providerState) throw Object.assign(new Error('provider_state_unknown'), { status: 502 })
   const { data, error } = await admin.from('saas_whatsapp_connections').update({ state: providerState, last_verified_at: new Date().toISOString(), qr_expires_at: providerState === 'CONNECTED' ? null : current.qr_expires_at })
@@ -231,7 +253,7 @@ Deno.serve(async (request) => {
     return response(result, 200, origin)
   } catch (error) {
     const statusCode = Number((error as { status?: number }).status) || 503
-    const code = value((error as { message?: string }).message).replace(/[^a-z0-9_:-]/gi, '').slice(0, 80) || 'provisioning_failed'
+    const code = safeErrorCode(error)
     return response({ error: code }, statusCode, origin)
   }
 })

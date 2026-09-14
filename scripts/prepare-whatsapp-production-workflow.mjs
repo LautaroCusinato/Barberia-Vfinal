@@ -75,6 +75,10 @@ node('Crear reserva centralizada').name = 'Bloquear mutación de reserva'
 node('Bloquear mutación de reserva').parameters.jsCode = "return [{json:{mutationAllowed:false,booking_created:false,mutation_blocked:true}}];"
 node('Bloquear mutación de reserva').notes = 'No booking RPC is present in this workflow. Booking requires a separate release and authorization.'
 
+node('Construir respuesta segura').parameters.jsCode = node('Construir respuesta segura').parameters.jsCode
+  .replace("mode:'shadow'", "mode:'production-controlled'")
+  .replace("resultReference:validation.intent+':shadow'", "resultReference:validation.intent+':controlled'")
+
 node('Responder por Evolution').name = 'Registrar propuesta minimizada'
 node('Registrar propuesta minimizada').parameters.url = supabaseRpc('record_whatsapp_shadow_run')
 node('Registrar propuesta minimizada').parameters.jsonBody = "={{ JSON.stringify({p_integration_id:$('Resolver tenant').first().json.integration_id,p_event_id:$('Validar identidad e idempotencia').first().json.eventId,p_intent:$('Validar respuesta IA').first().json.intent,p_proposed_result:$('Construir respuesta segura').first().json.resultReference,p_proposed_response_length:$('Construir respuesta segura').first().json.text.length,p_proposed_latency_ms:$('Construir respuesta segura').first().json.proposalLatencyMs,p_metadata:{environment:'production',mode:'controlled',mutation_allowed:false,outbound_allowed:$('Resolver tenant').first().json.outbound_enabled===true}}) }}"

@@ -101,6 +101,11 @@ environment, origin, user membership and default-off runtime flags.
    and Evolution instance, configures only the dedicated production webhook,
    and keeps all three runtime flags off. It accepts no instance, webhook,
    tenant identity override or credential from the browser.
+   A provider failure is persisted as `ERROR` with a sanitized code and no QR;
+   it never leaves a false `CREATING_INSTANCE` success. Repeating prepare on an
+   already `CONNECTED` row is a no-op, so it cannot reset an active connection
+   or its capability flags. Retry an `ERROR` only through the explicit panel
+   action after the provider cause is understood.
 4. Confirm the integration and connection tenant ids match, environment is
    `production`, provisioning mode is `live`, and the instance is not protected.
    Do not reuse or modify `miwsp`, a QA instance, or another tenant's number.
@@ -118,8 +123,11 @@ Scope: one tenant, one connected customer instance and one authorized sender.
    Verify tenant resolution, authoritative catalogue/currency, authoritative
    availability RPC, one inbound claim per event, no outbound, no bookings and
    no customer writes.
-3. Send a short multi-turn booking conversation. It may collect and propose
-   data, but must not call a booking RPC or claim that a booking exists.
+3. Send short follow-up questions and verify that each event is independently
+   tenant-scoped and read-only. This controlled workflow does not persist
+   conversational booking state. A stateful booking conversation belongs to
+   the separate booking release and must not be accepted in this reply-only
+   gate.
 4. Replay one captured event id through the controlled harness. Require the
    second claim to return `acquired=false`; no AI or outbound node may run.
 5. Confirm outgoing/provider events have `fromMe=true` and stop at the first

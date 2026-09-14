@@ -67,6 +67,10 @@ assert.match(productionRuntime, /booking_enabled boolean not null default false/
 assert.match(productionProvisioning, /WHATSAPP_RUNTIME_ENV/)
 assert.match(productionProvisioning, /\['owner', 'admin'\]\.includes/)
 assert.match(productionProvisioning, /automation_enabled: false, outbound_enabled: false, booking_enabled: false/)
+assert.match(productionProvisioning, /if \(current\?\.state === 'CONNECTED'\) return \{ connection: safeConnection\(current\) \}/)
+assert.match(productionProvisioning, /state: 'ERROR'/)
+assert.match(productionProvisioning, /last_error_code: safeErrorCode\(error\)/)
+assert.match(productionProvisioning, /if \(current\.state === 'ERROR'\) return \{ connection: safeConnection\(current\) \}/)
 assert.match(productionRunbook, /Controlled E2E/)
 
 // Billing remains a separate, explicit financial gate.
