@@ -37,3 +37,16 @@ contract, create a minimal policy-only migration from that observed delta and
 add a two-tenant regression before applying it.
 
 Production writes, migrations and deployments performed by this checkpoint: 0.
+
+## Repository-declared contract
+
+The offline command `npm run verify:production-rls-declarations` verifies the
+declared membership/role policies for the ten core tenant tables and the
+service-role-only boundary for integration automation state. It passes on the
+current branch. This result is deliberately separate from the live result and
+must never be used to mark the production catalog as verified.
+
+After the approved migration, run
+`scripts/sql/whatsapp-production-postflight.sql` in the same authoritative
+read-only SQL session. It verifies the default-off flags, validated constraints,
+integration/tenant bindings and runtime RPC privileges without reading PII.

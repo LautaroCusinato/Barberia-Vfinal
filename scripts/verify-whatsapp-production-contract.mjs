@@ -13,9 +13,28 @@ const app = read('src/App.jsx')
 const provisioningUi = read('src/lib/whatsappProvisioning.js')
 const provisioningFunction = read('supabase/functions/whatsapp-production-provision/index.ts')
 const rollback = read('scripts/sql/whatsapp-production-runtime-rollback.sql')
+const postflight = read('scripts/sql/whatsapp-production-postflight.sql')
+const customerReadiness = read('scripts/sql/whatsapp-first-customer-readiness.sql')
+const diagnostics = read('scripts/whatsapp-production-diagnostics.mjs')
+const privateAccess = read('docs/SERVER-PRIVATE-ACCESS.md')
 const workflow = JSON.parse(read('integrations/templates/Austral WhatsApp Production - Controlled.json'))
 const serializedWorkflow = JSON.stringify(workflow)
 const node = (name) => workflow.nodes.find((candidate) => candidate.name === name)
+const inboundGuard = node('Validar identidad e idempotencia')?.parameters?.jsCode || ''
+const runInboundGuard = (payload) => new Function('$input', inboundGuard)({
+  first: () => ({ json: { body: payload } }),
+})[0].json
+const inboundPayload = (overrides = {}) => ({
+  event: 'messages.upsert',
+  instance: 'austral-prod-tenant-42',
+  ...overrides,
+  data: {
+    key: { id: 'PROD_EVENT_001', remoteJid: '5491100000000@s.whatsapp.net', fromMe: false },
+    message: { conversation: 'Consulta de servicios' },
+    messageTimestamp: Math.floor(Date.now() / 1000),
+    ...overrides.data,
+  },
+})
 
 for (const flag of ['automation_enabled', 'outbound_enabled', 'booking_enabled']) {
   assert.match(migration, new RegExp(`add column if not exists ${flag} boolean not null default false`, 'i'))
@@ -49,13 +68,37 @@ assert.match(preflight, /'20260821090000'/)
 assert.match(rollback, /where automation_enabled or outbound_enabled or booking_enabled/i)
 assert.match(rollback, /raise exception 'Disable all WhatsApp runtime capabilities before rollback\.'/i)
 assert.doesNotMatch(rollback, /delete\s+from|truncate\s+table/i)
+assert.match(postflight, /begin transaction read only/i)
+assert.match(postflight, /production_automation_enabled/i)
+assert.match(postflight, /invalid_outbound_without_automation/i)
+assert.match(postflight, /integration_tenant_mismatches/i)
+assert.match(postflight, /rollback;/i)
+assert.doesNotMatch(postflight, /^\s*(insert|update|delete|alter|create|drop|truncate)\b/im)
+assert.match(customerReadiness, /begin transaction read only/i)
+assert.match(customerReadiness, /:'tenant_id'::bigint/g)
+assert.match(customerReadiness, /active_staff_with_active_service/i)
+assert.match(customerReadiness, /active_staff_with_schedule/i)
+assert.match(customerReadiness, /tenant_binding_valid/i)
+assert.match(customerReadiness, /rollback;/i)
+assert.doesNotMatch(customerReadiness, /^\s*(insert|update|delete|alter|create|drop|truncate)\b/im)
 
 assert.equal(workflow.active, false)
 assert.equal(workflow.name, 'Austral WhatsApp Production - Controlled')
 assert.equal(node('Webhook Evolution - producción')?.parameters?.authentication, 'headerAuth')
 assert.equal(node('Webhook Evolution - producción')?.parameters?.path, 'austral-whatsapp-production-inbound')
 assert.match(node('Validar identidad e idempotencia')?.parameters?.jsCode || '', /key\.fromMe === false/)
-assert.match(node('Validar identidad e idempotencia')?.parameters?.jsCode || '', /eventId\.length > 0/)
+assert.match(node('Validar identidad e idempotencia')?.parameters?.jsCode || '', /validEventId/)
+assert.match(node('Validar identidad e idempotencia')?.parameters?.jsCode || '', /messageTimestamp/)
+assert.match(node('Validar identidad e idempotencia')?.parameters?.jsCode || '', /5 \* 60 \* 1000/)
+assert.match(node('Validar identidad e idempotencia')?.parameters?.jsCode || '', /stale_or_invalid_timestamp/)
+assert.match(node('Validar identidad e idempotencia')?.parameters?.jsCode || '', /A-Za-z0-9\._:-/)
+assert.equal(runInboundGuard(inboundPayload()).invalid, false)
+assert.equal(runInboundGuard(inboundPayload({ data: { messageTimestamp: Date.now() } })).invalid, false)
+assert.equal(runInboundGuard(inboundPayload({ data: { messageTimestamp: Math.floor(Date.now() / 1000) - 301 } })).reason, 'stale_or_invalid_timestamp')
+assert.equal(runInboundGuard(inboundPayload({ data: { messageTimestamp: Math.floor(Date.now() / 1000) + 121 } })).reason, 'stale_or_invalid_timestamp')
+assert.equal(runInboundGuard(inboundPayload({ data: { messageTimestamp: null } })).reason, 'stale_or_invalid_timestamp')
+assert.equal(runInboundGuard(inboundPayload({ data: { key: { id: 'BAD EVENT', remoteJid: '5491100000000@s.whatsapp.net', fromMe: false } } })).invalid, true)
+assert.equal(runInboundGuard(inboundPayload({ data: { key: { id: 'PROD_EVENT_002', remoteJid: '5491100000000@s.whatsapp.net', fromMe: true } } })).invalid, true)
 assert.match(node('Resolver tenant')?.parameters?.url || '', /resolve_whatsapp_runtime_context/)
 assert.match(node('Resolver tenant')?.parameters?.jsonBody || '', /p_environment: 'production'/)
 assert.doesNotMatch(node('Resolver tenant')?.parameters?.jsonBody || '', /tenant_id|barberia_id/i)
@@ -103,6 +146,18 @@ for (const phrase of ['Gate 1: production metadata and backup', 'Gate 2: migrati
 }
 assert.match(generator, /workflow\.active = false/)
 assert.match(generator, /p_operation:'outbound'/)
+assert.match(generator, /stale_or_invalid_timestamp/)
+
+assert.match(diagnostics, /WHATSAPP_DIAGNOSTICS_ALLOW_PRODUCTION_READONLY/)
+assert.match(diagnostics, /resolve_whatsapp_runtime_context/)
+assert.match(diagnostics, /instance\/connectionState/)
+assert.match(diagnostics, /webhook\/find/)
+assert.match(diagnostics, /saas_automation_events/)
+assert.match(diagnostics, /saas_automation_shadow_runs/)
+assert.doesNotMatch(diagnostics, /sendText|message\/send|claim_whatsapp_runtime_event/)
+assert.match(privateAccess, /sudo tailscale up --ssh=false/)
+assert.match(privateAccess, /test a new SSH/i)
+assert.match(privateAccess, /sudo tailscale down/)
 
 console.log(JSON.stringify({
   database_contract: 'PASS_DEFAULT_OFF',
@@ -111,6 +166,8 @@ console.log(JSON.stringify({
   idempotency: 'ATOMIC_INBOUND_AND_OUTBOUND_CLAIMS',
   booking: 'DISABLED_SEPARATE_RELEASE',
   production_workflow: 'INACTIVE_REPRODUCIBLE_TEMPLATE',
+  freshness: 'FIVE_MINUTE_FAIL_CLOSED',
+  diagnostics: 'READ_ONLY_NO_PII',
   production_provisioning: 'OWNER_ADMIN_DEFAULT_OFF',
   ui_activation_semantics: 'PASS',
   production_changes: 0,

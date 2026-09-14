@@ -9,6 +9,11 @@ booking. All runtime flags introduced by the production contract default to
 
 - Database contract: `20260913120000_whatsapp_production_runtime_contract.sql`.
 - Authoritative metadata query: `scripts/sql/whatsapp-production-preflight.sql`.
+- Declared-policy verifier: `scripts/verify-production-rls-declarations.mjs`.
+- Post-migration metadata query: `scripts/sql/whatsapp-production-postflight.sql`.
+- Tenant readiness query: `scripts/sql/whatsapp-first-customer-readiness.sql`.
+- Sanitized runtime diagnostics: `scripts/whatsapp-production-diagnostics.mjs`.
+- Offline backup artifact verifier: `scripts/verify-production-backup-artifacts.mjs`.
 - Pre-consumer emergency rollback: `scripts/sql/whatsapp-production-runtime-rollback.sql`.
 - Owner/admin provisioning function: `whatsapp-production-provision`.
 - Inactive n8n template: `Austral WhatsApp Production - Controlled.json`.
@@ -33,7 +38,9 @@ credential bindings.
 4. Confirm `20260806163000` and `20260807070000` remain unapplied.
 5. Create a fresh Supabase production backup using the official dashboard or
    `supabase db dump` with a privately supplied database URL. Verify the artifact
-   is non-empty and record its timestamp/checksum outside Git.
+   is non-empty and record its timestamp/checksum outside Git. The local
+   artifact check is `npm run verify:production-backup -- --directory=<absolute
+   path outside this repository>`; a restore drill remains a separate gate.
 
 Do not invent an RLS repair from repository history. If the live catalog differs,
 create a narrowly scoped migration from the observed policies and rerun this gate.
@@ -64,7 +71,11 @@ Immediately rerun the metadata preflight. Expected production counts are:
 Import the production n8n template as a new workflow. Keep it unpublished. Bind
 new production-only credentials for Supabase, DeepSeek, Evolution and webhook
 Header Auth; never reuse QA or legacy credentials. Validate expressions and the
-production webhook path without executing the workflow.
+production webhook path without executing the workflow. The inbound guard
+requires a provider timestamp no older than five minutes (with at most two
+minutes of future clock skew), in addition to `MESSAGES_UPSERT`,
+`fromMe=false`, the managed instance identity, event id, direct-chat JID and
+non-empty text.
 
 Deploy `whatsapp-production-provision` only after this gate is approved. Its
 server-only configuration is `WHATSAPP_RUNTIME_PROJECT_REF`,
@@ -82,6 +93,9 @@ environment, origin, user membership and default-off runtime flags.
 1. Use the existing authenticated onboarding to create the tenant and owner.
 2. Complete business timezone/currency, service catalogue, active staff,
    staff-service relations, schedules and blocks.
+   Run `scripts/sql/whatsapp-first-customer-readiness.sql` in a read-only
+   production SQL session with the numeric tenant id. Stop if the tenant,
+   owner/admin, catalogue, staff-service link or schedule aggregate is missing.
 3. From the authenticated owner/admin panel, invoke the production provisioning
    function. It creates or reuses the deterministic tenant-scoped integration
    and Evolution instance, configures only the dedicated production webhook,
@@ -129,6 +143,23 @@ availability recheck, a booking-specific claim and explicit authorization before
 - Booking/customer writes remain zero during reply-only acceptance.
 - Billing remains manual/fail-closed and independent from WhatsApp flags.
 
+Run `scripts/sql/whatsapp-production-postflight.sql` after the approved
+migration. All three production-enabled counts and both invalid-combination
+counts must be zero; every listed constraint must be validated; anonymous and
+authenticated users must not execute the runtime RPCs.
+
+During a supervised runtime window, diagnostics may be run only from a trusted
+operator environment with server-only credentials:
+
+```text
+WHATSAPP_DIAGNOSTICS_ALLOW_PRODUCTION_READONLY=1
+npm run whatsapp:production:diagnostics -- --environment=production --instance=austral-prod-tenant-<id>
+```
+
+The command resolves the tenant server-side and reports only sanitized state,
+partial event ids, aggregate claim counts and provider/workflow health. It
+cannot send, claim, retry or mutate an event.
+
 ## Rollback
 
 Disable flags in this order: `booking_enabled`, `outbound_enabled`, then
@@ -143,8 +174,8 @@ improvise a destructive down migration.
 
 ## Remaining human actions
 
-1. Establish the authorized read-only production SQL session and approve the
-   verified RLS result plus fresh backup.
-2. Approve the reviewed production migration after the backup, configure the
-   server-side runtime, and provide/scan the first customer's WhatsApp number.
+1. Restore one authorized server/production SQL access path, verify effective
+   RLS and create/verify the fresh backup.
+2. Approve the reviewed production migration and inactive runtime deployment,
+   then provide/scan the first customer's WhatsApp number.
 3. Authorize the single-tenant production E2E window and its one real reply.

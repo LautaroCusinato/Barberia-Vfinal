@@ -98,6 +98,10 @@ numbers/JIDs, Authorization, API keys, webhook secrets, customer payloads or ful
 prompts. Diagnose in this order: Evolution connection, webhook status, tenant
 resolution, event claim, scoped Supabase reads, proposal, outbound claim, provider
 ACK and loop guard. Never retry an ambiguous provider send automatically.
+Use `scripts/whatsapp-production-diagnostics.mjs` only with its explicit
+production read-only gate and server-side credentials. It resolves the tenant
+from the managed instance and emits no phone, message body, prompt, URL, token
+or header value.
 
 ## ROLLBACK
 
@@ -110,8 +114,9 @@ migrations. Confirm that other instances and production web traffic are intact.
 
 ## HUMAN ACTIONS
 
-Three human gates remain before automatic WhatsApp can be sold to the first
-customer: verify the effective production RLS catalog; approve the backup,
-single planned migration and inactive runtime deployment; provide/scan the
-customer-controlled WhatsApp account and authorize the first tenant-scoped
-shadow/reply E2E. Payments stay manual unless separately authorized.
+The first remaining human action is to restore one authorized server or
+production SQL access path. Then verify the effective production RLS catalog
+and fresh backup; approve the single planned migration and inactive runtime
+deployment; provide/scan the customer-controlled WhatsApp account; and
+authorize the first tenant-scoped shadow/reply E2E. Payments stay manual unless
+separately authorized.

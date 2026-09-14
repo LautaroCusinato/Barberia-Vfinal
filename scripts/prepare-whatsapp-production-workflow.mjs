@@ -36,8 +36,19 @@ const alternateJid = typeof key.remoteJidAlt === 'string' ? key.remoteJidAlt.tri
 const remoteJid = /^\\d+@lid$/.test(rawJid) && /^\\d{5,20}@s\\.whatsapp\\.net$/.test(alternateJid) ? alternateJid : rawJid;
 const event = String(body?.event ?? '').toUpperCase().replace(/[.\\s-]+/g, '_');
 const texto = String(data.message?.conversation ?? data.message?.extendedTextMessage?.text ?? '').trim().slice(0, 2000);
-const valid = Boolean(event === 'MESSAGES_UPSERT' && key.fromMe === false && /^[a-zA-Z0-9_-]{1,100}$/.test(instanceName) && eventId.length > 0 && eventId.length <= 180 && /^\\d{5,20}@s\\.whatsapp\\.net$/.test(remoteJid) && texto);
-return [{json:{instanceName,eventId,texto,senderNumber:remoteJid.split('@')[0],fromMe:key.fromMe,invalid:!valid,webhookAuthenticated:true,environment:'production',mutationAllowed:false,outboundAllowed:false,receivedAt:Date.now(),reason:valid?null:'invalid_inbound'}}];`
+const now = Date.now();
+const rawTimestamp = data.messageTimestamp ?? body?.date_time ?? body?.timestamp;
+const numericTimestamp = Number(rawTimestamp);
+const parsedTimestamp = Number.isFinite(numericTimestamp)
+  ? (numericTimestamp < 1000000000000 ? numericTimestamp * 1000 : numericTimestamp)
+  : Date.parse(String(rawTimestamp ?? ''));
+const timestampValid = Number.isFinite(parsedTimestamp)
+  && parsedTimestamp >= now - (5 * 60 * 1000)
+  && parsedTimestamp <= now + (2 * 60 * 1000);
+const validEventId = /^[A-Za-z0-9._:-]{1,180}$/.test(eventId);
+const valid = Boolean(event === 'MESSAGES_UPSERT' && key.fromMe === false && /^[a-zA-Z0-9_-]{1,100}$/.test(instanceName) && validEventId && /^\\d{5,20}@s\\.whatsapp\\.net$/.test(remoteJid) && texto && timestampValid);
+const reason = valid ? null : !timestampValid ? 'stale_or_invalid_timestamp' : 'invalid_inbound';
+return [{json:{instanceName,eventId,texto,senderNumber:remoteJid.split('@')[0],fromMe:key.fromMe,eventTimestamp:new Date(Number.isFinite(parsedTimestamp)?parsedTimestamp:0).toISOString(),invalid:!valid,webhookAuthenticated:true,environment:'production',mutationAllowed:false,outboundAllowed:false,receivedAt:now,reason}}];`
 
 const supabaseRpc = (rpc) => `={{ $env.SUPABASE_URL + '/rest/v1/rpc/${rpc}' }}`
 node('Resolver tenant').parameters.url = supabaseRpc('resolve_whatsapp_runtime_context')
