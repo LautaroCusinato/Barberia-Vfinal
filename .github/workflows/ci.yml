@@ -125,6 +125,8 @@ jobs:
           E2E_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
           E2E_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
           E2E_QA_PASSWORD: ${{ secrets.E2E_QA_PASSWORD }}
+          E2E_TEST_PREFIX: E2E_QA_
+          E2E_ALLOW_FIXTURE_SEED: "1"
         run: npm run e2e:qa:fixtures -- --execute
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:qa
