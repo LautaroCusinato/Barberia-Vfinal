@@ -115,6 +115,17 @@ jobs:
           test -n "$E2E_SUPABASE_SERVICE_ROLE_KEY"
           test -n "$E2E_QA_PASSWORD"
           echo "QA guard passed for the explicitly allowed project."
+      - name: Prepare deterministic QA fixtures
+        env:
+          E2E_REAL_SUPABASE: ${{ secrets.E2E_REAL_SUPABASE }}
+          E2E_ENVIRONMENT: ${{ secrets.E2E_ENVIRONMENT }}
+          E2E_SUPABASE_PROJECT_REF: ${{ secrets.E2E_SUPABASE_PROJECT_REF }}
+          E2E_ALLOWED_PROJECT_REF: cmsymmszlzikqpvfqjre
+          E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          E2E_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          E2E_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+          E2E_QA_PASSWORD: ${{ secrets.E2E_QA_PASSWORD }}
+        run: npm run e2e:qa:fixtures -- --execute
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:qa
         env:
