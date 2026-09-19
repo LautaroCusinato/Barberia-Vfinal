@@ -17,7 +17,7 @@ assert.match(providers, /invalid_provider_environment/)
 
 // Invalid HMAC requests are rejected before any provider identity lookup.
 const verifyStart = providers.indexOf('export async function verifyMercadoPago')
-const verifyEnd = providers.indexOf('\n}\n\nexport async function mercadoPagoResource', verifyStart)
+const verifyEnd = providers.search(/\r?\n}\r?\n\r?\nexport async function mercadoPagoResource/)
 assert.ok(verifyStart >= 0 && verifyEnd > verifyStart)
 const verifyBlock = providers.slice(verifyStart, verifyEnd)
 assert.ok(verifyBlock.indexOf('const valid =') < verifyBlock.indexOf('await mercadoPagoWebhookIdentity()'))

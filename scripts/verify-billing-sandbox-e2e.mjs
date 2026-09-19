@@ -26,7 +26,7 @@ assert.match(api, /sandbox_cancellation_only|sandbox_cancellation_not_authorized
 assert.match(api, /transition_saas_subscription/)
 assert.match(api, /subscription\.sandbox_canceled/)
 assert.doesNotMatch(api, /body\.is_e2e|body\.bypass_current_plan/, 'el bypass no puede depender del body del cliente')
-const sandboxSubscriptionSource = api.match(/async function sandboxSubscription[\s\S]*?\n}\n\nasync function subscription/)?.[0] || ''
+const sandboxSubscriptionSource = api.match(/async function sandboxSubscription[\s\S]*?\r?\n}\r?\n\r?\nasync function subscription/)?.[0] || ''
 assert.ok(sandboxSubscriptionSource, 'no se pudo localizar el flujo sandbox')
 assert.doesNotMatch(sandboxSubscriptionSource, /body\.tenant_id|body\.environment/, 'el flujo sandbox no puede aceptar tenant/entorno del cliente')
 assert.match(providers, /mercadoPagoCancelSubscription/)
