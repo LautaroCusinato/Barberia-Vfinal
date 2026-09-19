@@ -66,4 +66,3 @@ export function runtimeLog({ event, requestId, action, tenantId, outcome, code, 
   if (code) result.code = sanitizeRuntimeCode(code)
   return result
 }
-
