@@ -339,7 +339,7 @@
         192
       ],
       "notesInFlow": true,
-      "notes": "Bind QA DeepSeek Header Auth credential. Never use production credentials. Missing credential must block execution.",
+      "notes": "Bind a dedicated production DeepSeek Header Auth credential restricted to the provider origin. Missing credential must block execution.",
       "retryOnFail": false,
       "onError": "stopWorkflow",
       "executeOnce": true,

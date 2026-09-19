@@ -35,6 +35,12 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
   const canConnect = !statusUnavailable && !working && ['NOT_CONFIGURED', 'DISCONNECTED', 'ERROR'].includes(state)
   const canDisconnect = WHATSAPP_DISCONNECT_SUPPORTED && !statusUnavailable && !working && ['CONNECTED', 'QR_READY', 'CONNECTING'].includes(state)
   const qrVisible = Boolean(connection?.qr_available && connection?.qr)
+  const capabilityStatus = [
+    { label: 'Conexión', enabled: state === 'CONNECTED', enabledCopy: 'Conectada', disabledCopy: 'No conectada' },
+    { label: 'Automatización', enabled: connection?.automation_enabled === true, enabledCopy: 'Activa', disabledCopy: 'Inactiva' },
+    { label: 'Respuestas salientes', enabled: connection?.outbound_enabled === true, enabledCopy: 'Activas', disabledCopy: 'Inactivas' },
+    { label: 'Reservas', enabled: connection?.booking_enabled === true, enabledCopy: 'Activas', disabledCopy: 'Inactivas' },
+  ]
 
   const invoke = useCallback(async (action) => {
     if (demoMode || !isSupabaseConfigured || statusUnavailable || workingRef.current) return
@@ -94,6 +100,11 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
 
     <div className="whatsapp-connection-body">
       <div className="whatsapp-connection-message"><ShieldCheck size={18} /><div><strong>{demoMode ? 'Disponible próximamente' : copy.label}</strong><p>{demoMode ? 'La demo no conecta servicios externos ni genera mensajes.' : copy.description}</p></div></div>
+      {!demoMode && <div className="whatsapp-capability-grid" aria-label="Estado operativo de WhatsApp">
+        {capabilityStatus.map((item) => <div className="whatsapp-capability" key={item.label}>
+          <span>{item.label}</span><strong className={item.enabled ? 'is-enabled' : 'is-disabled'}>{item.enabled ? item.enabledCopy : item.disabledCopy}</strong>
+        </div>)}
+      </div>}
       {qrVisible && <div className="whatsapp-qr-wrap"><div className="whatsapp-qr-heading"><strong>Código temporal</strong><small>Vence en unos minutos. No compartas esta pantalla.</small></div><div className="whatsapp-qr-frame"><img src={connection.qr} alt="Código temporal para vincular WhatsApp" /></div></div>}
       {connection?.provisioning_mode === 'mock' && !demoMode && <div className="whatsapp-connection-note" role="status"><Link2 size={15} /> Este estado es una simulación QA; no requiere ni permite escaneo real.</div>}
       {state === 'CONNECTED' && connection?.automation_enabled !== true && !demoMode && <div className="whatsapp-connection-note" role="status"><ShieldCheck size={15} /> WhatsApp está conectado, pero la automatización todavía requiere habilitación operativa.</div>}

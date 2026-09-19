@@ -20,10 +20,28 @@ booking. All runtime flags introduced by the production contract default to
 - Inactive n8n template: `Austral WhatsApp Production - Controlled.json`.
 - Template generator: `scripts/prepare-whatsapp-production-workflow.mjs`.
 - Static release verifier: `scripts/verify-whatsapp-production-contract.mjs`.
+- Sanitized support query: `scripts/sql/whatsapp-support-diagnostics.sql`.
+- Incident procedure: `docs/WHATSAPP-PRODUCTION-INCIDENTS.md`.
 
 The existing QA workflow, QA instances and `miwsp` are not promotion inputs.
 The customer receives a new tenant-scoped Evolution instance and dedicated n8n
 credential bindings.
+
+## Operator acceptance matrix
+
+| Action | Expected | PASS | FAIL / stop condition | Rollback |
+| --- | --- | --- | --- | --- |
+| Run static production verification | Contract, runtime helpers, workflow and operations tests complete offline | Every verifier reports `PASS`; template remains inactive | Any missing guard, embedded credential, unsafe node or changed default | Revert only the local candidate change; do not alter PROD |
+| Run tenant readiness SQL read-only | One configured tenant with owner/admin, catalogue, staff links and schedule | Required counts are non-zero and access is allowed | Missing/duplicate tenant data or unexpected access state | Correct onboarding data through approved product paths |
+| Configure server credentials | Dedicated production credentials are bound without exposing values | Project, provider host, webhook host and workflow credential scopes match | Reused QA/legacy credential, wrong project/host, or value exposed in client/log | Remove the new binding and rotate if exposure is suspected |
+| Prepare tenant connection | Deterministic instance and integration are created with all flags false | Tenant binding valid; state reaches `QR_READY`; no other tenant changes | Identity conflict, protected instance, unsanitized error, or flags enabled | Keep flags false; contain only the affected tenant; do not delete data |
+| Scan authorized QR | Provider state stabilizes as connected | UI shows connection `Conectada` while automation/outbound/booking remain `Inactivas` | Unstable state, wrong instance, unexpected webhook or any message activity | Disconnect only the new tenant instance if authorized; preserve evidence |
+| Controlled inbound E2E | One fresh inbound event resolves and claims once, with no send/write | Correct tenant, one claim, zero outbound, zero booking/customer writes | Duplicate processing, loop, unresolved tenant, cross-tenant data or write | Disable flags in order and follow the incident runbook |
+| Separately authorized outbound E2E | Exactly one response has one claim, one provider request and one ACK | One reply, no loop, flags restored false immediately | Ambiguous ACK, duplicate request, unexpected recipient or replay | Never retry ambiguous send; set outbound then automation false |
+
+The operator records UTC start/end, tenant id, workflow id, sanitized request ids,
+counts and PASS/FAIL for each attempted row. Phone numbers, JIDs, QR images,
+message content, prompts and credentials are never copied into the record.
 
 ## Gate 1: production metadata and backup
 
@@ -193,8 +211,9 @@ improvise a destructive down migration.
 
 ## Remaining human actions
 
-1. Restore one authorized server/production SQL access path, verify effective
-   RLS and create/verify the fresh backup.
-2. Approve the reviewed production migration and inactive runtime deployment,
-   then provide/scan the first customer's WhatsApp number.
-3. Authorize the single-tenant production E2E window and its one real reply.
+1. Configure the dedicated production credentials for Supabase, Evolution,
+   DeepSeek and n8n/webhook authentication without sharing their values.
+2. Select the first approved tenant and run its read-only readiness query.
+3. Separately authorize connection of its number and the physical QR scan.
+4. Later, separately authorize the single-tenant inbound window and any one
+   real outbound reply. Booking remains a different release.

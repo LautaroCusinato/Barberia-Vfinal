@@ -60,7 +60,7 @@ assert.match(bookingFunction, /WHATSAPP_BOOKING_MUTATION_PILOT_ENABLED|QA_BOOKIN
 assert.match(outboundFunction, /WHATSAPP_AGENT_OUTBOUND_PILOT_ENABLED/)
 assert.doesNotMatch(webhook, /message\/sendText/)
 
-// The production candidate is reproducible but remains undeployed and default-off.
+// The production contract is reproducible and remains default-off regardless of deployment state.
 assert.match(productionRuntime, /automation_enabled boolean not null default false/i)
 assert.match(productionRuntime, /outbound_enabled boolean not null default false/i)
 assert.match(productionRuntime, /booking_enabled boolean not null default false/i)
@@ -87,11 +87,12 @@ console.log(JSON.stringify({
   booking_database_contract: 'READY_FOR_QA',
   onboarding_contract: 'PASS',
   billing_default: 'FAIL_CLOSED',
-  production_whatsapp: 'PREPARED_DEFAULT_OFF',
+  production_whatsapp: 'CONTRACT_VERIFIED_DEFAULT_OFF',
   required_manual_gates: [
-    'verify the effective production RLS catalog',
-    'approve backup, the single production migration and inactive runtime deployment',
-    'provide and pair the customer number, then authorize the tenant-scoped E2E',
+    'configure dedicated production credentials',
+    'select and verify the first tenant read-only',
+    'authorize and pair the customer number',
+    'separately authorize the tenant-scoped E2E and any real outbound reply',
   ],
   status: 'READY_FOR_FIRST_CUSTOMER',
 }, null, 2))

@@ -5382,6 +5382,12 @@ input.client-search-input {
 .whatsapp-connection-pill--error { color: var(--rose-text); background: var(--rose-soft); }
 .whatsapp-connection-pill--neutral { color: var(--ink-soft); background: var(--surface-muted); }
 .whatsapp-connection-body { display: grid; gap: 12px; }
+.whatsapp-capability-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.whatsapp-capability { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-muted); font-size: 11px; }
+.whatsapp-capability span { color: var(--ink-faint); }
+.whatsapp-capability strong { white-space: nowrap; }
+.whatsapp-capability .is-enabled { color: var(--green-text); }
+.whatsapp-capability .is-disabled { color: var(--ink-soft); }
 .whatsapp-connection-message { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-muted); color: var(--accent-strong); }
 .whatsapp-connection-message > div { display: grid; gap: 3px; }
 .whatsapp-connection-message p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
@@ -5457,7 +5463,7 @@ input.client-search-input {
   .billing-card-grid { grid-template-columns: 1fr; }
   .billing-card-actions .btn { width: 100%; justify-content: center; }
   .settings-grid { grid-template-columns: 1fr; }.settings-actions { grid-column: auto; }.settings-three { grid-template-columns: 1fr; }.invite-form { grid-template-columns: 1fr; }.invite-link { flex-direction: column; }.member-row { align-items: flex-start; }.member-actions { flex-wrap: wrap; }
-  .whatsapp-connection-header { flex-direction: column; }.whatsapp-connection-actions { display: grid; grid-template-columns: 1fr; }.whatsapp-connection-actions .btn { width: 100%; justify-content: center; }.whatsapp-qr-frame { width: min(100%, 240px); }
+  .whatsapp-connection-header { flex-direction: column; }.whatsapp-capability-grid { grid-template-columns: 1fr; }.whatsapp-connection-actions { display: grid; grid-template-columns: 1fr; }.whatsapp-connection-actions .btn { width: 100%; justify-content: center; }.whatsapp-qr-frame { width: min(100%, 240px); }
   .agent-contract { align-items: flex-start; flex-direction: column; }
   .crm-toolbar { align-items: stretch; }.crm-toolbar .crm-search, .crm-filter, .crm-toolbar > .btn { width: 100%; }.crm-filter select { flex: 1; }.crm-pipeline-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }.crm-duplicate-alert { align-items: flex-start; flex-wrap: wrap; }.crm-duplicate-alert span { flex-basis: calc(100% - 25px); }.crm-leads-table { min-width: 780px; }.crm-pagination { align-items: flex-start; flex-direction: column; }.crm-import-modal { max-height: 94vh; overflow-y: auto; }.crm-action-row { align-items: flex-start; flex-direction: column; }.crm-action-row > div:last-child { width: 100%; justify-content: space-between; }.action-form { padding: 1rem; }
 }

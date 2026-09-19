@@ -1,11 +1,16 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.45.0'
+import {
+  cleanValue as value,
+  managedInstanceName as instanceName,
+  normalizeEvolutionState as normalizeState,
+  publicConnection as safeConnection,
+  runtimeLog,
+  sanitizeRuntimeCode as safeErrorCode,
+} from '../_shared/whatsappProductionRuntime.mjs'
 
 const PROVIDER = 'evolution'
 const ENVIRONMENT = 'production'
 const WEBHOOK_HEADER = 'X-Austral-Webhook-Secret'
-const INSTANCE_PREFIX = 'austral-prod-tenant-'
-
-function value(input: unknown) { return String(input || '').trim() }
 function projectRef() {
   try { return new URL(value(Deno.env.get('SUPABASE_URL'))).hostname.split('.')[0].toLowerCase() } catch { return '' }
 }
@@ -39,23 +44,6 @@ function response(body: unknown, status: number, origin: string) {
     },
   })
 }
-function instanceName(tenantId: number) { return `${INSTANCE_PREFIX}${tenantId}` }
-function safeErrorCode(error: unknown, fallback = 'provisioning_failed') {
-  return value((error as { message?: string })?.message).replace(/[^a-z0-9_:-]/gi, '').slice(0, 80) || fallback
-}
-function safeConnection(row: Record<string, unknown> | null) {
-  if (!row) return { state: 'NOT_CONFIGURED', automation_enabled: false, outbound_enabled: false, booking_enabled: false }
-  return {
-    state: row.state,
-    provisioning_mode: row.provisioning_mode,
-    last_verified_at: row.last_verified_at,
-    qr_expires_at: row.qr_expires_at,
-    last_error_code: row.last_error_code || null,
-    automation_enabled: row.automation_enabled === true,
-    outbound_enabled: row.outbound_enabled === true,
-    booking_enabled: row.booking_enabled === true,
-  }
-}
 function evolutionConfig() {
   const baseUrl = value(Deno.env.get('EVOLUTION_BASE_URL')).replace(/\/$/, '')
   const apiKey = value(Deno.env.get('EVOLUTION_API_KEY'))
@@ -63,8 +51,10 @@ function evolutionConfig() {
   const webhookSecret = value(Deno.env.get('WHATSAPP_N8N_WEBHOOK_SECRET'))
   const allowedHost = value(Deno.env.get('WHATSAPP_N8N_ALLOWED_HOST')).toLowerCase()
   let parsed: URL
+  let provider: URL
   try { parsed = new URL(webhookUrl) } catch { throw Object.assign(new Error('webhook_not_configured'), { status: 503 }) }
-  if (!baseUrl || !apiKey || !webhookSecret || parsed.protocol !== 'https:' || !allowedHost || parsed.hostname.toLowerCase() !== allowedHost) {
+  try { provider = new URL(baseUrl) } catch { throw Object.assign(new Error('provider_not_configured'), { status: 503 }) }
+  if (!apiKey || !webhookSecret || provider.protocol !== 'https:' || provider.username || provider.password || provider.search || provider.hash || parsed.protocol !== 'https:' || !allowedHost || parsed.hostname.toLowerCase() !== allowedHost) {
     throw Object.assign(new Error('provider_not_configured'), { status: 503 })
   }
   return { baseUrl, apiKey, webhookUrl, webhookSecret }
@@ -83,8 +73,11 @@ async function evolution(path: string, init: { method?: string; body?: unknown }
     const text = await result.text()
     let body: unknown = null
     try { body = text ? JSON.parse(text) : null } catch { body = null }
-    if (!result.ok) throw Object.assign(new Error('evolution_request_failed'), { status: 502 })
+    if (!result.ok) throw Object.assign(new Error(`evolution_http_${result.status}`), { status: 502 })
     return body as Record<string, unknown> | null
+  } catch (error) {
+    const code = safeErrorCode(error, 'evolution_unreachable')
+    throw Object.assign(new Error(code), { status: Number((error as { status?: number }).status) || 502 })
   } finally {
     clearTimeout(timeout)
   }
@@ -119,14 +112,6 @@ async function configureWebhook(expectedInstance: string) {
   if (webhook.enabled !== true || value(webhook.url) !== config.webhookUrl || !hasSecretHeader || actualEvents.join(',') !== events.join(',')) {
     throw Object.assign(new Error('evolution_webhook_not_confirmed'), { status: 502 })
   }
-}
-function normalizeState(payload: Record<string, unknown> | null) {
-  const nested = payload?.instance && typeof payload.instance === 'object' ? payload.instance as Record<string, unknown> : {}
-  const state = value(nested.state || payload?.state).toLowerCase()
-  if (state === 'open' || state === 'connected') return 'CONNECTED'
-  if (state === 'connecting') return 'CONNECTING'
-  if (state === 'close' || state === 'closed') return 'DISCONNECTED'
-  return null
 }
 async function authorize(request: Request, admin: SupabaseClient, tenantId: number) {
   const token = value(request.headers.get('authorization')).replace(/^Bearer\s+/i, '')
@@ -236,24 +221,30 @@ async function status(admin: SupabaseClient, tenantId: number) {
 }
 
 Deno.serve(async (request) => {
+  const requestId = crypto.randomUUID()
+  const startedAt = Date.now()
   const origin = allowedOrigin(request)
   if (request.method === 'OPTIONS') return origin ? response(null, 204, origin) : response({ error: 'origin_not_allowed' }, 403, '')
   if (request.method !== 'POST') return response({ error: 'method_not_allowed' }, 405, origin)
   if (!origin) return response({ error: 'origin_not_allowed' }, 403, '')
+  let action = 'invalid'
+  let tenantId = 0
   try {
     assertRuntime()
     const body = await request.json().catch(() => null) as Record<string, unknown> | null
     if (!body || Object.keys(body).some((key) => !['action', 'tenant_id'].includes(key))) throw Object.assign(new Error('invalid_request'), { status: 422 })
-    const action = value(body.action)
-    const tenantId = Number(body.tenant_id)
+    action = value(body.action)
+    tenantId = Number(body.tenant_id)
     if (!['status', 'prepare'].includes(action) || !Number.isSafeInteger(tenantId) || tenantId < 1) throw Object.assign(new Error('invalid_request'), { status: 422 })
     const admin = adminClient()
     await authorize(request, admin, tenantId)
     const result = action === 'prepare' ? await prepare(admin, tenantId) : await status(admin, tenantId)
-    return response(result, 200, origin)
+    console.info(JSON.stringify(runtimeLog({ event: 'whatsapp_provision', requestId, action, tenantId, outcome: 'success', state: result.connection?.state, durationMs: Date.now() - startedAt })))
+    return response({ ...result, request_id: requestId }, 200, origin)
   } catch (error) {
     const statusCode = Number((error as { status?: number }).status) || 503
     const code = safeErrorCode(error)
-    return response({ error: code }, statusCode, origin)
+    console.error(JSON.stringify(runtimeLog({ event: 'whatsapp_provision', requestId, action, tenantId, outcome: statusCode < 500 ? 'rejected' : 'failed', code, durationMs: Date.now() - startedAt })))
+    return response({ error: code, request_id: requestId }, statusCode, origin)
   }
 })
