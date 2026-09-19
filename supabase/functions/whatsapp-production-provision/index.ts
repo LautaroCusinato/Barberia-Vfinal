@@ -214,10 +214,20 @@ async function status(admin: SupabaseClient, tenantId: number) {
   if (current.state === 'ERROR') return { connection: safeConnection(current) }
   const providerState = normalizeState(await evolution(`/instance/connectionState/${encodeURIComponent(value(current.instance_name))}`))
   if (!providerState) throw Object.assign(new Error('provider_state_unknown'), { status: 502 })
-  const { data, error } = await admin.from('saas_whatsapp_connections').update({ state: providerState, last_verified_at: new Date().toISOString(), qr_expires_at: providerState === 'CONNECTED' ? null : current.qr_expires_at })
+  let qr: string | null = null
+  let nextState = providerState
+  let qrExpiresAt = providerState === 'CONNECTED' ? null : current.qr_expires_at
+  if (providerState !== 'CONNECTED' && ['QR_READY', 'CONNECTING'].includes(value(current.state))) {
+    qr = extractQr(await evolution(`/instance/connect/${encodeURIComponent(value(current.instance_name))}`))
+    if (qr) {
+      nextState = 'QR_READY'
+      qrExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+    }
+  }
+  const { data, error } = await admin.from('saas_whatsapp_connections').update({ state: nextState, last_verified_at: new Date().toISOString(), qr_expires_at: qrExpiresAt })
     .eq('id', current.id).eq('barberia_id', tenantId).eq('environment', ENVIRONMENT).select('*').single()
   if (error) throw Object.assign(new Error('connection_state_update_failed'), { status: 502 })
-  return { connection: safeConnection(data) }
+  return { connection: safeConnection(data, qr ? { qr_available: true, qr } : {}) }
 }
 
 Deno.serve(async (request) => {

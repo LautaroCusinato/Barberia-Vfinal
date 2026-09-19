@@ -168,6 +168,8 @@ assert.match(provisioningFunction, /!\['status', 'prepare'\]\.includes\(action\)
 assert.match(provisioningFunction, /runtimeLog/)
 assert.match(provisioningFunction, /request_id: requestId/)
 assert.match(provisioningFunction, /evolution_http_\$\{result\.status\}/)
+assert.match(provisioningFunction, /\['QR_READY', 'CONNECTING'\]\.includes\(value\(current\.state\)\)/)
+assert.match(provisioningFunction, /safeConnection\(data, qr \? \{ qr_available: true, qr \} : \{\}\)/)
 assert.doesNotMatch(provisioningFunction, /sendText|crear_reserva|cancelar_reserva|reprogramar_reserva|mercadopago|createPayment|createSubscription/i)
 assert.doesNotMatch(provisioningFunction, /cmsymmszlzikqpvfqjre|ssagttjdgtypxjcgdnrw|austral-qa-tenant-/i)
 
