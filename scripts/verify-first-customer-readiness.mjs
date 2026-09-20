@@ -21,6 +21,8 @@ const provisioning = read('supabase/functions/whatsapp-provision/index.ts')
 const productionProvisioning = read('supabase/functions/whatsapp-production-provision/index.ts')
 const productionRuntime = read('supabase/migrations/20260913120000_whatsapp_production_runtime_contract.sql')
 const productionRunbook = read('docs/WHATSAPP-FIRST-CUSTOMER-RUNBOOK.md')
+const readinessMatrix = read('docs/FIRST-CUSTOMER-READINESS.md')
+const humanHandoff = read('docs/WHATSAPP-HUMAN-HANDOFF.md')
 const bookingFunction = read('supabase/functions/whatsapp-booking-mutation/index.ts')
 const outboundFunction = read('supabase/functions/whatsapp-agent-outbound-pilot/index.ts')
 const billing = read('supabase/functions/_shared/providers.ts') + '\n' + read('supabase/functions/billing-api/index.ts') + '\n' + read('scripts/billing-production-dry-run.mjs')
@@ -81,6 +83,11 @@ assert.match(billing, /BILLING_PRODUCTION_CHECKOUT_CONFIRMATION/)
 for (const heading of ['CURRENT SELLABLE SCOPE', 'WHATSAPP COMMERCIAL GATE', 'FIRST CUSTOMER SEQUENCE', 'ROLLBACK', 'HUMAN ACTIONS']) {
   assert.match(runbook, new RegExp(`## ${heading}`))
 }
+for (const state of ['READY', 'READY BUT DISABLED', 'HUMAN GATE', 'NOT READY']) assert.match(readinessMatrix, new RegExp(`\\| ${state} \\|`))
+for (const component of ['New-tenant preflight', 'Support diagnostics', 'Production inbound E2E', 'Production outbound E2E', 'Human handoff/pause/resume']) assert.match(readinessMatrix, new RegExp(component))
+assert.match(humanHandoff, /AUTO_ACTIVE → HANDOFF_REQUESTED → HUMAN_ACTIVE → RESUME_PENDING → AUTO_ACTIVE/)
+assert.match(humanHandoff, /additive, reversible and idempotent migration/i)
+assert.match(humanHandoff, /browser,\s*n8n payload and model output cannot choose a tenant/i)
 
 console.log(JSON.stringify({
   tenant_isolation_contract: 'PASS',

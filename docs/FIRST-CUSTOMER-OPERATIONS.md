@@ -11,9 +11,11 @@ email verification, tenant onboarding, services, prices, barbers, schedules,
 blocks, clients, agenda, public reservations and manual billing. Browser access
 is membership-scoped and the database remains the authorization boundary.
 
-WhatsApp is proven end to end only in QA. The commercial automation is not part
-of the currently enabled production scope. Do not promise automatic WhatsApp
-replies or WhatsApp booking until the gate below is completed for the customer.
+WhatsApp is proven end to end only in QA. The production runtime and controlled
+workflow are deployed but inactive, with no credentials, connection or enabled
+tenant capability. Do not promise automatic WhatsApp replies until the inbound
+and outbound production gates pass for the customer. Do not promise WhatsApp
+booking or human handoff; both remain separate releases.
 
 The repository contains the complete core-table RLS contract in the reproducible
 QA base schema, plus later hardening migrations. Because the original production
@@ -33,22 +35,12 @@ production service by changing secrets alone. `miwsp` and the legacy Barbería
 Central workflow are protected compatibility resources, not the multi-tenant
 commercial architecture.
 
-Before the first commercial WhatsApp tenant, an approved change must:
-
-1. introduce an explicit production runtime contract while retaining the QA
-   project and instance deny-lists;
-2. derive tenant and integration from the authenticated Evolution instance;
-3. permit only a server-managed production instance name and tenant allow-list;
-4. keep outbound and booking behind separate, default-off server flags;
-5. preserve event claims, `fromMe` rejection, LID/PN identity validation,
-   authoritative catalog currency and availability recheck;
-6. deploy only after `20260913120000_whatsapp_production_runtime_contract.sql`
-   is authoritatively planned for production, its provisioning dependency is
-   present and QA-only migration `20260824150000` remains out;
-7. pass one tenant-scoped production shadow test before any real reply, then one
-   explicitly authorized reply-only E2E before booking is considered.
-
-This is an engineering/release gate, not a missing secret or a UI toggle.
+The production contract and inactive workflow are already deployed and remain
+default-off. The remaining gate is operational: dedicated credentials, a tenant
+that passes the read-only/local preflight, a customer-controlled QR scan, stable
+connection readback, one inbound-only E2E and then one separately authorized
+reply with ACK. Event claims, `fromMe`, freshness, tenant resolution, outbound
+and booking guards remain mandatory. This is not a UI toggle.
 
 ## FIRST CUSTOMER SEQUENCE
 
@@ -118,9 +110,9 @@ migrations. Confirm that other instances and production web traffic are intact.
 
 ## HUMAN ACTIONS
 
-The first remaining human action is to restore one authorized server or
-production SQL access path. Then verify the effective production RLS catalog
-and fresh backup; approve the single planned migration and inactive runtime
-deployment; provide/scan the customer-controlled WhatsApp account; and
-authorize the first tenant-scoped shadow/reply E2E. Payments stay manual unless
-separately authorized.
+The first remaining human action is to configure dedicated production
+credentials privately while the workflow, provisioning gate and tenant flags
+remain off. Then select the first tenant, run the read-only snapshot and local
+preflight, provide/scan the customer-controlled WhatsApp account, and authorize
+the tenant-scoped inbound and reply E2E in separate steps. Payments stay manual
+unless separately authorized.
