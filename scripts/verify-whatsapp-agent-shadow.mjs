@@ -107,6 +107,30 @@ assert.doesNotMatch(bookingAvailable.proposed_reply, /reservado|creado/i)
 const bookingMissingService = buildDeterministicShadowProposal({ text: 'Quiero reservar mañana a las 16', availability: { status: 'service_required', request: availability.request, slots: [], rpc_executed: false }, ...tenantA })
 assert.match(bookingMissingService.proposed_reply, /qué servicio querés/i)
 
+const missingPrice = buildDeterministicShadowProposal({
+  text: '¿Cuánto sale el servicio sin precio?',
+  ...tenantA,
+  services: [{ id: 3, nombre: 'Servicio sin precio', precio: null, duracion_min: 30, activo: true }],
+})
+assert.match(missingPrice.proposed_reply, /no hay un precio publicado/i)
+assert.doesNotMatch(missingPrice.proposed_reply, /sale\s*\./i)
+
+const mixedPrices = buildDeterministicShadowProposal({
+  text: '¿Cuánto salen todos los servicios?',
+  ...tenantA,
+  services: [
+    { id: 3, nombre: 'Servicio sin precio', precio: null, duracion_min: 30, activo: true },
+    { id: 4, nombre: 'Servicio publicado', precio: 12000, duracion_min: 30, activo: true },
+  ],
+})
+assert.match(mixedPrices.proposed_reply, /Servicio publicado: ARS 12\.000/)
+assert.doesNotMatch(mixedPrices.proposed_reply, /Servicio sin precio:/)
+
+const notUnderstood = buildDeterministicShadowProposal({ text: 'xyzzy frobnicate', ...tenantA })
+assert.equal(notUnderstood.proposed_reply, '¡Hola! ¿En qué te puedo ayudar?')
+assert.equal(notUnderstood.mutation_allowed, false)
+assert.equal(notUnderstood.outbound_allowed, false)
+
 const duplicateEvents = new Set()
 const eventId = 'E2E_QA_AGENT_SHADOW_001'
 duplicateEvents.add(eventId)
@@ -129,6 +153,8 @@ console.log(JSON.stringify({
   mutation_denied: 'PASS',
   llm_error_fail_closed: 'PASS',
   malformed_inbound_fail_closed: 'PASS',
+  missing_price_fallback: 'PASS',
+  not_understood_fallback: 'PASS',
   duplicate_event_idempotency: 'PASS',
   external_effects: { messages: 0, reservations: 0, clients: 0 },
 }))

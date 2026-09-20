@@ -288,8 +288,9 @@ function safeBarberName(barber) {
 }
 
 function formatPrice(service, currency) {
-  const amount = Number(service?.precio)
-  if (!Number.isFinite(amount)) return ''
+  const raw = service?.precio
+  const amount = Number(raw)
+  if (raw === null || raw === undefined || raw === '' || !Number.isFinite(amount) || amount < 0) return ''
   return `${currency || 'ARS'} ${amount.toLocaleString('es-AR')}`
 }
 
@@ -407,7 +408,10 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
       : null
     if (resolution.status === 'matched' || contextualService) {
       const service = resolution.status === 'matched' ? resolution.matches[0] : contextualService
-      proposedReply = `El ${safeServiceName(service)} sale ${formatPrice(service, currency)}.`
+      const price = formatPrice(service, currency)
+      proposedReply = price
+        ? `El ${safeServiceName(service)} sale ${price}.`
+        : `Todavía no hay un precio publicado para ${safeServiceName(service)}.`
     } else if (resolution.status === 'ambiguous') {
       const options = resolution.matches.map(safeServiceName).filter(Boolean).slice(0, 3)
       proposedReply = options.length > 1
@@ -417,7 +421,10 @@ export function buildDeterministicShadowProposal({ text, business = {}, services
       const normalized = normalizedSearchText(text)
       const asksAll = /\b(precios|costos|cuanto cuestan|cuanto salen|todos)\b/.test(normalized)
       const prices = asksAll
-        ? activeServices.map((service) => `${safeServiceName(service)}: ${formatPrice(service, currency)}`).filter(Boolean)
+        ? activeServices.flatMap((service) => {
+            const price = formatPrice(service, currency)
+            return price ? [`${safeServiceName(service)}: ${price}`] : []
+          })
         : []
       proposedReply = prices.length
         ? `Estos son nuestros precios: ${prices.join(' · ')}.`
