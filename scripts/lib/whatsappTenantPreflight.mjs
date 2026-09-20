@@ -34,7 +34,6 @@ function validTimezone(value) {
     return false
   }
 }
-
 function validCurrency(value) {
   const currency = clean(value)
   if (!/^[A-Z]{3}$/.test(currency)) return false
@@ -137,4 +136,3 @@ export function evaluateTenantPreflight(snapshot) {
     provisioning_allowed: overall !== 'FAIL',
   }
 }
-

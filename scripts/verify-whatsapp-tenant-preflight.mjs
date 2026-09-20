@@ -80,4 +80,3 @@ console.log(JSON.stringify({
   sensitive_input_echoed: false,
   result: 'PASS',
 }))
-

@@ -48,4 +48,3 @@ safe `search_path`, expose only the minimum service role grant, handle duplicate
 and concurrent calls idempotently, and ship as an additive RPC with a phased
 consumer migration. The legacy signature should remain untouched until every
 consumer is migrated and rollback has been rehearsed in QA.
-

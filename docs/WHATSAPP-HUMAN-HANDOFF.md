@@ -63,4 +63,3 @@ Prepare an additive, reversible and idempotent migration locally; add RLS/grants
 with no browser write access; expose narrowly scoped service-role RPCs; implement
 operator UX and audit history; add database-backed concurrency tests; pass QA;
 then request separate authorization for any production migration or deployment.
-
