@@ -24,6 +24,7 @@ Allowed states are `READY`, `READY BUT DISABLED`, `HUMAN GATE` and `NOT READY`.
 | Production outbound E2E | HUMAN GATE | Separate approval after inbound passes | One fresh event, one outbound claim, one provider request, one ACK, no retry on ambiguity, flags restored off |
 | Conversational booking in production | NOT READY | Separate release and production E2E | Keep `booking_enabled=false`; do not sell this capability yet |
 | Human handoff/pause/resume | NOT READY | Authoritative persisted state and operator UX are not implemented | Design and acceptance contract in `WHATSAPP-HUMAN-HANDOFF.md`; no runtime or schema change deployed |
+| Legacy `upsert_conversacion` | NOT READY | Live definition and protected legacy consumers require read-only discovery | Isolated assessment in `LEGACY-UPSERT-CONVERSACION.md`; controlled production workflow does not call it |
 | Billing automation | NOT READY | Explicitly outside this release | Billing remains separate and fail-closed |
 
 ## Current sellable boundary
@@ -39,4 +40,3 @@ Configure dedicated production credentials privately while keeping the workflow
 inactive, `WHATSAPP_PROVISIONING_ENABLED` absent or `0`, and every tenant flag
 false. Then select the first tenant and run the read-only snapshot plus local
 preflight. QR pairing and any real message require later, separate approvals.
-

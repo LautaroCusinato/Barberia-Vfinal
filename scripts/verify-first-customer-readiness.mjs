@@ -23,6 +23,7 @@ const productionRuntime = read('supabase/migrations/20260913120000_whatsapp_prod
 const productionRunbook = read('docs/WHATSAPP-FIRST-CUSTOMER-RUNBOOK.md')
 const readinessMatrix = read('docs/FIRST-CUSTOMER-READINESS.md')
 const humanHandoff = read('docs/WHATSAPP-HUMAN-HANDOFF.md')
+const legacyConversationUpsert = read('docs/LEGACY-UPSERT-CONVERSACION.md')
 const bookingFunction = read('supabase/functions/whatsapp-booking-mutation/index.ts')
 const outboundFunction = read('supabase/functions/whatsapp-agent-outbound-pilot/index.ts')
 const billing = read('supabase/functions/_shared/providers.ts') + '\n' + read('supabase/functions/billing-api/index.ts') + '\n' + read('scripts/billing-production-dry-run.mjs')
@@ -88,6 +89,9 @@ for (const component of ['New-tenant preflight', 'Support diagnostics', 'Product
 assert.match(humanHandoff, /AUTO_ACTIVE → HANDOFF_REQUESTED → HUMAN_ACTIVE → RESUME_PENDING → AUTO_ACTIVE/)
 assert.match(humanHandoff, /additive, reversible and idempotent migration/i)
 assert.match(humanHandoff, /browser,\s*n8n payload and model output cannot choose a tenant/i)
+assert.match(legacyConversationUpsert, /Status: `NOT READY`/)
+assert.match(legacyConversationUpsert, /controlled production workflow contains no call to `upsert_conversacion`/i)
+assert.match(legacyConversationUpsert, /pg_get_functiondef/)
 
 console.log(JSON.stringify({
   tenant_isolation_contract: 'PASS',
