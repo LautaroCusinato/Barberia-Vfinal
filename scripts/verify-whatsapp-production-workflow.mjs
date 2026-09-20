@@ -1,66 +1,43 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { validateProductionWorkflow } from './lib/whatsappProductionWorkflowValidator.mjs'
 
 const file = 'integrations/templates/Austral WhatsApp Production - Controlled.json'
 const workflow = JSON.parse(fs.readFileSync(file, 'utf8'))
-const serialized = JSON.stringify(workflow)
-const nodes = new Map(workflow.nodes.map((node) => [node.name, node]))
-const required = [
-  'Webhook Evolution - producción', 'Validar identidad e idempotencia', 'Resolver tenant',
-  'Reclamar evento', 'Evento nuevo', 'Bloquear mutación de reserva',
-  'Outbound habilitado para conexión', 'Reclamar outbound', 'Outbound nuevo',
-  'Enviar respuesta Evolution', 'Validar ACK Evolution', 'Finalizar outbound',
-]
+const report = validateProductionWorkflow(workflow)
+assert.deepEqual(report.errors, [])
+assert.equal(report.valid, true)
 
-assert.equal(workflow.name, 'Austral WhatsApp Production - Controlled')
-assert.equal(workflow.active, false)
-assert.equal(workflow.settings?.saveDataSuccessExecution, 'none')
-assert.equal(workflow.settings?.saveDataErrorExecution, 'none')
-assert.equal(workflow.settings?.saveManualExecutions, false)
-assert.ok(workflow.settings?.executionTimeout > 0 && workflow.settings.executionTimeout <= 120)
-for (const name of required) assert.ok(nodes.has(name), `Missing required node: ${name}`)
-
-const allowedTypes = new Set([
-  'n8n-nodes-base.webhook', 'n8n-nodes-base.code', 'n8n-nodes-base.if',
-  'n8n-nodes-base.httpRequest', 'n8n-nodes-base.merge',
-])
-for (const node of workflow.nodes) {
-  assert.ok(allowedTypes.has(node.type), `Disallowed node type: ${node.type}`)
-  assert.equal(node.continueOnFail, undefined, `${node.name} must fail closed`)
-  assert.ok(!node.credentials || Object.keys(node.credentials).length === 0, `${node.name} embeds credentials`)
+function mutation(name, mutate, expectedCode) {
+  const candidate = structuredClone(workflow)
+  mutate(candidate)
+  const result = validateProductionWorkflow(candidate)
+  assert.equal(result.valid, false, `${name} must fail validation`)
+  assert.ok(result.errors.some((error) => error.code === expectedCode), `${name} must report ${expectedCode}`)
 }
 
-const code = nodes.get('Validar identidad e idempotencia').parameters.jsCode
-assert.match(code, /key\.fromMe === false/)
-assert.match(code, /MESSAGES_UPSERT/)
-assert.match(code, /\{1,180\}/)
-assert.match(code, /5 \* 60 \* 1000/)
-assert.match(code, /2 \* 60 \* 1000/)
-assert.match(code, /mutationAllowed:false,outboundAllowed:false/)
-assert.match(nodes.get('Resolver tenant').parameters.url, /resolve_whatsapp_runtime_context/)
-assert.match(JSON.stringify(nodes.get('Reclamar evento').parameters), /claim_whatsapp_runtime_event/)
-assert.match(JSON.stringify(nodes.get('Reclamar outbound').parameters), /claim_whatsapp_runtime_event/)
-assert.match(JSON.stringify(nodes.get('Outbound habilitado para conexión').parameters), /outbound_enabled/)
-assert.match(nodes.get('Bloquear mutación de reserva').parameters.jsCode, /mutationAllowed:false/)
-assert.match(nodes.get('Enviar respuesta Evolution').parameters.url, /message\/sendText/)
-assert.match(nodes.get('Validar ACK Evolution').parameters.jsCode, /evolution_ack_missing_no_retry/)
-
-function destinations(name, branch = 0) {
-  return (workflow.connections?.[name]?.main?.[branch] || []).map((edge) => edge.node)
-}
-assert.deepEqual(destinations('Webhook Evolution - producción'), ['Validar identidad e idempotencia'])
-assert.ok(destinations('Outbound habilitado para conexión', 0).includes('Reclamar outbound'))
-assert.ok(destinations('Outbound habilitado para conexión', 1).includes('Finalizar evento'))
-assert.ok(destinations('Outbound nuevo', 0).includes('Enviar respuesta Evolution'))
-assert.ok(destinations('Outbound nuevo', 1).includes('Finalizar evento'))
-assert.ok(destinations('Horario válido', 0).includes('Bloquear mutación de reserva'))
-
-assert.doesNotMatch(serialized, /miwsp|barberia central|austral-qa-tenant-|cmsymmszlzikqpvfqjre|ssagttjdgtypxjcgdnrw/i)
-assert.doesNotMatch(serialized, /crear_reserva|cancelar_reserva|reprogramar_reserva|createPayment|mercadopago/i)
-assert.doesNotMatch(serialized, /api[_-]?key\s*[:=]\s*["'][^$={]/i)
+const node = (candidate, name) => candidate.nodes.find((item) => item.name === name)
+mutation('active workflow', (candidate) => { candidate.active = true }, 'WORKFLOW_ACTIVE')
+mutation('embedded credential', (candidate) => { node(candidate, 'Llamar DeepSeek').credentials = { httpHeaderAuth: { id: 'credential-id', name: 'Production key' } } }, 'CREDENTIALS_EMBEDDED')
+mutation('QA credential instruction', (candidate) => { node(candidate, 'Llamar DeepSeek').notes = 'Bind QA DeepSeek Header Auth credential.' }, 'QA_CREDENTIAL_REFERENCE')
+mutation('QA endpoint', (candidate) => { node(candidate, 'Resolver tenant').parameters.url = 'https://cmsymmszlzikqpvfqjre.supabase.co/rest/v1/rpc/resolve_whatsapp_runtime_context' }, 'PROTECTED_OR_QA_HARDCODE')
+mutation('hardcoded tenant', (candidate) => { node(candidate, 'Resolver tenant').parameters.jsonBody = "={{ { p_environment: 'production', tenant_id: 42 } }}" }, 'TENANT_ID_HARDCODED')
+mutation('fromMe guard removed', (candidate) => { node(candidate, 'Validar identidad e idempotencia').parameters.jsCode = node(candidate, 'Validar identidad e idempotencia').parameters.jsCode.replace('key.fromMe === false', 'true') }, 'INBOUND_GUARD_MISSING')
+mutation('event id guard removed', (candidate) => { node(candidate, 'Validar identidad e idempotencia').parameters.jsCode = node(candidate, 'Validar identidad e idempotencia').parameters.jsCode.replaceAll('validEventId', 'eventAccepted') }, 'INBOUND_GUARD_MISSING')
+mutation('outbound guard removed', (candidate) => { node(candidate, 'Outbound habilitado para conexión').parameters = {} }, 'OUTBOUND_GUARD_MISSING')
+mutation('outbound duplicate sends', (candidate) => { candidate.connections['Outbound nuevo'].main[1] = [{ node: 'Enviar respuesta Evolution', type: 'main', index: 0 }] }, 'OUTBOUND_DUPLICATE_ROUTE_INVALID')
+mutation('booking mutation added', (candidate) => { node(candidate, 'Bloquear mutación de reserva').parameters.jsCode = 'return crear_reserva_whatsapp($json)' }, 'MUTATION_OR_BILLING_PRESENT')
+mutation('unsafe retry', (candidate) => { node(candidate, 'Enviar respuesta Evolution').retryOnFail = true }, 'NODE_NOT_FAIL_CLOSED')
 
 console.log(JSON.stringify({
-  suite: 'whatsapp-production-workflow', active: workflow.active, nodes: workflow.nodes.length,
-  credentials_embedded: false, inbound_guard: 'PASS', tenant_resolution: 'SERVER_SIDE',
-  booking_mutation: 'BLOCKED', outbound: 'DOUBLE_GATED_AND_IDEMPOTENT', result: 'PASS',
+  suite: 'whatsapp-production-workflow',
+  active: workflow.active,
+  nodes: workflow.nodes.length,
+  credentials_embedded: false,
+  inbound_guard: 'PASS',
+  tenant_resolution: 'SERVER_SIDE',
+  booking_mutation: 'BLOCKED',
+  outbound: 'DOUBLE_GATED_AND_IDEMPOTENT',
+  adversarial_mutations_rejected: 11,
+  result: 'PASS',
 }))

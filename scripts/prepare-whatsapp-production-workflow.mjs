@@ -92,6 +92,7 @@ const outboundEnabled = {
 const claimOutbound = {
   parameters: { method: 'POST', url: supabaseRpc('claim_whatsapp_runtime_event'), sendHeaders: false, sendBody: true, specifyBody: 'json', jsonBody: "={{ JSON.stringify({p_environment:'production',p_integration_id:$('Resolver tenant').first().json.integration_id,p_event_id:$('Validar identidad e idempotencia').first().json.eventId,p_operation:'outbound'}) }}", options: { timeout: 20000 }, authentication: 'genericCredentialType', genericAuthType: 'httpCustomAuth' },
   id: 'production-outbound-claim', name: 'Reclamar outbound', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [3540, 160],
+  retryOnFail: false, onError: 'stopWorkflow',
   notes: 'Atomic outbound claim. Never retry an ambiguous provider send.',
 }
 const outboundClaimed = {
@@ -101,6 +102,7 @@ const outboundClaimed = {
 const sendEvolution = {
   parameters: { method: 'POST', url: "={{ $env.EVOLUTION_BASE_URL + '/message/sendText/' + encodeURIComponent($('Validar identidad e idempotencia').first().json.instanceName) }}", sendHeaders: false, sendBody: true, specifyBody: 'json', jsonBody: "={{ JSON.stringify({number:$('Validar identidad e idempotencia').first().json.senderNumber,text:$('Construir respuesta segura').first().json.text}) }}", options: { timeout: 20000 }, authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth' },
   id: 'production-evolution-send', name: 'Enviar respuesta Evolution', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [3980, 80],
+  retryOnFail: false, onError: 'stopWorkflow',
   notes: 'Bind a production-only Evolution API credential. Recipient is the validated inbound sender kept in memory; it is not accepted as workflow input.',
 }
 const validateAck = {
@@ -111,6 +113,7 @@ const validateAck = {
 const finishOutbound = {
   parameters: { method: 'POST', url: supabaseRpc('finish_whatsapp_event'), sendHeaders: false, sendBody: true, specifyBody: 'json', jsonBody: "={{ JSON.stringify({p_integration_id:$('Resolver tenant').first().json.integration_id,p_event_id:'outbound:'+$('Validar identidad e idempotencia').first().json.eventId,p_status:'completed',p_result_reference:'provider_ack'}) }}", options: { timeout: 20000 }, authentication: 'genericCredentialType', genericAuthType: 'httpCustomAuth' },
   id: 'production-outbound-finish', name: 'Finalizar outbound', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [4420, 80],
+  retryOnFail: false, onError: 'stopWorkflow',
 }
 workflow.nodes.push(outboundEnabled, claimOutbound, outboundClaimed, sendEvolution, validateAck, finishOutbound)
 
@@ -151,6 +154,9 @@ for (const candidate of workflow.nodes) {
   if (typeof candidate.notes === 'string') {
     if (candidate.notes.startsWith('Bind QA Supabase Custom Auth credential;')) {
       candidate.notes = 'Bind a dedicated production Supabase Custom Auth credential; restrict it to the production Supabase origin.'
+    }
+    if (candidate.notes.startsWith('Bind QA DeepSeek Header Auth credential.')) {
+      candidate.notes = 'Bind a dedicated production DeepSeek Header Auth credential restricted to the provider origin. Missing credential must block execution.'
     }
     candidate.notes = candidate.notes.replaceAll('QA only.', 'Production controlled workflow.')
   }

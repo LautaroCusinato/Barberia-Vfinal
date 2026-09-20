@@ -668,6 +668,8 @@
         3540,
         160
       ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
       "notes": "Atomic outbound claim. Never retry an ambiguous provider send."
     },
     {
@@ -724,6 +726,8 @@
         3980,
         80
       ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
       "notes": "Bind a production-only Evolution API credential. Recipient is the validated inbound sender kept in memory; it is not accepted as workflow input."
     },
     {
@@ -762,7 +766,9 @@
       "position": [
         4420,
         80
-      ]
+      ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
     }
   ],
   "connections": {
