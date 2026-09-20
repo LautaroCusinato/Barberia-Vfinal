@@ -1,0 +1,20 @@
+{
+  "tenant": {
+    "id": 42,
+    "name": "Tenant de ejemplo",
+    "slug": "tenant-de-ejemplo",
+    "timezone": "America/Argentina/Buenos_Aires",
+    "currency": "ARS",
+    "access_state": "active",
+    "onboarding_completed": true
+  },
+  "counts": {
+    "owner_or_admin_members": 1,
+    "active_services": 1,
+    "valid_active_services": 1,
+    "active_staff": 1,
+    "active_staff_with_active_service": 1,
+    "active_staff_with_schedule": 1
+  },
+  "connections": []
+}

@@ -13,6 +13,7 @@ booking. All runtime flags introduced by the production contract default to
 - Declared-policy verifier: `scripts/verify-production-rls-declarations.mjs`.
 - Post-migration metadata query: `scripts/sql/whatsapp-production-postflight.sql`.
 - Tenant readiness query: `scripts/sql/whatsapp-first-customer-readiness.sql`.
+- Local tenant preflight: `npm run whatsapp:tenant:preflight -- --input=<snapshot.json>`.
 - Sanitized runtime diagnostics: `scripts/whatsapp-production-diagnostics.mjs`.
 - Offline backup artifact verifier: `scripts/verify-production-backup-artifacts.mjs`.
 - Pre-consumer emergency rollback: `scripts/sql/whatsapp-production-runtime-rollback.sql`.
@@ -123,8 +124,12 @@ environment, origin, user membership and default-off runtime flags.
 2. Complete business timezone/currency, service catalogue, active staff,
    staff-service relations, schedules and blocks.
    Run `scripts/sql/whatsapp-first-customer-readiness.sql` in a read-only
-   production SQL session with the numeric tenant id. Stop if the tenant,
-   owner/admin, catalogue, staff-service link or schedule aggregate is missing.
+   production SQL session with the numeric tenant id. Save only the final
+   `readiness_snapshot` JSON value outside Git, then run the local preflight
+   command. Require `status=PASS`; `WARN` needs an explicit operator review and
+   `FAIL` blocks provisioning. Stop if the tenant, owner/admin, catalogue,
+   staff-service link or schedule aggregate is missing, the slug/timezone/currency
+   is invalid, a connection identity conflicts, or any runtime flag is already on.
 3. From the authenticated owner/admin panel, invoke the production provisioning
    function. It creates or reuses the deterministic tenant-scoped integration
    and Evolution instance, configures only the dedicated production webhook,

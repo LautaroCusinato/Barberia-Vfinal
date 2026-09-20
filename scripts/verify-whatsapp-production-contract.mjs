@@ -93,6 +93,8 @@ assert.match(customerReadiness, /:'tenant_id'::bigint/g)
 assert.match(customerReadiness, /active_staff_with_active_service/i)
 assert.match(customerReadiness, /active_staff_with_schedule/i)
 assert.match(customerReadiness, /tenant_binding_valid/i)
+assert.match(customerReadiness, /readiness_snapshot/i)
+assert.match(customerReadiness, /'connections', coalesce/i)
 assert.match(customerReadiness, /rollback;/i)
 assert.doesNotMatch(customerReadiness, /^\s*(insert|update|delete|alter|create|drop|truncate)\b/im)
 
