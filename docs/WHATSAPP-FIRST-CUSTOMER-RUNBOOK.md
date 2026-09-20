@@ -199,8 +199,12 @@ npm run whatsapp:production:diagnostics -- --environment=production --instance=a
 ```
 
 The command resolves the tenant server-side and reports only sanitized state,
-partial event ids, aggregate claim counts and provider/workflow health. It
-cannot send, claim, retry or mutate an event.
+partial event ids, aggregate claim counts, the managed `instance_name`,
+sanitized last error and provider/workflow health. Its final `status` is
+`PASS`, `WARN` or `FAIL`; any `FAIL` blocks activation or recovery. It detects
+connection drift, invalid webhooks, unexpected flag combinations, repeated
+failures and processing events stuck for more than five minutes. It cannot
+send, claim, retry or mutate an event.
 
 ## Rollback
 

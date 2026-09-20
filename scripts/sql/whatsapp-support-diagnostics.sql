@@ -4,6 +4,7 @@ begin transaction read only;
 
 select
   c.barberia_id as tenant_id,
+  c.instance_name,
   c.environment,
   c.state as connection_state,
   c.provisioning_mode,
@@ -26,6 +27,15 @@ select
   count(*) filter (where e.created_at >= now() - interval '15 minutes' and e.event_id like 'outbound:%') as outbound_claims_15m,
   max(e.created_at) as latest_event_at,
   max(e.processed_at) as latest_processed_at
+from public.saas_automation_events e
+join public.saas_integraciones i on i.id = e.integration_id
+where i.barberia_id = :'tenant_id'::bigint
+  and i.proveedor = 'evolution';
+
+select
+  count(*) filter (where e.status = 'processing' and e.created_at < now() - interval '5 minutes') as stale_processing,
+  count(*) filter (where e.status = 'failed' and e.created_at >= now() - interval '15 minutes') as failed_15m,
+  count(*) filter (where e.status = 'failed' and e.created_at >= now() - interval '1 hour') as failed_1h
 from public.saas_automation_events e
 join public.saas_integraciones i on i.id = e.integration_id
 where i.barberia_id = :'tenant_id'::bigint

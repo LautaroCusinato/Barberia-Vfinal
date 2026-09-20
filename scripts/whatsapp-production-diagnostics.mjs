@@ -1,4 +1,5 @@
 import process from 'node:process'
+import { finalizeProductionDiagnostics } from './lib/whatsappProductionDiagnostics.mjs'
 
 const args = new Map(process.argv.slice(2).map((entry) => {
   const [key, ...value] = entry.replace(/^--/, '').split('=')
@@ -60,6 +61,9 @@ const report = {
   project_target: 'MATCH',
   instance_pattern: 'MANAGED',
   tenant_resolution: 'FAIL',
+  connection: null,
+  capabilities: null,
+  binding_consistent: null,
   evolution_state: 'UNKNOWN',
   evolution_webhook: 'UNKNOWN',
   n8n_workflow: n8nUrl && n8nKey && n8nWorkflowId ? 'UNKNOWN' : 'NOT_CONFIGURED',
@@ -67,6 +71,7 @@ const report = {
   latest_shadow: null,
   outbound_claims: null,
   booking_claims: null,
+  event_window: null,
   errors: [],
 }
 
@@ -83,7 +88,7 @@ try {
   report.tenant_resolution = 'PASS'
   report.integration_id = context.integration_id
   report.tenant_id = context.tenant_id
-  report.connection_state = {
+  report.capabilities = {
     automation_enabled: context.automation_enabled === true,
     outbound_enabled: context.outbound_enabled === true,
     booking_enabled: context.booking_enabled === true,
@@ -122,6 +127,36 @@ try {
 if (context) {
   try {
     const query = new URLSearchParams({
+      id: 'eq.' + context.connection_id,
+      barberia_id: 'eq.' + context.tenant_id,
+      environment: 'eq.production',
+      select: 'id,integration_id,barberia_id,instance_name,state,provisioning_mode,last_error_code,last_verified_at,qr_expires_at,automation_enabled,outbound_enabled,booking_enabled',
+      limit: '2',
+    })
+    const response = await withTimeout(supabaseUrl + '/rest/v1/saas_whatsapp_connections?' + query, { headers: supabaseHeaders })
+    const rows = await response.json()
+    if (!Array.isArray(rows) || rows.length !== 1) throw new Error('connection_not_unique')
+    const row = rows[0]
+    report.connection = {
+      state: row.state,
+      instance_name: row.instance_name,
+      provisioning_mode: row.provisioning_mode,
+      last_error_code: row.last_error_code ? safeError(row.last_error_code) : null,
+      last_verified_at: row.last_verified_at,
+      qr_expires_at: row.qr_expires_at,
+    }
+    report.binding_consistent = Number(row.integration_id) === Number(context.integration_id)
+      && Number(row.barberia_id) === Number(context.tenant_id)
+      && row.instance_name === instance
+      && row.automation_enabled === report.capabilities.automation_enabled
+      && row.outbound_enabled === report.capabilities.outbound_enabled
+      && row.booking_enabled === report.capabilities.booking_enabled
+  } catch (error) {
+    report.errors.push({ stage: 'connection', code: safeError(error) })
+  }
+
+  try {
+    const query = new URLSearchParams({
       integration_id: 'eq.' + context.integration_id,
       select: 'event_id,status,created_at,processed_at,metadata',
       order: 'created_at.desc',
@@ -140,6 +175,15 @@ if (context) {
     } : null
     report.outbound_claims = events.filter((event) => String(event.event_id).startsWith('outbound:')).length
     report.booking_claims = events.filter((event) => String(event.event_id).startsWith('booking:')).length
+    const fifteenMinutesAgo = Date.now() - 15 * 60 * 1000
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
+    const recent = events.filter((event) => Date.parse(event.created_at) >= fifteenMinutesAgo)
+    report.event_window = {
+      total_15m: recent.length,
+      failed_15m: recent.filter((event) => event.status === 'failed').length,
+      processing: recent.filter((event) => event.status === 'processing').length,
+      stale_processing: recent.filter((event) => event.status === 'processing' && Date.parse(event.created_at) < fiveMinutesAgo).length,
+    }
   } catch (error) {
     report.errors.push({ stage: 'automation_events', code: safeError(error) })
   }
@@ -184,5 +228,6 @@ if (n8nUrl && n8nKey && n8nWorkflowId) {
   }
 }
 
-console.log(JSON.stringify(report, null, 2))
-if (report.errors.length) process.exitCode = 2
+const finalReport = finalizeProductionDiagnostics(report)
+console.log(JSON.stringify(finalReport, null, 2))
+if (finalReport.status === 'FAIL') process.exitCode = 2

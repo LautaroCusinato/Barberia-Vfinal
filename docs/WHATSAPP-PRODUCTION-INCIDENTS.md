@@ -14,6 +14,12 @@ For the affected tenant only, disable `booking_enabled`, then `outbound_enabled`
 
 Run `scripts/sql/whatsapp-support-diagnostics.sql` in a read-only session and the gated production diagnostics command from the runbook. Check, in order: deterministic instance-to-tenant resolution; connection and integration binding; Evolution connection state; webhook URL, header presence and `MESSAGES_UPSERT` event; n8n workflow identity and active state; inbound/outbound claims; recent failure counts. Rotate a credential only after identifying its owner, consumers and rollback path. Never retry an ambiguous send because the provider may have accepted it without returning an ACK.
 
+The diagnostic command returns a sanitized `PASS/WARN/FAIL` matrix. Treat
+`CONNECTION_STATE_DRIFT`, `RUNTIME_BINDING_DRIFT`, `WEBHOOK_INVALID`,
+`REPEATED_EVENT_FAILURES`, `STALE_PROCESSING_EVENTS` and
+`N8N_INACTIVE_WITH_AUTOMATION_ENABLED` as containment triggers. A `WARN` needs
+operator review before enabling another capability; a `FAIL` blocks recovery.
+
 ## Recover
 
 Correct the narrow cause while all flags remain false. Recheck the static production contract, then connection and webhook readbacks. Restore capabilities one at a time under a separately authorized supervised window: automation first, outbound only after inbound remains clean, and booking only in its own release. A provider or n8n restart does not itself authorize outbound replay.
