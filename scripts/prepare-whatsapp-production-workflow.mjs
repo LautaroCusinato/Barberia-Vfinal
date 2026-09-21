@@ -50,7 +50,7 @@ const valid = Boolean(event === 'MESSAGES_UPSERT' && key.fromMe === false && /^[
 const reason = valid ? null : !timestampValid ? 'stale_or_invalid_timestamp' : 'invalid_inbound';
 return [{json:{instanceName,eventId,texto,senderNumber:remoteJid.split('@')[0],fromMe:key.fromMe,eventTimestamp:new Date(Number.isFinite(parsedTimestamp)?parsedTimestamp:0).toISOString(),invalid:!valid,webhookAuthenticated:true,environment:'production',mutationAllowed:false,outboundAllowed:false,receivedAt:now,reason}}];`
 
-const supabaseRpc = (rpc) => `={{ $env.SUPABASE_URL + '/rest/v1/rpc/${rpc}' }}`
+const supabaseRpc = (rpc) => `={{ $env.SUPABASE_PRODUCTION_URL + '/rest/v1/rpc/${rpc}' }}`
 node('Resolver tenant').parameters.url = supabaseRpc('resolve_whatsapp_runtime_context')
 node('Resolver tenant').parameters.jsonBody = "={{ JSON.stringify({ p_environment: 'production', p_external_instance_id: $('Validar identidad e idempotencia').first().json.instanceName }) }}"
 node('Resolver tenant').notes = 'Bind a production-only Supabase service credential. Tenant is derived exclusively from the registered Evolution instance.'
@@ -66,7 +66,7 @@ for (const [name, suffix] of [
   ['Cargar horarios y pausas', "/rest/v1/horarios_barbero?barberia_id=eq.' + $('Resolver tenant').first().json.tenant_id + '&activo=eq.true&select=barbero_id,day_of_week,start_time,end_time"],
   ['Cargar bloqueos', "/rest/v1/bloqueos_agenda?barberia_id=eq.' + $('Resolver tenant').first().json.tenant_id + '&select=fecha,barbero_id,start_time,end_time"],
 ]) {
-  node(name).parameters.url = `={{ $env.SUPABASE_URL + '${suffix} }}`
+  node(name).parameters.url = `={{ $env.SUPABASE_PRODUCTION_URL + '${suffix} }}`
   node(name).notes = 'Production service credential; query remains scoped to the server-resolved tenant.'
 }
 
