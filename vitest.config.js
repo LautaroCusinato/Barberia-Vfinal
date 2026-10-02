@@ -13,6 +13,9 @@ export default mergeConfig(viteConfig, defineConfig({
   // terminar en un cliente de Supabase durante la suite.
   envDir: false,
   test: {
+    // El primer arranque de jsdom puede tardar mucho en máquinas lentas o en CI
+    // en frío; 5s por defecto generaba fallos intermitentes.
+    testTimeout: 20000,
     restoreMocks: true,
     unstubEnvs: true,
     unstubGlobals: true,

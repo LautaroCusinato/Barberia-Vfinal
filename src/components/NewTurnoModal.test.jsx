@@ -15,9 +15,8 @@ const clientes = [
   { id: 101, nombre: 'Luis Gómez', telefono: '5493515551234' },
 ]
 
-// Los textos se cargan con un único evento change (como `fill` de Playwright).
-// Tipear tecla por tecla dentro de este modal hoy pierde el foco: ver el test
-// marcado con it.fails al final del archivo.
+// Los textos se cargan con un único evento change (como `fill` de Playwright);
+// el tipeo tecla por tecla se cubre en los tests de foco al final del archivo.
 const escribir = (input, value) => fireEvent.change(input, { target: { value } })
 
 // Igual que en App.jsx: el modal está siempre montado (cerrado) y se abre
@@ -245,7 +244,8 @@ describe('NewTurnoModal', () => {
   // primer control (requestAnimationFrame de FocusTrap) antes de tipear.
   const esperarFocoInicial = () => vi.waitFor(() => expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveFocus())
 
-  it.fails('mantiene el foco al tipear tecla por tecla en las notas', async () => {
+  // Regresión: FocusTrap re-enfocaba "Cerrar" en cada render (onEscape inline).
+  it('mantiene el foco al tipear tecla por tecla en las notas', async () => {
     const { user, notas } = setup()
     await esperarFocoInicial()
     await user.type(notas(), 'con tijera')
@@ -253,7 +253,7 @@ describe('NewTurnoModal', () => {
     expect(notas()).toHaveFocus()
   })
 
-  it.fails('permite tipear en el buscador de clientes', async () => {
+  it('permite tipear en el buscador de clientes', async () => {
     const { user, buscarCliente } = setup()
     await esperarFocoInicial()
     await user.type(buscarCliente(), 'Luis')

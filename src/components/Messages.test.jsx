@@ -151,7 +151,7 @@ describe('Messages (vista completa)', () => {
 
   it('sin conversaciones muestra el estado vacío', () => {
     render(<Messages full conversaciones={[]} onSelectConversation={() => {}} />)
-    expect(screen.getByText('No hay conversaciones registradas')).toBeInTheDocument()
+    expect(screen.getByText('Todavía no hay conversaciones')).toBeInTheDocument()
   })
 })
 
