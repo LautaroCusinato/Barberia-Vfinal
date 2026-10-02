@@ -45,7 +45,6 @@ VITE_BARBERIA_ID=1
 VITE_BUSINESS_NAME=Barbería Central
 VITE_BUSINESS_VERTICAL=barberia
 VITE_PRODUCT_NAME=Agenda
-VITE_N8N_SEND_WEBHOOK_URL=https://tu-n8n.example.com/webhook/panel-enviar-wsp
 ```
 
 La `anon key` de Supabase está diseñada para estar en el cliente y siempre debe
@@ -67,7 +66,6 @@ Variables para Preview y Production:
 VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
 VITE_SUPABASE_ANON_KEY=tu-anon-key-publica
 VITE_BARBERIA_ID=1
-VITE_N8N_SEND_WEBHOOK_URL=https://tu-n8n.example.com/webhook/panel-enviar-wsp
 ```
 
 El archivo `public/_redirects` mantiene funcionando las rutas de la SPA al
@@ -111,8 +109,18 @@ El panel no envía mensajes por sí mismo. Para conectarlo con WhatsApp:
 
 El workflow versionado en `integrations/` no contiene claves reales: configurá la
 credencial de Supabase, DeepSeek y Evolution API dentro de n8n antes de activarlo.
-El webhook `panel-enviar-wsp` debe publicarse detrás de una URL protegida o una
-autenticación de n8n; no lo abras con una URL genérica en producción. La base de
+Las respuestas manuales del panel pasan por la edge function
+`whatsapp-panel-send`: valida la sesión y la membresía del usuario, toma el
+teléfono de la ficha del cliente y reenvía a n8n con el header
+`X-Austral-Panel-Secret`. Para activarla:
+
+```bash
+supabase secrets set WHATSAPP_PANEL_SEND_WEBHOOK_URL=https://tu-n8n.example.com/webhook/panel-enviar-wsp WHATSAPP_PANEL_SEND_SECRET=<secreto-largo>
+supabase functions deploy whatsapp-panel-send
+```
+
+En n8n, el nodo webhook `panel-enviar-wsp` debe usar *Header Auth* con ese
+mismo header y secreto, para que nadie pueda llamarlo directamente. La base de
 datos mantiene la validación final de horarios, duración, bloqueos y
 superposiciones aunque un mensaje de WhatsApp intente enviar datos inválidos.
 
@@ -120,33 +128,24 @@ superposiciones aunque un mensaje de WhatsApp intente enviar datos inválidos.
 
 ```
 src/
-├── App.jsx                   # Estado global y lógica principal
-├── main.jsx                  # Punto de entrada con login
-├── index.css                 # Estilos completos (light/dark)
-├── components/
-│   ├── Sidebar.jsx           # Navegación lateral + mobile tab bar
-│   ├── Login.jsx             # Pantalla de inicio de sesión
-│   ├── StatsCards.jsx        # Tarjetas de resumen
-│   ├── Agenda.jsx            # Lista de turnos del día
-│   ├── TurnoRow.jsx          # Fila de turno individual
-│   ├── StatusSelect.jsx      # Selector de estado visual
-│   ├── Calendar.jsx          # Calendario mensual/semanal
-│   ├── NewTurnoModal.jsx     # Modal para crear/editar turnos
-│   ├── Barberos.jsx          # Vista de equipo/barberos
-│   ├── Messages.jsx          # Panel de mensajería
-│   ├── Patients.jsx          # Lista de clientes
-│   ├── PatientDetailModal.jsx # Ficha de cliente
-│   ├── EditPatientModal.jsx  # Editar cliente
-│   ├── Notes.jsx             # Notas internas
-│   ├── Stats.jsx             # Estadísticas detalladas
-│   └── Operations.jsx        # Configuración de servicios/barberos
-├── lib/
-│   ├── supabaseClient.js     # Conexión a Supabase
-│   ├── avatar.js             # Generación de avatares
-│   ├── csv.js                # Exportación CSV
-│   └── text.js               # Utilidades de texto y horarios
-└── data/
-    └── mockData.js           # Datos de ejemplo
+├── main.jsx            # Rutas (landing, /reservar, /registro, /demo, /plataforma…) y resolución de sesión/tenant
+├── App.jsx             # Panel del negocio: estado, carga de datos, realtime y vistas
+├── components/         # Agenda, calendario, clientes, mensajes, notas, estadísticas, operación, modales
+│   ├── ui/             # Componentes base (Button, Card, FormField, FocusTrap…)
+│   └── billing/        # Formulario de tarjeta de Mercado Pago
+├── pages/              # Reserva pública, landing, registro, onboarding, facturación, CRM de plataforma
+├── lib/                # Supabase, tenant, texto/horarios/teléfonos, CSV, observabilidad, demo
+├── data/               # Datos de ejemplo y plantillas comerciales
+└── utils/              # Presentación de estados de WhatsApp
+
+supabase/
+├── migrations/         # Esquema incremental (aplicar en orden)
+└── functions/          # Edge functions: billing-*, whatsapp-* y _shared/
+
+scripts/                # Verificaciones (npm test), QA, diagnósticos y operación
+e2e/                    # Playwright: público, demo y QA autenticado
+integrations/           # Workflows de n8n versionados (sin credenciales)
+docs/                   # Runbooks, contratos y auditorías
 ```
 
 ## 🔧 Tecnologías
@@ -159,4 +158,4 @@ src/
 
 ## 📄 Licencia
 
-Uso interno — demo para presentación comercial.
+Uso interno — Austral Automatizaciones.

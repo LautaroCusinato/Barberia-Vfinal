@@ -56,7 +56,7 @@ async function createDemoTurn(page, name = 'Cliente E2E Demo') {
   await page.getByPlaceholder('Buscar por nombre o teléfono...').fill(name)
   await page.getByRole('button', { name: 'Crear nuevo cliente' }).click()
   await page.getByRole('textbox', { name: 'Nombre y apellido', exact: true }).fill(name)
-  await page.getByPlaceholder('0000-0000').fill('12345678')
+  await page.getByPlaceholder('11 0000-0000').fill('1112345678')
   await page.getByRole('button', { name: 'Agendar turno', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Nuevo turno' })).toHaveCount(0)
   await expect.poll(() => page.evaluate((expectedName) => Object.values(localStorage).some((raw) => raw?.includes(expectedName)), name)).toBe(true)
@@ -125,7 +125,7 @@ test.describe('experiencia de producto demo', () => {
     await openDemo(page, 'Clientes')
     await page.getByRole('button', { name: 'Agregar', exact: true }).click()
     await page.getByPlaceholder('Ej: Juan Pérez').fill('Cliente creado E2E')
-    await page.getByPlaceholder('0000-0000').fill('12345678')
+    await page.getByPlaceholder('11 0000-0000').fill('1112345678')
     await page.getByRole('button', { name: 'Agregar cliente', exact: true }).click()
     const desktopRow = page.getByRole('row', { name: /Cliente creado E2E/ })
     if (await desktopRow.isVisible().catch(() => false)) {
@@ -154,6 +154,11 @@ test.describe('experiencia de producto demo', () => {
     const field = page.getByRole('textbox', { name: 'Nombre del servicio *', exact: true }).first()
     await field.fill('Corte clásico demo')
     await field.press('Tab')
+    // La demo persiste en localStorage desde un efecto; recargar antes de
+    // que se escriba el snapshot perdía el cambio de forma intermitente.
+    await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => (
+      key !== 'austral-demo-session-v2' && (localStorage.getItem(key) || '').includes('Corte clásico demo')
+    )))).toBe(true)
     await page.reload()
     await clickWorkspaceButton(page, 'Operacion')
     await expect(page.getByRole('textbox', { name: 'Nombre del servicio *', exact: true }).first()).toHaveValue('Corte clásico demo')
