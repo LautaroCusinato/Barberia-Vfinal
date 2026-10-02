@@ -191,6 +191,9 @@
 .management-operations .two-col {
   align-items: start;
   gap: var(--space-4);
+  /* Columnas parejas: con 1.55/0.85 la de barberos quedaba en ~330px y los
+     horarios se cortaban en los selectores ("09:("). */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .management-operations .management-section {
@@ -807,4 +810,12 @@
 .management-settings .settings-card > .empty-state {
   min-height: 0;
   padding: 1.25rem 1rem;
+}
+
+.management-hours-range select,
+.management-break-range select {
+  min-width: 0;
+  padding-left: 10px;
+  padding-right: 26px;
+  font-variant-numeric: tabular-nums;
 }
