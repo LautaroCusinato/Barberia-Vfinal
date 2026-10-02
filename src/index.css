@@ -3453,9 +3453,8 @@ input.client-search-input {
 
 .week-slot {
   cursor: pointer;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent),
-    var(--surface);
+  /* Sin degradado blanco fijo: en modo oscuro se veía como barras grises. */
+  background: var(--surface);
   transition: background 0.12s var(--ease);
 }
 
@@ -5596,3 +5595,14 @@ input.client-search-input {
 .calendar-mobile-day.selected .calendar-mobile-day-weekday,
 .calendar-mobile-day.selected .calendar-mobile-day-meta,
 .calendar-mobile-day.selected .calendar-mobile-day-state { color: var(--ink-soft); }
+
+/* Continuación de un turno que empezó en una franja anterior: misma banda de
+ * color, sin repetir el texto, pegada visualmente al bloque de inicio. */
+.week-chip.week-chip--cont {
+  min-height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 6px 6px;
+  opacity: .85;
+  cursor: pointer;
+}

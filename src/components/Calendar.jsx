@@ -183,11 +183,13 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   // ===== FUNCIÓN PARA AGRUPAR TURNOS POR HORA EN UN SLOT =====
   const getTurnosAgrupadosPorHora = (eventos, slot) => {
     const slotMin = toMinutes(slot)
-    // Filtrar turnos que ocupan este slot
+    // Un turno aparece en toda franja de 30 min que se superpone con él. Antes
+    // se exigía que la franja empezara después del inicio, así un turno de
+    // 11:15 no se veía en la franja 11:00, donde realmente empieza.
     const activos = eventos.filter(t => {
       const tMin = toMinutes(t.hora)
       const tFin = tMin + (t.duracion || 30)
-      return slotMin >= tMin && slotMin < tFin
+      return slotMin < tFin && slotMin + 30 > tMin
     })
     // Agrupar por hora de inicio exacta
     const grupos = {}
@@ -501,6 +503,23 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                           return turnos.map((t) => {
                             const meta = statusMeta(t.estado)
                             const span = slotsOcupados(t.duracion, 30)
+                            // En las franjas siguientes a la de inicio el turno se muestra
+                            // como banda de continuación: antes se repetía la tarjeta
+                            // completa y un turno de 45 min parecía dos turnos.
+                            if (toMinutes(t.hora) < toMinutes(slot)) {
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  tabIndex={-1}
+                                  aria-hidden="true"
+                                  className="week-chip week-chip--cont"
+                                  style={{ background: meta.bg, color: meta.color, flex: `0 0 ${widthPercent}%`, maxWidth: `${widthPercent}%` }}
+                                  onClick={(e) => { e.stopPropagation(); onEditTurno(t) }}
+                                  title={`${t.paciente} · continúa hasta ${horaFin(t.hora, t.duracion)}`}
+                                />
+                              )
+                            }
 
                             return (
                               <button
