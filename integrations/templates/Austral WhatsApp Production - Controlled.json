@@ -688,7 +688,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $('Resolver tenant').first().json.outbound_enabled === true }}",
+              "leftValue": "={{ $('Resolver tenant').first().json.outbound_enabled === true && $('Evaluar pausa antes de enviar').first().json.botActive === true }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -708,7 +708,7 @@
         3320,
         240
       ],
-      "notes": "False by default. This reads the tenant-scoped database flag; the inbound payload cannot enable outbound."
+      "notes": "False by default. Requires the tenant-scoped outbound flag AND an active bot (no manual handoff) re-read right before sending; the inbound payload cannot enable outbound."
     },
     {
       "parameters": {
@@ -833,6 +833,197 @@
       ],
       "retryOnFail": false,
       "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_PRODUCTION_URL + '/rest/v1/config' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "barberia_id",
+              "value": "={{ 'eq.' + $('Resolver tenant').first().json.tenant_id }}"
+            },
+            {
+              "name": "clave",
+              "value": "eq.bot_activo"
+            },
+            {
+              "name": "select",
+              "value": "barberia_id,clave,valor"
+            }
+          ]
+        },
+        "sendHeaders": false,
+        "options": {
+          "timeout": 20000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth"
+      },
+      "id": "production-manual-pause-lookup",
+      "name": "Consultar pausa manual",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        -224
+      ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "notes": "Production service credential. Reads only the server-resolved tenant pause flag (config.bot_activo). A failed lookup stops the workflow: no auto-reply."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function evaluateManualPause(rows, tenantId) {\n  const expectedTenant = Number(tenantId);\n  if (!Number.isSafeInteger(expectedTenant) || expectedTenant <= 0) throw new Error('manual_pause_tenant_invalid');\n  const list = Array.isArray(rows) ? rows : [];\n  const present = list.filter((row) => row && typeof row === 'object' && !Array.isArray(row) && Object.keys(row).length > 0);\n  for (const row of present) {\n    if (!Object.prototype.hasOwnProperty.call(row, 'valor') || Number(row.barberia_id) !== expectedTenant || row.clave !== 'bot_activo') throw new Error('manual_pause_lookup_invalid');\n  }\n  if (present.length > 1) throw new Error('manual_pause_lookup_ambiguous');\n  if (!present.length) return { botActive: true, manualPause: false, source: 'default_active' };\n  const active = String(present[0].valor ?? '').trim().toLowerCase() === 'true';\n  return { botActive: active, manualPause: !active, source: 'config' };\n}\nconst tenant = $('Resolver tenant').first().json;\nconst rows = $('Consultar pausa manual').all().map((item) => item.json);\nconst result = evaluateManualPause(rows, tenant.tenant_id);\nreturn [{ json: { ...result, tenant_id: Number(tenant.tenant_id), mutationAllowed: false } }];"
+      },
+      "id": "production-manual-pause-evaluate",
+      "name": "Evaluar pausa manual",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        -224
+      ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "notes": "Missing row = active (panel default). Any value other than \"true\" = paused. Unexpected shape throws (fail closed)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Evaluar pausa manual').first().json.botActive === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "production-manual-pause-gate",
+      "name": "Bot activo para el tenant",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1664,
+        -224
+      ],
+      "notes": "False when staff took over the chat from the panel (config.bot_activo = false). Paused events are finalized without AI or outbound."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_PRODUCTION_URL + '/rest/v1/rpc/finish_whatsapp_event' }}",
+        "sendHeaders": false,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_integration_id: $('Resolver tenant').first().json.integration_id, p_event_id: $('Validar identidad e idempotencia').first().json.eventId, p_status: 'completed', p_result_reference: 'manual_handoff_paused' }) }}",
+        "options": {
+          "timeout": 20000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth"
+      },
+      "id": "production-manual-pause-finish",
+      "name": "Finalizar evento pausado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1888,
+        -320
+      ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "executeOnce": true,
+      "notes": "Closes the claimed inbound event; no AI call and no outbound while a human handles the conversation."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{json:{stage:'manual_handoff_paused',event_id:$('Validar identidad e idempotencia').first().json.eventId,tenant_id:$('Resolver tenant').first().json.tenant_id,mode:'production-controlled',mutationAllowed:false,outboundSent:false}}];"
+      },
+      "id": "production-manual-pause-log",
+      "name": "Logging pausa manual",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2112,
+        -320
+      ],
+      "notes": "No phone, JID or message text is logged."
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_PRODUCTION_URL + '/rest/v1/config' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "barberia_id",
+              "value": "={{ 'eq.' + $('Resolver tenant').first().json.tenant_id }}"
+            },
+            {
+              "name": "clave",
+              "value": "eq.bot_activo"
+            },
+            {
+              "name": "select",
+              "value": "barberia_id,clave,valor"
+            }
+          ]
+        },
+        "sendHeaders": false,
+        "options": {
+          "timeout": 20000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth"
+      },
+      "id": "production-manual-pause-recheck",
+      "name": "Reconsultar pausa manual",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3540,
+        352
+      ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "notes": "Production service credential. Reads only the server-resolved tenant pause flag (config.bot_activo). A failed lookup stops the workflow: no auto-reply."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function evaluateManualPause(rows, tenantId) {\n  const expectedTenant = Number(tenantId);\n  if (!Number.isSafeInteger(expectedTenant) || expectedTenant <= 0) throw new Error('manual_pause_tenant_invalid');\n  const list = Array.isArray(rows) ? rows : [];\n  const present = list.filter((row) => row && typeof row === 'object' && !Array.isArray(row) && Object.keys(row).length > 0);\n  for (const row of present) {\n    if (!Object.prototype.hasOwnProperty.call(row, 'valor') || Number(row.barberia_id) !== expectedTenant || row.clave !== 'bot_activo') throw new Error('manual_pause_lookup_invalid');\n  }\n  if (present.length > 1) throw new Error('manual_pause_lookup_ambiguous');\n  if (!present.length) return { botActive: true, manualPause: false, source: 'default_active' };\n  const active = String(present[0].valor ?? '').trim().toLowerCase() === 'true';\n  return { botActive: active, manualPause: !active, source: 'config' };\n}\nconst tenant = $('Resolver tenant').first().json;\nconst rows = $('Reconsultar pausa manual').all().map((item) => item.json);\nconst result = evaluateManualPause(rows, tenant.tenant_id);\nreturn [{ json: { ...result, tenant_id: Number(tenant.tenant_id), mutationAllowed: false } }];"
+      },
+      "id": "production-manual-pause-reevaluate",
+      "name": "Evaluar pausa antes de enviar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3540,
+        448
+      ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "notes": "Missing row = active (panel default). Any value other than \"true\" = paused. Unexpected shape throws (fail closed)."
     }
   ],
   "connections": {
@@ -909,22 +1100,7 @@
       "main": [
         [
           {
-            "node": "Cargar servicios bajo demanda",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Cargar empleados bajo demanda",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Cargar horarios y pausas",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Cargar bloqueos",
+            "node": "Consultar pausa manual",
             "type": "main",
             "index": 0
           }
@@ -1132,7 +1308,7 @@
       "main": [
         [
           {
-            "node": "Outbound habilitado para conexión",
+            "node": "Reconsultar pausa manual",
             "type": "main",
             "index": 0
           }
@@ -1213,6 +1389,94 @@
         [
           {
             "node": "Finalizar evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar pausa manual": {
+      "main": [
+        [
+          {
+            "node": "Evaluar pausa manual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar pausa manual": {
+      "main": [
+        [
+          {
+            "node": "Bot activo para el tenant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bot activo para el tenant": {
+      "main": [
+        [
+          {
+            "node": "Cargar servicios bajo demanda",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cargar empleados bajo demanda",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cargar horarios y pausas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cargar bloqueos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finalizar evento pausado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalizar evento pausado": {
+      "main": [
+        [
+          {
+            "node": "Logging pausa manual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reconsultar pausa manual": {
+      "main": [
+        [
+          {
+            "node": "Evaluar pausa antes de enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar pausa antes de enviar": {
+      "main": [
+        [
+          {
+            "node": "Outbound habilitado para conexión",
             "type": "main",
             "index": 0
           }

@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { applyManualPauseGate } from './lib/whatsappManualPauseGate.mjs'
 
 const root = process.cwd()
 const sourcePath = path.join(root, 'integrations/templates/Austral WhatsApp QA - Shadow No Outbound.json')
@@ -135,6 +136,10 @@ link('Outbound nuevo', [[next('Enviar respuesta Evolution')], [next('Finalizar e
 link('Enviar respuesta Evolution', [[next('Validar ACK Evolution')]])
 link('Validar ACK Evolution', [[next('Finalizar outbound')]])
 link('Finalizar outbound', [[next('Finalizar evento')]])
+
+// Traspaso a atención humana: respeta config.bot_activo del tenant resuelto
+// antes de la IA y otra vez antes del outbound.
+applyManualPauseGate(workflow)
 
 workflow.settings = {
   executionOrder: 'v1',
