@@ -770,8 +770,10 @@
   }
 
   .messages-grid-full .thread-panel {
-    height: calc(100dvh - 224px);
+    /* Pantalla completa sobre la barra inferior (el hilo se desplaza al tope al abrirse). */
+    height: calc(100dvh - 68px - var(--safe-bottom, 0px) - 20px);
     min-height: 360px;
+    scroll-margin-top: 10px;
   }
 
   .messages-grid-full .thread {

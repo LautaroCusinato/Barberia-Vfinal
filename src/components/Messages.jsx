@@ -13,6 +13,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   const [sendError, setSendError] = useState('')
   const [query, setQuery] = useState('')
   const threadRef = useRef(null)
+  const threadPanelRef = useRef(null)
   const messagesEndRef = useRef(null)
   const nearBottomRef = useRef(true)
   const previousMessageCountRef = useRef({ id: null, count: 0 })
@@ -161,16 +162,25 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     }
   }, [full, selectedConversationId, scrollToBottom, updateBottomState])
 
+  // En el celular el hilo reemplaza a la lista: lo llevamos al tope de la
+  // pantalla para que el campo de respuesta quede visible sobre la barra inferior.
+  const abrirHiloMobile = () => {
+    setMobileThreadOpen(true)
+    if (window.matchMedia?.('(max-width: 900px)').matches) {
+      window.requestAnimationFrame(() => threadPanelRef.current?.scrollIntoView({ block: 'start' }))
+    }
+  }
+
   const selectConversation = (id) => {
     onSelectConversation(id)
-    setMobileThreadOpen(true)
+    abrirHiloMobile()
   }
 
   const handleConversationKeyDown = (event, id, openThread = false) => {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
     onSelectConversation(id)
-    if (openThread) setMobileThreadOpen(true)
+    if (openThread) abrirHiloMobile()
   }
 
   if (!full) {
@@ -267,7 +277,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
 
       {/* Hilo de conversación */}
       {selected && (
-        <div className={`panel thread-panel ${!mobileThreadOpen ? 'mobile-hide' : ''}`}>
+        <div ref={threadPanelRef} className={`panel thread-panel ${!mobileThreadOpen ? 'mobile-hide' : ''}`}>
           <button className="mobile-back-btn" onClick={() => setMobileThreadOpen(false)}>
             <ChevronLeft size={15} />
             Conversaciones
