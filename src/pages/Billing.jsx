@@ -41,6 +41,19 @@ function statusLabel(value) {
   return STATUS_LABELS[value] || value || 'Sin estado'
 }
 
+// Estados que devuelven Mercado Pago/PayPal para pagos y comprobantes.
+const PROVIDER_STATUS_LABELS = {
+  approved: 'Aprobado', authorized: 'Autorizado', paid: 'Pagado', completed: 'Completado', accredited: 'Acreditado',
+  pending: 'Pendiente', in_process: 'En proceso', in_mediation: 'En mediación', open: 'Abierto', draft: 'Borrador',
+  rejected: 'Rechazado', cancelled: 'Cancelado', canceled: 'Cancelado', refunded: 'Reintegrado', charged_back: 'Contracargo',
+  void: 'Anulado', failed: 'Fallido', expired: 'Vencido',
+}
+
+function providerStatusLabel(value) {
+  const key = String(value || '').toLowerCase()
+  return PROVIDER_STATUS_LABELS[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ') : 'Sin estado')
+}
+
 function formatDate(value) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(value))
@@ -338,8 +351,8 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
       </section>
 
       <section className="billing-history-grid">
-        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Pagos</h2><p className="panel-subtitle">Confirmados por el proveedor mediante webhook verificado.</p></div></div>{portal?.payments?.length ? <div className="billing-history-list">{portal.payments.map((payment) => <div className="billing-history-row" key={payment.id}><span>{PROVIDER_LABELS[payment.provider] || payment.provider}</span><strong>{formatMoney(payment.amount, payment.currency)}</strong><span className="status-pill">{payment.status}</span><small>{formatDate(payment.paid_at)}</small></div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay pagos registrados." />}</div>
-        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Comprobantes</h2><p className="panel-subtitle">Los enlaces provienen del proveedor; nunca guardamos tarjetas.</p></div></div>{portal?.invoices?.length ? <div className="billing-history-list">{portal.invoices.map((invoice) => <div className="billing-history-row" key={invoice.id}><span>{invoice.provider}</span><strong>{formatMoney(invoice.amount, invoice.currency)}</strong><span className="status-pill">{invoice.status}</span>{invoice.invoice_url ? <a href={invoice.invoice_url} target="_blank" rel="noreferrer" aria-label="Abrir comprobante"><ExternalLink size={15} /></a> : <small>{formatDate(invoice.issued_at)}</small>}</div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay comprobantes." />}</div>
+        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Pagos</h2><p className="panel-subtitle">Confirmados por el proveedor mediante webhook verificado.</p></div></div>{portal?.payments?.length ? <div className="billing-history-list">{portal.payments.map((payment) => <div className="billing-history-row" key={payment.id}><span>{PROVIDER_LABELS[payment.provider] || payment.provider}</span><strong>{formatMoney(payment.amount, payment.currency)}</strong><span className="status-pill">{providerStatusLabel(payment.status)}</span><small>{formatDate(payment.paid_at)}</small></div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay pagos registrados." />}</div>
+        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Comprobantes</h2><p className="panel-subtitle">Los enlaces provienen del proveedor; nunca guardamos tarjetas.</p></div></div>{portal?.invoices?.length ? <div className="billing-history-list">{portal.invoices.map((invoice) => <div className="billing-history-row" key={invoice.id}><span>{invoice.provider}</span><strong>{formatMoney(invoice.amount, invoice.currency)}</strong><span className="status-pill">{providerStatusLabel(invoice.status)}</span>{invoice.invoice_url ? <a href={invoice.invoice_url} target="_blank" rel="noreferrer" aria-label="Abrir comprobante"><ExternalLink size={15} /></a> : <small>{formatDate(invoice.issued_at)}</small>}</div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay comprobantes." />}</div>
       </section>
     </div>
   )

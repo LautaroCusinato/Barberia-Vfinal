@@ -1473,7 +1473,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                 <p className="page-kicker">Carga por profesional</p>
                 <h1 className="page-title">Equipo</h1>
               </div>
-              <span className="page-date">Que tiene agendado cada barbero</span>
+              <span className="page-date">Qué tiene agendado cada barbero</span>
             </div>
             {loading ? <SkeletonBlock height={420} /> : (
               <Barberos

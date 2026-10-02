@@ -111,22 +111,24 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
             {!requiresPlan && !billingUnavailable && !whatsappReady && whatsappDisplay.canConfigure && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
             {billingUnavailable && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Revisar facturación</button>}
           </div>
-          <button className="theme-toggle" type="button" aria-pressed={isDark} onClick={onToggleTheme}>
-            <span className="theme-toggle-label">
-              {isDark ? <Moon size={14} /> : <Sun size={14} />}
-              Modo {isDark ? 'oscuro' : 'claro'}
-            </span>
-            <span className={`theme-switch ${isDark ? 'on' : ''}`}>
-              <span className="theme-switch-knob" />
-            </span>
-          </button>
-          {onAccountSecurity && <button className="theme-toggle" type="button" onClick={onAccountSecurity}><span className="theme-toggle-label"><ShieldCheck size={14} /> Mi cuenta</span></button>}
-          <button className="theme-toggle" type="button" aria-label="Cerrar sesión" onClick={onLogout}>
-            <span className="theme-toggle-label">
-              <LogOut size={14} />
-              Cerrar sesión
-            </span>
-          </button>
+          {/* Preferencias y cuenta en una fila: apilados ocupaban ~150px y en
+              notebooks de 800px de alto escondían Operación y Configuración. */}
+          <div className="sidebar-footer-actions" role="group" aria-label="Cuenta y preferencias">
+            <button className="sidebar-footer-action" type="button" aria-pressed={isDark} onClick={onToggleTheme} aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'} title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}>
+              {isDark ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}
+              <span>{isDark ? 'Oscuro' : 'Claro'}</span>
+            </button>
+            {onAccountSecurity && (
+              <button className="sidebar-footer-action" type="button" onClick={onAccountSecurity} aria-label="Mi cuenta" title="Mi cuenta">
+                <ShieldCheck size={15} aria-hidden="true" />
+                <span>Cuenta</span>
+              </button>
+            )}
+            <button className="sidebar-footer-action sidebar-footer-action--danger" type="button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={onLogout}>
+              <LogOut size={15} aria-hidden="true" />
+              <span>Salir</span>
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -154,6 +156,12 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
               {isDark ? <Moon size={18} strokeWidth={2} /> : <Sun size={18} strokeWidth={2} />}
               Modo {isDark ? 'oscuro' : 'claro'}
             </button>
+            {onAccountSecurity && (
+              <button className="mobile-mas-item" type="button" onClick={() => { setMostrarMas(false); onAccountSecurity() }}>
+                <ShieldCheck size={18} strokeWidth={2} />
+                Mi cuenta
+              </button>
+            )}
             <button className="mobile-mas-item mobile-mas-item-danger" aria-label="Cerrar sesión" onClick={onLogout}>
               <LogOut size={18} strokeWidth={2} />
               Cerrar sesión

@@ -48,20 +48,21 @@
 }
 
 .management-screen .toolbar-row {
-  align-items: stretch;
+  align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
 
 .management-screen .toolbar-search {
   flex: 1 1 280px;
-  min-height: var(--control-lg);
+  min-height: 44px;
+  padding-block: 0;
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-xs);
 }
 
 .management-screen .toolbar-row > .btn {
-  min-height: var(--control-lg);
+  min-height: 44px;
   border-radius: var(--radius-control);
   padding-inline: var(--space-4);
   font-weight: 750;

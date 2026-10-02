@@ -376,7 +376,9 @@
 
 @media (max-width: 700px) {
   .demo-mode-banner { align-items: stretch; flex-direction: column; padding: var(--space-3); }
+  .demo-mode-banner__message { flex: 0 0 auto; }
   .demo-mode-banner__actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .demo-mode-banner__actions .btn { justify-content: center; }
   .demo-mode-banner__actions .btn:last-child { grid-column: 1 / -1; }
 }
 
