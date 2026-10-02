@@ -190,11 +190,22 @@ export function turnosSeSuperponen(aInicio, aDuracion, bInicio, bDuracion) {
 // Convierte el formato que ya usa el panel (por ejemplo: "Lun, Mar y Vie
 // 09:00-18:00 break 13:00-14:00") en franjas para horarios_barbero. Si el
 // texto no es reconocible, devolvemos null y conservamos la agenda vigente.
+const DIAS_SEMANA = [['lun', 1], ['mar', 2], ['mie', 3], ['jue', 4], ['vie', 5], ['sab', 6], ['dom', 0]]
+
 export function parseHorarioTexto(horario = '') {
   const normalizado = horario.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  const dias = [
-    ['lun', 1], ['mar', 2], ['mie', 3], ['jue', 4], ['vie', 5], ['sab', 6], ['dom', 0],
-  ].filter(([nombre]) => new RegExp(`\\b${nombre}`).test(normalizado)).map(([, dia]) => dia)
+  // El editor serializa así un barbero sin días: la agenda queda vacía (antes
+  // devolvía null y se conservaban los días anteriores, que seguían reservables).
+  if (/^\s*sin dias asignados\b/.test(normalizado)) return []
+  const set = new Set(DIAS_SEMANA.filter(([nombre]) => new RegExp(`\\b${nombre}`).test(normalizado)).map(([, dia]) => dia))
+  // "Lun a Vie" es un rango, igual que en parseHorarioBarbero (antes sólo
+  // tomaba los extremos: lunes y viernes).
+  const orden = DIAS_SEMANA.map(([nombre]) => nombre)
+  for (const [, desde, hasta] of normalizado.matchAll(/\b(lun|mar|mie|jue|vie|sab|dom)[a-z]*\.?\s+a\s+(lun|mar|mie|jue|vie|sab|dom)/g)) {
+    const i = orden.indexOf(desde); const j = orden.indexOf(hasta)
+    if (i <= j) for (let k = i; k <= j; k += 1) set.add(DIAS_SEMANA[k][1])
+  }
+  const dias = DIAS_SEMANA.map(([, dia]) => dia).filter((dia) => set.has(dia))
   const rangos = [...normalizado.matchAll(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/g)]
     .map(([, inicio, fin]) => ({ inicio: inicio.padStart(5, '0'), fin: fin.padStart(5, '0') }))
   if (!dias.length || !rangos.length || rangos[0].inicio >= rangos[0].fin) return null

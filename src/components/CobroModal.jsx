@@ -11,6 +11,7 @@ export default function CobroModal({ turno, servicios = [], onClose, onConfirm }
   const [monto, setMonto] = useState('')
   const [metodo, setMetodo] = useState('efectivo')
   const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
 
   // Se inicializa una vez por turno: una recarga de servicios (realtime)
   // no debe pisar el monto que la persona ya corrigió.
@@ -26,6 +27,7 @@ export default function CobroModal({ turno, servicios = [], onClose, onConfirm }
     setMonto(String(turno.precio ?? servicioDelTurno?.precio ?? ''))
     setMetodo('efectivo')
     setSaving(false)
+    setErrorMsg('')
   }, [turno, servicios])
 
   if (!turno) return null
@@ -36,8 +38,15 @@ export default function CobroModal({ turno, servicios = [], onClose, onConfirm }
     e.preventDefault()
     if (!valido || saving) return
     setSaving(true)
-    await onConfirm({ monto: Number(monto), metodo })
-    setSaving(false)
+    setErrorMsg('')
+    try {
+      await onConfirm({ monto: Number(monto), metodo })
+    } catch {
+      // Sin esto el botón quedaba en "Guardando…" para siempre.
+      setErrorMsg('No se pudo registrar el cobro. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -88,6 +97,8 @@ export default function CobroModal({ turno, servicios = [], onClose, onConfirm }
               ))}
             </div>
           </div>
+
+          {errorMsg && <p className="field-error" role="alert">{errorMsg}</p>}
 
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>

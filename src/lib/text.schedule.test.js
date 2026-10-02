@@ -73,17 +73,18 @@ describe('parseHorarioTexto (texto del panel -> horarios_barbero)', () => {
     expect(parseHorarioTexto(texto)).toBeNull()
   })
 
-  // Hallazgo (no corregido, ver reporte): el editor de horarios serializa
-  // "Sin dias asignados 09:00-18:00" cuando se destildan todos los días. Este
-  // parser devuelve null, App.jsx muestra "no pudimos convertirlo en agenda" y
-  // horarios_barbero conserva los días anteriores, que se siguen ofreciendo.
-  it.todo('"Sin dias asignados 09:00-18:00" vacía la agenda en lugar de devolver null')
+  // Regresión: al destildar todos los días la agenda debe quedar vacía; antes
+  // devolvía null y se conservaban los días anteriores (seguían reservables).
+  it('"Sin dias asignados 09:00-18:00" vacía la agenda en lugar de devolver null', () => {
+    expect(parseHorarioTexto('Sin dias asignados 09:00-18:00')).toEqual([])
+    expect(parseHorarioTexto('Sin días asignados 10:00-19:00')).toEqual([])
+  })
 
-  // Hallazgo (latente): parseHorarioBarbero interpreta "Lun a Vie" como un
-  // rango (lun-vie) pero este parser sólo detecta los nombres, así que el
-  // mismo texto se guardaría como lunes y viernes. El editor actual nunca
-  // genera rangos con "a".
-  it.todo('"Lun a Vie 09:00-18:00" se convierte en las cinco jornadas, igual que parseHorarioBarbero')
+  it('"Lun a Vie 09:00-18:00" se convierte en las cinco jornadas, igual que parseHorarioBarbero', () => {
+    const franjas = parseHorarioTexto('Lun a Vie 09:00-18:00')
+    expect(franjas.map((f) => f.day_of_week)).toEqual([1, 2, 3, 4, 5])
+    expect(parseHorarioTexto('Lun a Mié y Sáb 10:00-14:00').map((f) => f.day_of_week)).toEqual([1, 2, 3, 6])
+  })
 })
 
 describe('parseHorarioBarbero (fallback legacy por texto)', () => {

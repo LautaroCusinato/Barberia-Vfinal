@@ -1299,9 +1299,11 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
             const { error: borrarError } = await supabase.from('horarios_barbero').delete().eq('barbero_id', id)
             if (borrarError) reportError('No se pudo actualizar la agenda del barbero', borrarError)
             else {
-              const { error: crearError } = await supabase.from('horarios_barbero').insert(
-                franjas.map((franja) => ({ ...franja, barberia_id: barberiaId, barbero_id: id, activo: true }))
-              )
+              const { error: crearError } = franjas.length
+                ? await supabase.from('horarios_barbero').insert(
+                  franjas.map((franja) => ({ ...franja, barberia_id: barberiaId, barbero_id: id, activo: true }))
+                )
+                : { error: null }
               if (crearError) reportError('No se pudo actualizar la agenda del barbero', crearError)
               else setBarberos((prev) => prev.map((barbero) => (
                 barbero.id === id ? { ...barbero, agenda: franjas.map((franja) => ({ ...franja, barbero_id: id, activo: true })), agendaCargada: true } : barbero

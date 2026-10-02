@@ -119,10 +119,12 @@ describe('CobroModal', () => {
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
-  // Hallazgo (no corregido: es un componente, fuera del alcance de esta rama).
-  // submit hace `await onConfirm(...)` sin try/finally: si onConfirm rechaza,
-  // `saving` queda en true, el botón muestra "Guardando…" para siempre y la
-  // promesa rechazada queda sin manejar. Hoy confirmarCobro (App.jsx) atrapa
-  // sus errores de Supabase, así que no se dispara en el flujo normal.
-  it.todo('si onConfirm rechaza vuelve a habilitar "Confirmar cobro" y muestra un error')
+  it('si onConfirm rechaza vuelve a habilitar "Confirmar cobro" y muestra un error', async () => {
+    const user = userEvent.setup()
+    const onConfirm = vi.fn().mockRejectedValue(new Error('red caída'))
+    render(<CobroModal turno={{ id: 9, paciente: 'Ana', servicio_id: 1, precio: 5000 }} servicios={[]} onClose={() => {}} onConfirm={onConfirm} />)
+    await user.click(screen.getByRole('button', { name: 'Confirmar cobro' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo registrar el cobro')
+    expect(screen.getByRole('button', { name: 'Confirmar cobro' })).toBeEnabled()
+  })
 })
