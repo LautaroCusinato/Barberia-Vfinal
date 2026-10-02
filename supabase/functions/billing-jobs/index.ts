@@ -8,10 +8,18 @@ function providerStatus(provider: string, externalId: string, environment: 'sand
   throw Object.assign(new Error('Proveedor no soportado.'), { status: 422, code: 'unsupported_provider' })
 }
 
+function constantTimeEqual(a: string, b: string) {
+  const left = new TextEncoder().encode(a)
+  const right = new TextEncoder().encode(b)
+  let diff = left.length ^ right.length
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) diff |= (left[i] ?? 0) ^ (right[i] ?? 0)
+  return diff === 0
+}
+
 function authorized(request: Request) {
   const configured = Deno.env.get('BILLING_CRON_SECRET')
   if (!configured) throw Object.assign(new Error('Falta BILLING_CRON_SECRET.'), { status: 503, code: 'cron_not_configured' })
-  if (request.headers.get('x-billing-cron-secret') !== configured) throw Object.assign(new Error('Cron no autorizado.'), { status: 401, code: 'cron_unauthorized' })
+  if (!constantTimeEqual(request.headers.get('x-billing-cron-secret') || '', configured)) throw Object.assign(new Error('Cron no autorizado.'), { status: 401, code: 'cron_unauthorized' })
 }
 
 Deno.serve(async (request) => {
@@ -53,7 +61,10 @@ Deno.serve(async (request) => {
       if ((!providerRow?.activo && environment !== 'sandbox') || !config.configured) { reconciliation.skipped += 1; continue }
       try {
         const result = await providerStatus(provider, String(link.external_subscription_id), environment === 'sandbox' || environment === 'production' ? environment : 'sandbox')
-        await admin.from('saas_suscripciones_externas').update({ estado_externo: result.normalizedStatus, current_period_start: result.currentPeriodStart, current_period_end: result.currentPeriodEnd, cancel_at_period_end: result.cancelAtPeriodEnd, last_synced_at: new Date().toISOString(), metadata: { last_reconciliation_status: result.status, correlation_id: correlationId } }).eq('id', link.id)
+        // Merge, never replace: dropping `metadata.environment` made every
+        // later run skip this link and broke webhook environment resolution.
+        const linkMetadata = link.metadata && typeof link.metadata === 'object' ? link.metadata as Record<string, unknown> : {}
+        await admin.from('saas_suscripciones_externas').update({ estado_externo: result.normalizedStatus, current_period_start: result.currentPeriodStart, current_period_end: result.currentPeriodEnd, cancel_at_period_end: result.cancelAtPeriodEnd, last_synced_at: new Date().toISOString(), metadata: { ...linkMetadata, last_reconciliation_status: result.status, correlation_id: correlationId } }).eq('id', link.id)
         const eventId = `reconcile:${provider}:${link.external_subscription_id}:${result.normalizedStatus}`
         const { data: transition, error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: link.suscripcion_id, p_to_state: result.normalizedStatus, p_reason: 'scheduled_reconciliation', p_source: 'reconciliation', p_provider_event_id: eventId, p_provider_event_at: result.updatedAt || null })
         if (transitionError) throw transitionError

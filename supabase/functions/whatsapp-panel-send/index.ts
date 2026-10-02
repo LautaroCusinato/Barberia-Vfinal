@@ -9,6 +9,7 @@ import { corsHeaders, json, readJson } from '../_shared/http.ts'
 // recién entonces reenviamos a n8n con un secreto server-side.
 const SECRET_HEADER = 'X-Austral-Panel-Secret'
 const MAX_TEXT_LENGTH = 4096
+const SEND_ROLES = new Set(['owner', 'admin', 'recepcionista', 'barbero', 'empleado'])
 
 function fail(message: string, status: number, code: string) {
   return json({ error: { code, message } }, status)
@@ -48,6 +49,15 @@ Deno.serve(async (request) => {
       .maybeSingle()
     if (membershipError) return fail('No se pudo verificar el acceso.', 502, 'membership_lookup_failed')
     if (!membership) return fail('No tenés acceso a este negocio.', 403, 'tenant_membership_required')
+    // Un miembro de sólo lectura no puede escribir mensajes (RLS) y tampoco
+    // debe poder enviar WhatsApp desde el número del negocio.
+    if (!SEND_ROLES.has(String(membership.role))) return fail('Tu rol no puede enviar mensajes.', 403, 'send_role_required')
+
+    // Igual que las políticas de escritura: un tenant con el plan vencido o
+    // suspendido no puede usar el número del negocio desde el panel.
+    const { data: operational, error: accessError } = await admin.rpc('barberia_access_state', { p_barberia_id: tenantId })
+    if (accessError) return fail('No se pudo verificar el estado de la cuenta.', 502, 'access_state_failed')
+    if (!['active', 'trialing', 'past_due'].includes(String(operational))) return fail('La cuenta no tiene un plan habilitado para enviar mensajes.', 402, 'subscription_inactive')
 
     const { data: cliente, error: clienteError } = await admin
       .from('clientes')

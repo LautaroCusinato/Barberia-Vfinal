@@ -581,7 +581,12 @@ async function reconcile(admin: ReturnType<typeof adminClient>, userId: string, 
       if (!config.configured) throw Object.assign(new Error('provider_not_configured'), { code: 'provider_not_configured' })
       const result = await providerStatus(currentProvider, String(link.external_subscription_id), 'subscription', environment === 'sandbox' || environment === 'production' ? environment : 'sandbox')
       const now = new Date().toISOString()
-      await admin.from('saas_suscripciones_externas').update({ estado_externo: result.normalizedStatus, current_period_start: result.currentPeriodStart, current_period_end: result.currentPeriodEnd, cancel_at_period_end: result.cancelAtPeriodEnd, last_synced_at: now, metadata: { last_reconciliation_status: result.status } }).eq('id', link.id)
+      // Merge, never replace: `metadata.environment` is the only server-side
+      // record of the link's billing environment. Overwriting it made the next
+      // reconciliation, external-status call and webhook fail with
+      // billing_environment_unresolved.
+      const linkMetadata = link.metadata && typeof link.metadata === 'object' ? link.metadata as Record<string, unknown> : {}
+      await admin.from('saas_suscripciones_externas').update({ estado_externo: result.normalizedStatus, current_period_start: result.currentPeriodStart, current_period_end: result.currentPeriodEnd, cancel_at_period_end: result.cancelAtPeriodEnd, last_synced_at: now, metadata: { ...linkMetadata, last_reconciliation_status: result.status } }).eq('id', link.id)
       const eventId = `reconcile:${currentProvider}:${link.external_subscription_id}:${result.normalizedStatus}`
       const { data: transition, error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: link.suscripcion_id, p_to_state: result.normalizedStatus, p_reason: 'manual_reconciliation', p_source: 'reconciliation', p_provider_event_id: eventId, p_provider_event_at: result.updatedAt || null })
       if (transitionError) throw Object.assign(new Error('subscription_transition_failed'), { code: 'subscription_transition_failed' })

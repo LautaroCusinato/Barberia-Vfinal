@@ -25,6 +25,13 @@ assert.match(panelSend, /authenticate\(request, admin\)/, 'La función debe exig
 assert.match(panelSend, /from\('barberia_members'\)/, 'La función debe verificar la membresía del tenant')
 assert.match(panelSend, /\.eq\('barberia_id', tenantId\)[\s\S]*telefono/, 'El teléfono sale de la ficha del tenant')
 assert.doesNotMatch(panelSend, /body\.telefono/, 'El teléfono nunca se toma del body')
+const sendRoles = panelSend.match(/const SEND_ROLES = new Set\(\[([^\]]*)\]\)/)?.[1] || ''
+assert.ok(sendRoles, 'La función debe declarar los roles que pueden enviar')
+assert.doesNotMatch(sendRoles, /readonly/, 'Un miembro readonly no puede enviar WhatsApp')
+assert.match(panelSend, /SEND_ROLES\.has\(String\(membership\.role\)\)/, 'El rol se valida antes de enviar')
+assert.match(panelSend, /rpc\('barberia_access_state', \{ p_barberia_id: tenantId \}\)/, 'Un tenant sin plan habilitado no envía')
+assert.ok(panelSend.indexOf('SEND_ROLES.has') < panelSend.indexOf('fetch(webhookUrl'), 'El rol se valida antes del reenvío a n8n')
+assert.ok(panelSend.indexOf("rpc('barberia_access_state'") < panelSend.indexOf('fetch(webhookUrl'), 'El plan se valida antes del reenvío a n8n')
 
 for (const fn of ['whatsapp-booking-mutation', 'whatsapp-agent-outbound-pilot', 'whatsapp-qa-outbound-one-shot']) {
   assert.match(read('supabase', 'functions', fn, 'index.ts'), /await requireOperator\(request, /, `${fn} debe validar al operador además del header Bearer`)
