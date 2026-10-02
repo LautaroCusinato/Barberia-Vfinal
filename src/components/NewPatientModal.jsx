@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { X, UserPlus } from 'lucide-react'
-import { PREFIJO_AR, soloDigitos } from '../lib/text'
+import { PREFIJO_AR, TELEFONO_NACIONAL_DIGITOS, digitosNacionales, soloDigitos } from '../lib/text'
 import PhoneField from './PhoneField'
 
 export default function NewPatientModal({ open, onClose, onSubmit }) {
@@ -27,9 +27,9 @@ export default function NewPatientModal({ open, onClose, onSubmit }) {
   // Guardamos el teléfono como solo dígitos (ej: 5491138922851), igual al
   // formato que usa el bot de WhatsApp — así el mismo cliente que después
   // escribe por WhatsApp calza con este teléfono en vez de crear un duplicado.
-  const digitosNumero = soloDigitos(telefono.slice(PREFIJO_AR.length))
+  const digitosNumero = digitosNacionales(telefono)
   const telefonoRaw = soloDigitos(PREFIJO_AR) + digitosNumero
-  const valido = nombre.trim() && digitosNumero.length === 8
+  const valido = nombre.trim() && digitosNumero.length === TELEFONO_NACIONAL_DIGITOS
 
   const submit = async (e) => {
     e.preventDefault()
@@ -80,8 +80,8 @@ export default function NewPatientModal({ open, onClose, onSubmit }) {
           <div className="modal-field">
             <label className="modal-label">Teléfono *</label>
             <PhoneField value={telefono} onChange={setTelefono} required aria-label="Teléfono" />
-            {digitosNumero.length > 0 && digitosNumero.length !== 8 && (
-              <small className="field-error">Completá los 8 dígitos del teléfono.</small>
+            {digitosNumero.length > 0 && digitosNumero.length !== TELEFONO_NACIONAL_DIGITOS && (
+              <small className="field-error">Completá código de área y número: 10 dígitos, sin 0 ni 15.</small>
             )}
           </div>
 

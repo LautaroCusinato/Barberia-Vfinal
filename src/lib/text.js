@@ -9,15 +9,36 @@ export function soloDigitos(str = '') {
   return str.replace(/\D/g, '')
 }
 
-export const PREFIJO_AR = '+54 9 11 '
+// Celulares de Argentina: +54 9 + código de área sin 0 + número sin 15.
+// Siempre suman 10 dígitos nacionales (11 + 8, 351 + 7, 2944 + 6...). Antes
+// el prefijo fijaba el área 11 y un cliente del interior no podía cargar su
+// número real.
+export const PREFIJO_AR = '+54 9 '
+export const TELEFONO_NACIONAL_DIGITOS = 10
+
+// Sólo presentación: el área exacta (2 a 4 dígitos) no se puede deducir sin
+// una tabla, así que usamos 2 para el AMBA y 3 para el resto, con guion antes
+// de los últimos 4. La base siempre guarda dígitos crudos.
+export function formatNumeroNacional(value = '') {
+  const digitos = soloDigitos(value).slice(0, TELEFONO_NACIONAL_DIGITOS)
+  const area = digitos.startsWith('11') ? 2 : 3
+  if (digitos.length <= area) return digitos
+  const resto = digitos.slice(area)
+  const local = resto.length > 4 ? `${resto.slice(0, -4)}-${resto.slice(-4)}` : resto
+  return `${digitos.slice(0, area)} ${local}`
+}
 
 export function formatTelefonoAR(value = '') {
-  const digitos = soloDigitos(value).slice(0, 8)
-  let formateado = digitos
-  if (digitos.length > 4) {
-    formateado = `${digitos.slice(0, 4)}-${digitos.slice(4)}`
-  }
-  return PREFIJO_AR + formateado
+  return PREFIJO_AR + formatNumeroNacional(value)
+}
+
+// Dígitos nacionales (área + número) de un valor de PhoneField.
+export function digitosNacionales(value = '') {
+  return soloDigitos(String(value || '').slice(PREFIJO_AR.length))
+}
+
+export function telefonoNacionalValido(value = '') {
+  return digitosNacionales(value).length === TELEFONO_NACIONAL_DIGITOS
 }
 
 export function telefonoCompleto(value = '') {
@@ -31,25 +52,25 @@ export function telefonoSinPrefijo(value = '') {
 
 // Para cargar en el input con prefijo un telefono que ya esta guardado
 // (y que puede tener cualquier formato viejo/inconsistente: con guiones,
-// con +54, sin código de país, etc). Si arranca con el prefijo completo
-// de Argentina (54 9 11) lo sacamos; si no, nos quedamos con los últimos
-// 8 dígitos (el número local), que es lo que va después del prefijo.
+// con +54, sin el 9, sin código de país, etc). Devuelve los 10 dígitos
+// nacionales (área + número). Los números de 8 dígitos son del formato
+// histórico, que asumía el área 11.
 export function extraerNumeroLocal(value = '') {
   const digitos = soloDigitos(value)
-  if (digitos.startsWith('54911')) return digitos.slice(5)
-  return digitos.length > 8 ? digitos.slice(-8) : digitos
+  if (digitos.startsWith('549') && digitos.length === 13) return digitos.slice(3)
+  if (digitos.startsWith('54') && digitos.length === 12) return digitos.slice(2)
+  if (digitos.length === 8) return `11${digitos}`
+  return digitos.length > TELEFONO_NACIONAL_DIGITOS ? digitos.slice(-TELEFONO_NACIONAL_DIGITOS) : digitos
 }
 
 // Para MOSTRAR lindo un telefono que esta guardado en digitos crudos
-// (5491138922851 -> +54 9 11 3892-2851). Si no calza con el formato
-// esperado, muestra el valor tal cual está guardado.
+// (5491138922851 -> +54 9 11 3892-2851, 5493515551234 -> +54 9 351 555-1234).
+// Si no calza con el formato esperado, muestra el valor tal cual está guardado.
 export function formatTelefonoDisplay(value = '') {
   if (!value) return ''
   const digitos = soloDigitos(value)
-  if (!digitos.startsWith('54911')) return value
-  const local = digitos.slice(5)
-  if (local.length <= 4) return PREFIJO_AR + local
-  return `${PREFIJO_AR}${local.slice(0, 4)}-${local.slice(4)}`
+  if (!digitos.startsWith('549') || digitos.length !== 13) return value
+  return formatTelefonoAR(digitos.slice(3))
 }
 
 // La base conserva fechas ISO (YYYY-MM-DD). Esta funcion solo cambia la

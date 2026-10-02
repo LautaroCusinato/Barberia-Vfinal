@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { X, UserPen } from 'lucide-react'
-import { PREFIJO_AR, soloDigitos, extraerNumeroLocal } from '../lib/text'
+import { PREFIJO_AR, TELEFONO_NACIONAL_DIGITOS, digitosNacionales, soloDigitos, extraerNumeroLocal, formatTelefonoAR } from '../lib/text'
 import PhoneField from './PhoneField'
 
 export default function EditPatientModal({ paciente, onClose, onSubmit }) {
@@ -12,15 +12,15 @@ export default function EditPatientModal({ paciente, onClose, onSubmit }) {
   useEffect(() => {
     if (!paciente) return
     setNombre(paciente.nombre || '')
-    setTelefono(PREFIJO_AR + extraerNumeroLocal(paciente.telefono || ''))
+    setTelefono(formatTelefonoAR(extraerNumeroLocal(paciente.telefono || '')))
     setUltimaVisita(paciente.ultima_visita || '')
     setSaving(false)
   }, [paciente])
 
   if (!paciente) return null
 
-  const telefonoLocal = soloDigitos(telefono.slice(PREFIJO_AR.length))
-  const valido = nombre.trim() && (telefonoLocal.length === 0 || telefonoLocal.length === 8)
+  const telefonoLocal = digitosNacionales(telefono)
+  const valido = nombre.trim() && (telefonoLocal.length === 0 || telefonoLocal.length === TELEFONO_NACIONAL_DIGITOS)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -60,8 +60,8 @@ export default function EditPatientModal({ paciente, onClose, onSubmit }) {
           <div className="modal-field">
             <label className="modal-label">Teléfono</label>
             <PhoneField value={telefono} onChange={setTelefono} aria-label="Teléfono" />
-            {telefonoLocal.length > 0 && telefonoLocal.length !== 8 && (
-              <small className="field-error">Completá los 8 dígitos o dejá el teléfono vacío.</small>
+            {telefonoLocal.length > 0 && telefonoLocal.length !== TELEFONO_NACIONAL_DIGITOS && (
+              <small className="field-error">Completá código de área y número (10 dígitos, sin 0 ni 15) o dejá el teléfono vacío.</small>
             )}
           </div>
 
