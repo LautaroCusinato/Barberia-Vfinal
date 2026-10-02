@@ -36,7 +36,7 @@
   --surface-sunken: #D8CDB5;
   --ink: #202020;
   --ink-soft: #62605B;
-  --ink-faint: #6F675C;
+  --ink-faint: #685F55;
   --accent: #9B6A2F;
   --accent-strong: #724B1F;
   --accent-soft: #EFE0C8;
@@ -5577,3 +5577,21 @@ input.client-search-input {
 .bot-paused-banner { flex-wrap: wrap; }
 .bot-paused-banner > span { flex: 1 1 260px; min-width: 0; }
 .bot-paused-banner .btn { margin-left: auto; min-height: 32px; color: inherit; border-color: currentColor; }
+
+/* Celular: objetivos táctiles de al menos 44px en las acciones frecuentes
+ * (estados del turno, "Nuevo", íconos de editar/borrar/notas). */
+@media (max-width: 600px) {
+  .turno-status-btn,
+  .day-side-list .turno-status-btn { min-height: 44px; }
+  .link-btn { min-height: 40px; padding-inline: 12px; }
+  .agenda-item--enhanced .btn-icon-plain { min-width: 44px; min-height: 44px; }
+  .btn-icon-plain { min-width: 40px; min-height: 40px; }
+  .habilidad-tag { min-height: 38px; }
+  .day-toggle { min-height: 40px; min-width: 40px; }
+}
+
+/* Sobre fondos de selección (acento tenue) el gris secundario no llega a 4.5:1. */
+.conv-item.selected .conv-time,
+.calendar-mobile-day.selected .calendar-mobile-day-weekday,
+.calendar-mobile-day.selected .calendar-mobile-day-meta,
+.calendar-mobile-day.selected .calendar-mobile-day-state { color: var(--ink-soft); }

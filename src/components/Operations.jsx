@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Palette, Plus, Scissors, Settings, Trash2, UserRound, Coffee, Check } from 'lucide-react'
 import { generarIdHabilidad, parseHabilidades, serializeHabilidades } from '../lib/text'
 import { EmptyState } from './ui'
+import { textoSobre } from '../lib/avatar'
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -455,7 +456,7 @@ export default function Operations({
                                 className={`habilidad-tag ${seleccionada ? 'active' : ''}`}
                                 style={
                                   seleccionada
-                                    ? { background: barbero.color, borderColor: barbero.color }
+                                    ? { background: barbero.color, borderColor: barbero.color, color: textoSobre(barbero.color) }
                                     : undefined
                                 }
                                 onClick={() => toggleHabilidad(barbero, hab.id)}
@@ -480,7 +481,7 @@ export default function Operations({
                             className={`day-toggle ${horario.dias.has(dia) ? 'active' : ''}`}
                             style={
                               horario.dias.has(dia)
-                                ? { background: barbero.color, borderColor: barbero.color }
+                                ? { background: barbero.color, borderColor: barbero.color, color: textoSobre(barbero.color) }
                                 : undefined
                             }
                             onClick={() => toggleDia(barbero, dia)}
