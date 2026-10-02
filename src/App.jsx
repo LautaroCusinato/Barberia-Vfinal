@@ -40,11 +40,11 @@ import { getDemoSnapshot, resetDemoSession, saveDemoSnapshot } from './lib/demoS
 import { reportClientError } from './lib/observability.js'
 import { initialWorkspaceCollection } from './lib/runtimeStability.js'
 import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './lib/whatsappProvisioning.js'
+import { enqueueLatest } from './lib/latestIntentQueue.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
 const WHATSAPP_PANEL_SEND_FUNCTION = 'whatsapp-panel-send'
-const CAMPOS_NUMERICOS_SERVICIO = new Set(['precio', 'duracion'])
 
 // Traduce los rechazos de la base (exclusión, triggers de agenda) a un
 // mensaje accionable. Devuelve null si el error no es de reglas de agenda.
@@ -183,11 +183,17 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [reloadKey, setReloadKey] = useState(0)
   const barberoWritesRef = useRef({})
   const servicioWritesRef = useRef({})
+  const mainRef = useRef(null)
+  const routeFocusPendingRef = useRef(false)
 
   useEffect(() => {
     const handlePopState = () => {
+      const nextView = workspaceViewFromUrl()
       setNotasFiltro('')
-      setView(workspaceViewFromUrl())
+      setView((currentView) => {
+        routeFocusPendingRef.current = currentView !== nextView
+        return nextView
+      })
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -281,9 +287,19 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const navigateFromMenu = (v, { replace = false } = {}) => {
     if (!WORKSPACE_VIEWS.has(v)) return
     setNotasFiltro('')
+    routeFocusPendingRef.current = v !== view
     updateWorkspaceViewUrl(v, replace)
     setView(v)
   }
+
+  useEffect(() => {
+    if (!routeFocusPendingRef.current) return undefined
+    routeFocusPendingRef.current = false
+    const frame = window.requestAnimationFrame(() => {
+      mainRef.current?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [view])
 
   useEffect(() => {
     if (!isSupabaseConfigured) return
@@ -670,7 +686,12 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     const indiceAnterior = lista.findIndex((item) => item.id === id)
     setLista((prev) => prev.filter((item) => item.id !== id))
     if (!isSupabaseConfigured) return true
-    const { error } = await supabase.from(tabla).delete().eq('id', id)
+    let error
+    try {
+      ({ error } = await supabase.from(tabla).delete().eq('id', id))
+    } catch (thrown) {
+      error = thrown
+    }
     if (!error) return true
     setLista((prev) => {
       if (!anterior || prev.some((item) => item.id === id)) return prev
@@ -682,15 +703,22 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return false
   }
 
+
   const addNota = async (nueva) => {
     const conFecha = { ...nueva, fecha: todayKey }
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('notas').insert({ ...conFecha, barberia_id: barberiaId }).select()
-      if (error) { reportError('No se pudo guardar la nota', error); return }
-      if (data?.[0]) setNotas((prev) => [data[0], ...prev])
-      return
+      try {
+        const { data, error } = await supabase.from('notas').insert({ ...conFecha, barberia_id: barberiaId }).select()
+        if (error) { reportError('No se pudo guardar la nota', error); return false }
+        if (data?.[0]) setNotas((prev) => [data[0], ...prev])
+        return true
+      } catch (error) {
+        reportError('No se pudo guardar la nota', error)
+        return false
+      }
     }
     setNotas((prev) => [{ id: nextLocalId(prev), ...conFecha }, ...prev])
+    return true
   }
 
   const openConversation = async (convId) => {
@@ -715,27 +743,35 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const updateTurnoEstado = async (turnoId, nuevoEstado) => {
     const estadoAnterior = turnos.find((t) => t.id === turnoId)?.estado
     setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, estado: nuevoEstado } : t)))
-    if (isSupabaseConfigured) {
+    if (!isSupabaseConfigured) return true
+    try {
       const { error } = await supabase.from('turnos').update({ estado: nuevoEstado }).eq('id', turnoId)
       if (error) {
         setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, estado: estadoAnterior } : t)))
         reportError('No se pudo actualizar el estado del turno', error)
         return false
       }
+      return true
+    } catch (error) {
+      setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, estado: estadoAnterior } : t)))
+      reportError('No se pudo actualizar el estado del turno', error)
+      return false
     }
-    return true
   }
 
   // Antes de marcar un turno como "Atendido" pedimos cómo se cobró. El
   // estado del turno recién se actualiza cuando se confirma el cobro
   // (o si cancela el modal, el turno se queda como estaba).
-  const pedirEstadoOCobro = (turnoId, nuevoEstado) => {
+  const pedirEstadoOCobro = async (turnoId, nuevoEstado) => {
     if (nuevoEstado !== 'atendido') {
-      updateTurnoEstado(turnoId, nuevoEstado)
-      return
+      return updateTurnoEstado(turnoId, nuevoEstado)
     }
     const turno = turnos.find((t) => t.id === turnoId)
-    if (turno) setCobroTurno(turno)
+    if (turno) {
+      setCobroTurno(turno)
+      return true
+    }
+    return false
   }
 
   const confirmarCobro = async ({ monto, metodo }) => {
@@ -892,12 +928,19 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const updatePaciente = async (id, cambios) => {
     const anterior = pacientes.find((p) => p.id === id)
     setPacientes((prev) => prev.map((p) => (p.id === id ? { ...p, ...cambios } : p)))
-    if (isSupabaseConfigured) {
+    if (!isSupabaseConfigured) return true
+    try {
       const { error } = await supabase.from('clientes').update(cambios).eq('id', id)
       if (error) {
         if (anterior) setPacientes((prev) => prev.map((p) => (p.id === id ? anterior : p)))
         reportError('No se pudo actualizar el cliente', error)
+        return false
       }
+      return true
+    } catch (error) {
+      if (anterior) setPacientes((prev) => prev.map((p) => (p.id === id ? anterior : p)))
+      reportError('No se pudo actualizar el cliente', error)
+      return false
     }
   }
 
@@ -906,12 +949,19 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const updateNota = async (id, texto) => {
     const anterior = notas.find((n) => n.id === id)
     setNotas((prev) => prev.map((n) => (n.id === id ? { ...n, texto } : n)))
-    if (isSupabaseConfigured) {
+    if (!isSupabaseConfigured) return true
+    try {
       const { error } = await supabase.from('notas').update({ texto }).eq('id', id)
       if (error) {
         if (anterior) setNotas((prev) => prev.map((n) => (n.id === id ? anterior : n)))
         reportError('No se pudo actualizar la nota', error)
+        return false
       }
+      return true
+    } catch (error) {
+      if (anterior) setNotas((prev) => prev.map((n) => (n.id === id ? anterior : n)))
+      reportError('No se pudo actualizar la nota', error)
+      return false
     }
   }
 
@@ -935,15 +985,24 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     })
 
     if (isSupabaseConfigured) {
-      const { error } = await supabase.from('mensajes').insert({ ...nuevoMensaje, barberia_id: barberiaId })
-      if (error) {
+      try {
+        const { error } = await supabase.from('mensajes').insert({ ...nuevoMensaje, barberia_id: barberiaId })
+        if (error) {
         setConversaciones((prev) => prev.map((c) => {
           if (!esLaConversacion(c)) return c
           return { ...c, mensajes: mensajesAnteriores, ultimaHora: conversacionAnterior?.ultimaHora ?? null, ultimoCreatedAt: conversacionAnterior?.ultimoCreatedAt ?? new Date(0).toISOString() }
         }))
         reportError('No se pudo guardar el mensaje', error)
-        // Sin registro en el panel no lo enviamos: el cliente recibiría un
-        // mensaje que nadie del equipo puede ver. El chat conserva el borrador.
+          // Sin registro en el panel no lo enviamos: el cliente recibiría un
+          // mensaje que nadie del equipo puede ver. El chat conserva el borrador.
+          return false
+        }
+      } catch (error) {
+        setConversaciones((prev) => prev.map((c) => {
+          if (!esLaConversacion(c)) return c
+          return { ...c, mensajes: mensajesAnteriores, ultimaHora: conversacionAnterior?.ultimaHora ?? null, ultimoCreatedAt: conversacionAnterior?.ultimoCreatedAt ?? new Date(0).toISOString() }
+        }))
+        reportError('No se pudo guardar el mensaje', error)
         return false
       }
     }
@@ -984,6 +1043,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         }
       }
     }
+    return true
   }
 
   const addServicio = async () => {
@@ -1001,7 +1061,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       if (error) {
         const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
         reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo crear el servicio', error)
-        return
+        return false
       }
       if (data?.[0]) {
         const nuevoServicio = data[0]
@@ -1014,8 +1074,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         }
         setServicios((prev) => [...prev, servicioFromDb(nuevoServicio)])
       }
+      return true
     } else {
       setServicios((prev) => [...prev, { id: nextLocalId(prev), ...base }])
+      return true
     }
   }
 
@@ -1024,61 +1086,60 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   // con updates en paralelo la base podía quedarse con uno intermedio.
   // Sólo precio y duración son numéricos (antes la descripción se volvía 0).
   const updateServicio = async (id, field, value) => {
-    const parsed = CAMPOS_NUMERICOS_SERVICIO.has(field) ? Number(value) || 0 : value
+    const parsed = ['nombre', 'descripcion'].includes(field) ? value : Number(value) || 0
+    const anterior = servicios.find((s) => s.id === id)
     setServicios((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: parsed } : s)))
-    if (!isSupabaseConfigured) return
-
+    if (!isSupabaseConfigured) return true
     const key = `${id}:${field}`
-    const estado = servicioWritesRef.current[key] || { inFlight: false, latest: parsed, guardado: servicios.find((s) => s.id === id)?.[field] }
-    estado.latest = parsed
-    servicioWritesRef.current[key] = estado
-    if (estado.inFlight) return
-
-    const dbField = field === 'duracion' ? 'duracion_min' : field
-    estado.inFlight = true
-    try {
-      while (true) {
-        const valorAGuardar = estado.latest
-        const { error } = await supabase.from('servicios').update({ [dbField]: valorAGuardar }).eq('id', id)
-        if (!error) estado.guardado = valorAGuardar
-        if (estado.latest !== valorAGuardar) continue // llegó un valor más nuevo: lo mandamos
-        if (error) {
-          // Sólo el valor final revierte y avisa: un nombre intermedio que
-          // coincide con otro servicio no debe interrumpir mientras se tipea.
-          setServicios((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: estado.guardado } : s)))
-          const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
-          reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo actualizar el servicio', error)
-        }
-        break
+    return enqueueLatest(servicioWritesRef.current, key, parsed, async (valueToSave) => {
+      const dbField = field === 'duracion' ? 'duracion_min' : field
+      try {
+        const { error } = await supabase.from('servicios').update({ [dbField]: valueToSave }).eq('id', id)
+        if (!error) return true
+        if (servicioWritesRef.current[key]?.latest === valueToSave && anterior) setServicios((prev) => prev.map((s) => (s.id === id ? anterior : s)))
+        const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
+        reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo actualizar el servicio', error)
+        return false
+      } catch (error) {
+        if (servicioWritesRef.current[key]?.latest === valueToSave && anterior) setServicios((prev) => prev.map((s) => (s.id === id ? anterior : s)))
+        reportError('No se pudo actualizar el servicio', error)
+        return false
       }
-    } finally {
-      estado.inFlight = false
-    }
+    })
   }
 
   const reactivarServicio = async (id) => {
     const anterior = servicios.find((s) => s.id === id)
     setServicios((prev) => prev.map((s) => (s.id === id ? { ...s, activo: true } : s)))
     if (isSupabaseConfigured) {
-      const { error } = await supabase.from('servicios').update({ activo: true }).eq('id', id)
-      if (error) {
+      try {
+        const { error } = await supabase.from('servicios').update({ activo: true }).eq('id', id)
+        if (error) {
+          if (anterior) setServicios((prev) => prev.map((s) => (s.id === id ? anterior : s)))
+          reportError('No se pudo reactivar el servicio', error)
+          return false
+        }
+        return true
+      } catch (error) {
         if (anterior) setServicios((prev) => prev.map((s) => (s.id === id ? anterior : s)))
         reportError('No se pudo reactivar el servicio', error)
+        return false
       }
     }
+    return true
   }
 
   const deleteServicio = async (id) => {
     if (!isSupabaseConfigured) {
       setServicios((prev) => prev.filter((s) => s.id !== id))
-      return
+      return true
     }
 
     const { error } = await supabase.from('servicios').delete().eq('id', id)
 
     if (!error) {
       setServicios((prev) => prev.filter((s) => s.id !== id))
-      return
+      return true
     }
 
     // Si el error es porque hay turnos que usan este servicio (foreign key),
@@ -1093,14 +1154,15 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         .select()
       if (updateError) {
         reportError('No se pudo desactivar el servicio', updateError)
-        return
+        return false
       }
       if (data?.[0]) setServicios((prev) => prev.map((s) => (s.id === id ? servicioFromDb(data[0]) : s)))
       setDbError('Este servicio tiene turnos asociados, asi que no se puede borrar sin perder ese historial. Lo desactivamos: ya no va a aparecer para agendar turnos nuevos.')
-      return
+      return true
     }
 
     reportError('No se pudo eliminar el servicio', error)
+    return false
   }
 
   const addBarbero = async () => {
@@ -1110,7 +1172,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         .from('barberos')
         .insert({ nombre: base.nombre, especialidad: base.rol, color: base.color, horario_texto: base.horario, activo: base.activo, barberia_id: barberiaId })
         .select()
-      if (error) { reportError('No se pudo crear el barbero', error); return }
+      if (error) { reportError('No se pudo crear el barbero', error); return false }
       if (data?.[0]) {
         const nuevoBarbero = data[0]
         // El alta conserva el horario inicial que muestra el panel y deja al
@@ -1137,8 +1199,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         }
         setBarberos((prev) => [...prev, barberoFromDb(nuevoBarbero, relaciones, horariosIniciales)])
       }
+      return true
     } else {
       setBarberos((prev) => [...prev, { id: nextLocalId(prev), ...base }])
+      return true
     }
   }
 
@@ -1148,21 +1212,22 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   // salen siempre de a uno y en orden — nunca se pisan entre sí ni puede
   // "ganar" un click viejo por llegar después que uno nuevo.
   const updateBarbero = async (id, field, value) => {
+    const anterior = barberos.find((barbero) => barbero.id === id)
     setBarberos((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)))
     if (!isSupabaseConfigured) return
 
     const key = `${id}:${field}`
-    const estado = barberoWritesRef.current[key] || { inFlight: false, latest: value }
+    const estado = barberoWritesRef.current[key] || { inFlight: false, latest: value, promise: null }
     estado.latest = value
     barberoWritesRef.current[key] = estado
 
-    if (estado.inFlight) return // ya hay un guardado de este campo en curso, el loop de abajo lo va a mandar solo
+    if (estado.inFlight) return estado.promise // ya hay un guardado de este campo en curso, el loop de abajo lo va a mandar solo
 
     const dbFieldMap = { rol: 'especialidad', horario: 'horario_texto', habilidades: 'habilidades' }
     const dbField = dbFieldMap[field] || field
 
     estado.inFlight = true
-    try {
+    estado.promise = (async () => {
       while (true) {
         const valorAGuardar = estado.latest
         const { error } = await supabase.from('barberos').update({ [dbField]: valorAGuardar }).eq('id', id)
@@ -1210,9 +1275,15 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         if (estado.latest === valorAGuardar) break // no llego nada nuevo mientras se guardaba, listo
         // si llego un valor mas nuevo mientras se guardaba, el loop repite y lo manda
       }
-    } finally {
+    })().catch((error) => {
+      if (estado.latest === value && anterior) setBarberos((prev) => prev.map((barbero) => (barbero.id === id ? anterior : barbero)))
+      reportError('No se pudo actualizar el barbero', error)
+      return false
+    }).finally(() => {
       estado.inFlight = false
-    }
+      estado.promise = null
+    })
+    return estado.promise
   }
 
   const deleteBarbero = (id) => eliminarOptimista(barberos, setBarberos, id, 'barberos', 'No se pudo eliminar el barbero')
@@ -1254,7 +1325,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         onAccountSecurity={() => (demoMode ? navigateFromMenu('configuracion') : window.location.assign('/cuenta'))}
         demoMode={demoMode}
       />
-      <main className="main">
+      <main ref={mainRef} className="main route-focus-target" tabIndex="-1">
         {demoMode ? (
           <div className="demo-mode-banner" role="status">
             <div className="demo-mode-banner__message"><Info size={15} /><span><strong>Modo demostración</strong><small>Los cambios son temporales y sólo viven en este navegador. WhatsApp está en validación y esta demo no envía mensajes.</small></span></div>
@@ -1314,13 +1385,13 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                 <StatsCards turnos={turnosHoy} conversaciones={conversaciones} todayKey={todayKey} />
                 <div className="two-col">
                   <div className="panel resumen-agenda-panel">
-                    <p className="panel-title">
+                    <h2 className="panel-title">
                       <span className="panel-title-icon"><CalendarCheck size={16} style={{ color: 'var(--accent)' }} />Agenda de hoy</span>
                       <button className="link-btn" onClick={openNewTurno}>
                         <Plus size={13} strokeWidth={2.5} />
                         Nuevo
                       </button>
-                    </p>
+                    </h2>
                     <div className="resumen-agenda-scroll">
                       <Agenda
                         turnos={turnosHoy}

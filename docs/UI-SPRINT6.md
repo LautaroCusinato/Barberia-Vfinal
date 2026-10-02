@@ -27,7 +27,7 @@ La implementación aplica **Austral SaaS Architecture** (sin cambios de Supabase
 
 Para Barbería la propuesta principal es: **“Turnos, equipo y clientes en un solo lugar.”**
 
-El subtítulo explica el alcance real: reservas online, agenda, clientes, empleados, servicios y horarios conectados. El CTA primario es **“Probar gratis 14 días”** y el secundario **“Ver cómo funciona”**.
+El subtítulo explica el alcance real: reservas online, agenda, clientes, empleados, servicios y horarios conectados. El CTA primario es **“Probar gratis 15 días”** y el secundario **“Ver cómo funciona”**.
 
 En otras verticales se reutiliza la misma arquitectura y se adapta el título a la vertical normalizada, sin duplicar páginas ni lógica.
 

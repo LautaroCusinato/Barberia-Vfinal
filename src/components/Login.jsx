@@ -3,6 +3,7 @@ import { Lock, Mail, KeyRound, Scissors, UserPlus, HelpCircle, LoaderCircle } fr
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 export { logout } from '../lib/auth.js'
 import { DEFAULT_BUSINESS_NAME } from '../lib/tenant'
+import { safeAuthNext } from '../lib/authRedirect'
 import { PasswordField } from './ui'
 
 export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME }) {
@@ -32,7 +33,8 @@ export default function Login({ onSuccess, businessName = DEFAULT_BUSINESS_NAME 
       return
     }
 
-    onSuccess()
+    const redirect = safeAuthNext(new URLSearchParams(window.location.search).get('redirect'), '/')
+    onSuccess(redirect)
   }
 
   return (

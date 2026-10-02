@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Palette, Plus, Scissors, Settings, Trash2, UserRound, Coffee, Check } from 'lucide-react'
 import { generarIdHabilidad, parseHabilidades, serializeHabilidades } from '../lib/text'
+import { EmptyState } from './ui'
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -105,6 +106,26 @@ export default function Operations({
   // sin persistir todavía un horario incompleto en Supabase.
   const [breakDrafts, setBreakDrafts] = useState({})
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [pending, setPending] = useState({})
+  const [errors, setErrors] = useState({})
+  const pendingTokens = useRef({})
+
+  const runMutation = (key, action) => {
+    const token = Symbol(key)
+    pendingTokens.current[key] = token
+    setPending((current) => ({ ...current, [key]: true }))
+    setErrors((current) => ({ ...current, [key]: '' }))
+    Promise.resolve().then(action).then((result) => {
+      if (result === false) setErrors((current) => ({ ...current, [key]: 'No se pudo guardar. Intentá de nuevo.' }))
+    }).catch(() => {
+      setErrors((current) => ({ ...current, [key]: 'No se pudo guardar. Revisá tu conexión e intentá de nuevo.' }))
+    }).finally(() => {
+      if (pendingTokens.current[key] === token) setPending((current) => ({ ...current, [key]: false }))
+    })
+  }
+
+  const mutateService = (id, field, value) => runMutation(`servicio:${id}:${field}`, () => onUpdateServicio(id, field, value))
+  const mutateBarbero = (id, field, value) => runMutation(`barbero:${id}:${field}`, () => onUpdateBarbero(id, field, value))
 
   const horarioDe = (barbero) => {
     const base = parseHorario(barbero.horario)
@@ -129,7 +150,7 @@ export default function Operations({
       delete next[barbero.id]
       return next
     })
-    onUpdateBarbero(
+    mutateBarbero(
       barbero.id,
       'horario',
       serializeHorario(nuevosDias, parsed.desde, parsed.hasta, parsed.breakDesde, parsed.breakHasta)
@@ -147,7 +168,7 @@ export default function Operations({
       delete next[barbero.id]
       return next
     })
-    onUpdateBarbero(
+    mutateBarbero(
       barbero.id,
       'horario',
       serializeHorario(parsed.dias, desde, hasta, breakDesde, breakHasta)
@@ -165,7 +186,7 @@ export default function Operations({
         delete next[barbero.id]
         return next
       })
-      onUpdateBarbero(barbero.id, 'horario', serializeHorario(parsed.dias, parsed.desde, parsed.hasta, '', ''))
+      mutateBarbero(barbero.id, 'horario', serializeHorario(parsed.dias, parsed.desde, parsed.hasta, '', ''))
       return
     }
 
@@ -190,7 +211,7 @@ export default function Operations({
         delete next[barbero.id]
         return next
       })
-      onUpdateBarbero(
+      mutateBarbero(
         barbero.id,
         'horario',
         serializeHorario(parsed.dias, parsed.desde, parsed.hasta, breakDesde, breakHasta)
@@ -203,7 +224,7 @@ export default function Operations({
     const nuevas = actuales.includes(habilidadId)
       ? actuales.filter(h => h !== habilidadId)
       : [...actuales, habilidadId]
-    onUpdateBarbero(barbero.id, 'habilidades', serializeHabilidades(nuevas))
+    mutateBarbero(barbero.id, 'habilidades', serializeHabilidades(nuevas))
   }
 
   return (
@@ -225,6 +246,9 @@ export default function Operations({
           <span><Scissors size={14} />{servicios.length} servicios</span>
         </div>
       </div>
+      {Object.values(errors).some(Boolean) && (
+        <div className="error-banner" role="alert">{Object.values(errors).find(Boolean)}</div>
+      )}
 
       <div className="two-col">
         <div className="panel management-section management-services">
@@ -233,14 +257,21 @@ export default function Operations({
               <Scissors size={16} />
               Servicios y precios
             </span>
-            <button className="link-btn management-add-action" onClick={onAddServicio}>
+            <button className="link-btn management-add-action" onClick={() => runMutation('servicio:add', onAddServicio)} disabled={pending['servicio:add']} aria-busy={pending['servicio:add']}>
               <Plus size={13} strokeWidth={2.5} />
               Agregar
             </button>
           </p>
 
           <div className="ops-edit-list">
-            {servicios.map((servicio) => (
+            {servicios.length === 0 ? (
+              <EmptyState
+                className="empty-state"
+                icon={<Scissors size={26} aria-hidden="true" style={{ color: 'var(--border-strong)' }} />}
+                title="Todavía no hay servicios configurados"
+                action={<button type="button" className="btn btn-primary" onClick={() => runMutation('servicio:add', onAddServicio)} disabled={pending['servicio:add']}><Plus size={14} /> Agregar servicio</button>}
+              />
+            ) : servicios.map((servicio) => (
               <div className="ops-edit-row management-service-row" key={servicio.id}>
                 <div className="ops-edit-main">
                   <label>
@@ -249,7 +280,8 @@ export default function Operations({
                       <input
                         className="text-input"
                         value={servicio.nombre}
-                        onChange={(e) => onUpdateServicio(servicio.id, 'nombre', e.target.value)}
+                        onChange={(e) => mutateService(servicio.id, 'nombre', e.target.value)}
+                        aria-busy={pending[`servicio:${servicio.id}:nombre`]}
                         placeholder="Ej: Corte clásico"
                       />
                       {servicio.activo === false && (
@@ -267,7 +299,8 @@ export default function Operations({
                         type="button"
                         className="link-btn"
                         style={{ display: 'inline', fontSize: 11.5, padding: 0 }}
-                        onClick={() => onReactivarServicio(servicio.id)}
+                        onClick={() => runMutation(`servicio:${servicio.id}:reactivar`, () => onReactivarServicio(servicio.id))}
+                        disabled={pending[`servicio:${servicio.id}:reactivar`]}
                       >
                         Reactivar
                       </button>
@@ -280,7 +313,8 @@ export default function Operations({
                       className="text-input"
                       placeholder="Ej: Corte con tijera y máquina, degradado"
                       value={servicio.descripcion || ''}
-                      onChange={(e) => onUpdateServicio(servicio.id, 'descripcion', e.target.value)}
+                        onChange={(e) => mutateService(servicio.id, 'descripcion', e.target.value)}
+                        aria-busy={pending[`servicio:${servicio.id}:descripcion`]}
                     />
                   </label>
 
@@ -293,7 +327,8 @@ export default function Operations({
                         min="0"
                         step="100"
                         value={servicio.precio}
-                        onChange={(e) => onUpdateServicio(servicio.id, 'precio', e.target.value)}
+                        onChange={(e) => mutateService(servicio.id, 'precio', e.target.value)}
+                        aria-busy={pending[`servicio:${servicio.id}:precio`]}
                       />
                     </label>
                     <label>
@@ -304,7 +339,8 @@ export default function Operations({
                         min="5"
                         step="5"
                         value={servicio.duracion}
-                        onChange={(e) => onUpdateServicio(servicio.id, 'duracion', e.target.value)}
+                        onChange={(e) => mutateService(servicio.id, 'duracion', e.target.value)}
+                        aria-busy={pending[`servicio:${servicio.id}:duracion`]}
                       />
                     </label>
                   </div>
@@ -316,7 +352,8 @@ export default function Operations({
                     <button
                       type="button"
                       className="btn-icon-plain danger-solid"
-                      onClick={() => { onDeleteServicio(servicio.id); setConfirmDelete(null) }}
+                      onClick={() => runMutation(`servicio:${servicio.id}:delete`, async () => { const result = await onDeleteServicio(servicio.id); if (result !== false) setConfirmDelete(null); return result })}
+                      disabled={pending[`servicio:${servicio.id}:delete`]}
                       aria-label="Confirmar eliminar servicio"
                     >
                       <Trash2 size={15} />
@@ -352,7 +389,7 @@ export default function Operations({
               <UserRound size={16} />
               Barberos disponibles
             </span>
-            <button className="link-btn management-add-action" onClick={onAddBarbero}>
+            <button className="link-btn management-add-action" onClick={() => runMutation('barbero:add', onAddBarbero)} disabled={pending['barbero:add']} aria-busy={pending['barbero:add']}>
               <Plus size={13} strokeWidth={2.5} />
               Agregar
             </button>
@@ -381,7 +418,8 @@ export default function Operations({
                         <input
                           className="text-input"
                           value={barbero.nombre}
-                          onChange={(e) => onUpdateBarbero(barbero.id, 'nombre', e.target.value)}
+                          onChange={(e) => mutateBarbero(barbero.id, 'nombre', e.target.value)}
+                          aria-busy={pending[`barbero:${barbero.id}:nombre`]}
                           placeholder="Ej: Tomás Vega"
                         />
                       </label>
@@ -394,7 +432,8 @@ export default function Operations({
                           className="color-input"
                           type="color"
                           value={barbero.color}
-                          onChange={(e) => onUpdateBarbero(barbero.id, 'color', e.target.value)}
+                          onChange={(e) => mutateBarbero(barbero.id, 'color', e.target.value)}
+                          aria-busy={pending[`barbero:${barbero.id}:color`]}
                         />
                       </label>
                     </div>
@@ -420,6 +459,7 @@ export default function Operations({
                                     : undefined
                                 }
                                 onClick={() => toggleHabilidad(barbero, hab.id)}
+                                disabled={pending[`barbero:${barbero.id}:habilidades`]}
                               >
                                 {hab.label}
                                 {seleccionada && <Check size={12} className="habilidad-check" />}
@@ -444,6 +484,7 @@ export default function Operations({
                                 : undefined
                             }
                             onClick={() => toggleDia(barbero, dia)}
+                            disabled={pending[`barbero:${barbero.id}:horario`]}
                           >
                             {dia}
                           </button>
@@ -458,6 +499,7 @@ export default function Operations({
                           className="text-input"
                           value={horario.desde}
                           onChange={(e) => updateHora(barbero, 'desde', e.target.value)}
+                          disabled={pending[`barbero:${barbero.id}:horario`]}
                         >
                           {HORAS.map((h) => (
                             <option key={h} value={h}>{h}</option>
@@ -470,6 +512,7 @@ export default function Operations({
                           className="text-input"
                           value={horario.hasta}
                           onChange={(e) => updateHora(barbero, 'hasta', e.target.value)}
+                          disabled={pending[`barbero:${barbero.id}:horario`]}
                         >
                           {HORAS.map((h) => (
                             <option key={h} value={h}>{h}</option>
@@ -488,6 +531,7 @@ export default function Operations({
                           className="text-input"
                           value={horario.breakDesde}
                           onChange={(e) => updateBreak(barbero, 'breakDesde', e.target.value)}
+                          disabled={pending[`barbero:${barbero.id}:horario`]}
                         >
                           <option value="">Sin pausa</option>
                           {HORAS.map((h) => (
@@ -498,6 +542,7 @@ export default function Operations({
                           className="text-input"
                           value={horario.breakHasta}
                           onChange={(e) => updateBreak(barbero, 'breakHasta', e.target.value)}
+                          disabled={pending[`barbero:${barbero.id}:horario`]}
                         >
                           <option value="">Sin pausa</option>
                           {HORAS.map((h) => (
@@ -517,7 +562,8 @@ export default function Operations({
                       <button
                         type="button"
                         className="btn-icon-plain danger-solid"
-                        onClick={() => { onDeleteBarbero(barbero.id); setConfirmDelete(null) }}
+                        onClick={() => runMutation(`barbero:${barbero.id}:delete`, async () => { const result = await onDeleteBarbero(barbero.id); if (result !== false) setConfirmDelete(null); return result })}
+                        disabled={pending[`barbero:${barbero.id}:delete`]}
                         aria-label="Confirmar eliminar barbero"
                       >
                         <Trash2 size={15} />

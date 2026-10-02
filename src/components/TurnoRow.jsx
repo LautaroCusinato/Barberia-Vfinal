@@ -7,6 +7,8 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
   const wrapRef = useRef(null)
 
   const notasPaciente = (notas || []).filter((n) => n.paciente === turno.paciente)
@@ -29,9 +31,31 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
   const guardarNota = async () => {
     if (!draft.trim()) return
     setSaving(true)
-    await onAddNota({ paciente: turno.paciente, texto: draft.trim() })
-    setDraft('')
-    setSaving(false)
+    setErrorMsg('')
+    try {
+      const saved = await onAddNota({ paciente: turno.paciente, texto: draft.trim() })
+      if (saved !== false) setDraft('')
+      else setErrorMsg('No se pudo guardar la nota. El borrador quedó preservado.')
+    } catch {
+      setErrorMsg('No se pudo guardar la nota. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const eliminarTurno = async () => {
+    if (deleting) return
+    setDeleting(true)
+    setErrorMsg('')
+    try {
+      const removed = await onDeleteTurno(turno.id)
+      if (removed !== false) setConfirmDelete(false)
+      else setErrorMsg('No se pudo eliminar el turno. Sigue disponible para reintentar.')
+    } catch {
+      setErrorMsg('No se pudo eliminar el turno. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -68,7 +92,8 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
       <div className="agenda-actions" style={{ flexShrink: 0 }}>
         <button
           className={`btn-icon-plain ${notasPaciente.length > 0 ? 'has-notes' : ''}`}
-          onClick={() => { setNotesOpen((v) => !v); setConfirmDelete(false) }}
+          onClick={() => { setErrorMsg(''); setNotesOpen((v) => !v); setConfirmDelete(false) }}
+          disabled={saving || deleting}
           aria-label="Notas del cliente"
           title="Notas del cliente"
         >
@@ -78,14 +103,15 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
 
         <StatusSelect value={turno.estado} onChange={(v) => onChangeEstado(turno.id, v)} />
 
-        <button className="btn-icon-plain" onClick={() => onEditTurno(turno)} aria-label="Editar turno" title="Editar turno">
+        <button className="btn-icon-plain" onClick={() => onEditTurno(turno)} disabled={saving || deleting} aria-label="Editar turno" title="Editar turno">
           <Pencil size={14} />
         </button>
 
         <span className="delete-btn-wrap">
           <button
             className={`btn-icon-plain ${confirmDelete ? 'danger-active' : ''}`}
-            onClick={() => { setConfirmDelete((v) => !v); setNotesOpen(false) }}
+            onClick={() => { setErrorMsg(''); setConfirmDelete((v) => !v); setNotesOpen(false) }}
+            disabled={saving || deleting}
             aria-label="Eliminar turno"
             title="Eliminar turno"
           >
@@ -95,11 +121,11 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
             <div className="delete-confirm-popover">
               <p className="delete-confirm-text">¿Eliminar este turno?</p>
               <div className="delete-confirm-buttons">
-                <button className="btn-icon-plain danger-solid" onClick={() => onDeleteTurno(turno.id)} aria-label="Confirmar eliminar turno">
+                <button className="btn-icon-plain danger-solid" onClick={eliminarTurno} disabled={deleting} aria-label="Confirmar eliminar turno">
                   <Check size={13} strokeWidth={2.75} />
-                  <span>Eliminar</span>
+                  <span>{deleting ? 'Eliminando...' : 'Eliminar'}</span>
                 </button>
-                <button className="btn-icon-plain" onClick={() => setConfirmDelete(false)} aria-label="Cancelar">
+                <button className="btn-icon-plain" onClick={() => setConfirmDelete(false)} disabled={deleting} aria-label="Cancelar">
                   <X size={13} strokeWidth={2.75} />
                   <span>Cancelar</span>
                 </button>
@@ -130,7 +156,9 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
+            disabled={saving}
           />
+          {errorMsg && <p className="login-error" role="alert">{errorMsg}</p>}
           <button
             className="btn btn-primary"
             style={{ width: '100%', justifyContent: 'center', marginTop: 6 }}

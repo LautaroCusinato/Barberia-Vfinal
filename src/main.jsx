@@ -88,7 +88,7 @@ function SinBarberia() {
       <p className="centered-state__eyebrow">Austral Automatizaciones</p>
       <h1 className="centered-state__title">Creá tu primer negocio</h1>
       <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
-        Tu cuenta está lista. Completá el asistente para activar tu prueba gratuita de 14 días.
+        Tu cuenta está lista. Completá el asistente para activar tu prueba gratuita de 15 días.
       </p>
       <div className="centered-state__actions"><button className="btn btn-primary" onClick={() => window.location.assign('/onboarding')}>Configurar negocio</button></div>
       <button className="btn" onClick={() => logout()}>Cerrar sesión</button>
@@ -105,7 +105,6 @@ const bookingMatch = window.location.pathname.match(/^\/reservar\/([^/]+)\/?$/)
 const invitationMatch = window.location.pathname.match(/^\/invitacion\/([^/]+)\/?$/)
 const verticalMatch = window.location.pathname.match(/^\/para\/([^/]+)\/?$/)
 const path = window.location.pathname
-const isPublicLandingPath = path === '/' || Boolean(verticalMatch)
 function LandingFallback() {
   return (
     <div className="marketing-page" data-public-landing="true">
@@ -163,6 +162,25 @@ function RootSuspenseFallback() {
   return hasWorkspaceTransition() ? <WorkspacePreparing /> : <RouteLoading />
 }
 
+function WorkspaceResolutionError({ onRetry, retrying = false }) {
+  return (
+    <main className="centered-state" role="status" aria-live="polite" aria-busy={retrying}>
+      <div className="centered-state__card">
+        <p className="centered-state__eyebrow">Austral Automatizaciones</p>
+        <h1 className="centered-state__title">No pudimos cargar tu espacio de trabajo.</h1>
+        <p style={{ color: 'var(--ink-faint)', fontSize: 13.5, marginBottom: 20 }}>
+          Tu sesión sigue activa. Reintentá la resolución del workspace para continuar.
+        </p>
+        <div className="centered-state__actions">
+          <button className="btn btn-primary" type="button" onClick={onRetry} disabled={retrying} aria-busy={retrying}>
+            {retrying ? 'Reintentando…' : 'Reintentar'}
+          </button>
+        </div>
+      </div>
+    </main>
+  )
+}
+
 function leerCache() {
   try {
     const raw = sessionStorage.getItem(CACHE_KEY)
@@ -182,7 +200,7 @@ function guardarCache(id, nombre) {
 }
 
 function Root() {
-  const [authed, setAuthed] = useState(false)
+  const [authStatus, setAuthStatus] = useState(isSupabaseConfigured ? 'unknown' : 'anonymous')
   const [checking, setChecking] = useState(isSupabaseConfigured)
 
   // Resolucion de la barberia del usuario logueado, via barberia_members.
@@ -196,11 +214,14 @@ function Root() {
   const [workspace, setWorkspace] = useState(null)
   const [onboardingNeeded, setOnboardingNeeded] = useState(false)
   const [workspaceTransition, setWorkspaceTransition] = useState(hasWorkspaceTransition)
+  const [workspaceError, setWorkspaceError] = useState('')
+  const [workspaceRetrying, setWorkspaceRetrying] = useState(false)
 
   const yaResolvioAlgunaVezRef = useRef(false)
   const resolvedUserIdRef = useRef(null)
   const sessionResolutionRef = useRef(null)
   const lastBackgroundRevalidationRef = useRef(0)
+  const currentSessionRef = useRef(null)
 
   const resolverBarberia = async (userId, { preserveUi = false } = {}) => {
     const [tenantResult, platformResult] = await Promise.all([
@@ -221,17 +242,15 @@ function Root() {
       // Mobile resume can be temporarily offline. Keep the authorized UI
       // mounted and retry in background instead of showing WorkspacePreparing.
       if (preserveUi && yaResolvioAlgunaVezRef.current) return false
-      setOpciones([])
-      setOnboardingNeeded(true)
-      if (hasPlatformMembership) {
-        saveWorkspacePreference('platform')
-        setWorkspace('platform')
-      } else {
-        clearWorkspacePreference()
-        setWorkspace(null)
-      }
+      setWorkspaceError('No pudimos cargar tu espacio de trabajo.')
+      setOpciones(null)
+      setOnboardingNeeded(false)
+      setPlatformMember(false)
+      setPlatformRole(null)
+      setWorkspace(null)
       return false
     }
+    setWorkspaceError('')
     const preference = readWorkspacePreference()
     const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
 
@@ -307,13 +326,15 @@ function Root() {
     let mounted = true
 
     const resolveSession = async (session, { background = false } = {}) => {
-      setAuthed(Boolean(session))
+      currentSessionRef.current = session
+      setAuthStatus(session ? 'authenticated' : 'anonymous')
       if (!session) {
         resolvedUserIdRef.current = null
         yaResolvioAlgunaVezRef.current = false
         clearWorkspacePreference()
         clearWorkspaceTransition()
         setWorkspaceTransition(false)
+        setWorkspaceError('')
         setChecking(false)
         return
       }
@@ -331,6 +352,8 @@ function Root() {
           resolvedUserIdRef.current = session.user.id
           yaResolvioAlgunaVezRef.current = true
         }
+      } catch {
+        setWorkspaceError('No pudimos cargar tu espacio de trabajo.')
       } finally {
         clearWorkspaceTransition()
         if (mounted) {
@@ -347,7 +370,8 @@ function Root() {
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      setAuthed(Boolean(session))
+      currentSessionRef.current = session
+      setAuthStatus(session ? 'authenticated' : 'anonymous')
       if (!session) {
         resolvedUserIdRef.current = null
         yaResolvioAlgunaVezRef.current = false
@@ -359,6 +383,8 @@ function Root() {
         setPlatformRole(null)
         setWorkspace(null)
         setOnboardingNeeded(false)
+        setWorkspaceError('')
+        setChecking(false)
         return
       }
       // Supabase dispara este mismo evento tambien cuando solo renueva el
@@ -400,12 +426,37 @@ function Root() {
     }
   }, [])
 
-  if (checking) return workspaceTransition ? <WorkspacePreparing /> : (isPublicLandingPath ? <LandingFallback /> : <RouteLoading />)
+  const retryWorkspaceResolution = async () => {
+    const session = currentSessionRef.current
+    if (!session?.user?.id || workspaceRetrying) return
+    setWorkspaceRetrying(true)
+    setWorkspaceError('')
+    setChecking(true)
+    try {
+      const resolved = await resolverBarberia(session.user.id)
+      if (resolved !== false) {
+        resolvedUserIdRef.current = session.user.id
+        yaResolvioAlgunaVezRef.current = true
+      }
+    } catch {
+      setWorkspaceError('No pudimos cargar tu espacio de trabajo.')
+    } finally {
+      if (currentSessionRef.current?.user?.id === session.user.id) {
+        clearWorkspaceTransition()
+        setWorkspaceTransition(false)
+        setChecking(false)
+      }
+      setWorkspaceRetrying(false)
+    }
+  }
+
+  if (checking || authStatus === 'unknown') return workspaceTransition ? <WorkspacePreparing /> : <RouteLoading />
+  if (workspaceError) return <WorkspaceResolutionError onRetry={retryWorkspaceResolution} retrying={workspaceRetrying} />
   // En modo demo local no hay sesión real: conservamos el panel de ejemplo.
   if (!isSupabaseConfigured) {
     return <App barberiaId={DEFAULT_TENANT_ID} barberiaNombre={DEFAULT_BUSINESS_NAME} vertical={DEFAULT_VERTICAL} />
   }
-  if (!authed) return <PublicLanding vertical={DEFAULT_VERTICAL} />
+  if (authStatus === 'anonymous') return <PublicLanding vertical={DEFAULT_VERTICAL} />
 
   const platformPath = window.location.pathname === '/plataforma' || window.location.pathname.startsWith('/plataforma/')
   if (platformMember && (platformPath || workspace === 'platform' || (opciones !== null && opciones.length === 0))) {
@@ -459,10 +510,10 @@ function Root() {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-    <Suspense fallback={isPublicLandingPath ? <LandingFallback /> : <RootSuspenseFallback />}>
+    <Suspense fallback={<RootSuspenseFallback />}>
     {bookingMatch ? <PublicBooking slug={decodeURIComponent(bookingMatch[1])} />
       : invitationMatch ? <InvitationPage token={decodeURIComponent(invitationMatch[1])} />
-        : path === '/ingresar' ? <Login businessName="Austral Automatizaciones" onSuccess={() => window.location.assign('/')} />
+        : path === '/ingresar' ? <Login businessName="Austral Automatizaciones" onSuccess={(next) => window.location.assign(next || '/')} />
           : path === '/auth/confirm' ? <AuthConfirm />
           : verticalMatch ? <PublicLanding vertical={decodeURIComponent(verticalMatch[1])} />
         : (path === '/registro' || path === '/registrarse') ? <Signup />

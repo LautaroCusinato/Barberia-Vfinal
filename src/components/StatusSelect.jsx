@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Check, CheckCircle2, X } from 'lucide-react'
 
 // La barberia solo maneja 3 estados reales de un turno (a diferencia
@@ -21,17 +22,34 @@ export function statusMeta(value) {
 }
 
 export default function StatusSelect({ value, onChange }) {
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
   const meta = statusMeta(value)
   const confirmado = meta.value === 'confirmado'
   const atendido = meta.value === 'atendido'
   const ausente = meta.value === 'no_asistio'
 
+  const change = async (nextValue) => {
+    if (pending || nextValue === meta.value) return
+    setPending(true)
+    setError('')
+    try {
+      const saved = await onChange(nextValue)
+      if (saved === false) setError('No se pudo actualizar el estado. Intentá de nuevo.')
+    } catch {
+      setError('No se pudo actualizar el estado. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setPending(false)
+    }
+  }
+
   return (
-    <div className="turno-status-actions" onClick={(e) => e.stopPropagation()}>
+    <div className="turno-status-actions" onClick={(e) => e.stopPropagation()} aria-busy={pending}>
       <button
         type="button"
         className={`turno-status-btn confirmed ${confirmado ? 'active' : ''}`}
-        onClick={() => onChange('confirmado')}
+        onClick={() => change('confirmado')}
+        disabled={pending}
         aria-label="Marcar como confirmado"
         title="Confirmado"
       >
@@ -41,7 +59,8 @@ export default function StatusSelect({ value, onChange }) {
       <button
         type="button"
         className={`turno-status-btn success ${atendido ? 'active' : ''}`}
-        onClick={() => onChange('atendido')}
+        onClick={() => change('atendido')}
+        disabled={pending}
         aria-label="Marcar como atendido"
         title="Atendido"
       >
@@ -51,13 +70,15 @@ export default function StatusSelect({ value, onChange }) {
       <button
         type="button"
         className={`turno-status-btn danger ${ausente ? 'active' : ''}`}
-        onClick={() => onChange('no_asistio')}
+        onClick={() => change('no_asistio')}
+        disabled={pending}
         aria-label="Marcar como faltó o cancelado"
         title="Faltó / cancelado"
       >
         <X size={14} strokeWidth={2.8} />
         <span>No asistió</span>
       </button>
+      {error && <span className="ops-inline-error" role="alert">{error}</span>}
     </div>
   )
 }

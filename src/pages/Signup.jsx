@@ -59,8 +59,8 @@ export default function Signup() {
           <div className="auth-success-icon"><CheckCircle2 size={24} /></div>
           <p className="auth-kicker">Cuenta creada</p>
           <h1 className="auth-title">Revisá tu email</h1>
-          <p className="auth-copy">Te enviamos un enlace de verificación. Cuando lo confirmes, vas a poder crear tu negocio y empezar tu prueba gratuita de 14 días.</p>
-          <button className="btn btn-primary auth-full-button" onClick={() => go('/')}>
+          <p className="auth-copy">Te enviamos un enlace de verificación. Cuando lo confirmes, vas a poder crear tu negocio y empezar tu prueba gratuita de 15 días.</p>
+          <button className="btn btn-primary auth-full-button" onClick={() => go('/ingresar')}>
             Ir a iniciar sesión <ArrowRight size={15} />
           </button>
         </div>
@@ -105,7 +105,7 @@ export default function Signup() {
             {loading ? 'Creando cuenta…' : 'Crear cuenta'} <ArrowRight size={15} />
           </button>
         </form>
-        <p className="auth-footer-copy">¿Ya tenés una cuenta? <button className="auth-link" onClick={() => go('/')}>Iniciar sesión</button></p>
+        <p className="auth-footer-copy">¿Ya tenés una cuenta? <button className="auth-link" onClick={() => go('/ingresar')}>Iniciar sesión</button></p>
       </div>
     </main>
   )

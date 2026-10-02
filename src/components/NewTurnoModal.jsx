@@ -68,6 +68,8 @@ export default function NewTurnoModal({
   const [nuevoTelefono, setNuevoTelefono] = useState('')
 
   const [saving, setSaving] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const savingRef = useRef(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef(null)
 
@@ -83,6 +85,7 @@ export default function NewTurnoModal({
       inicializadoParaRef.current = null
       return
     }
+    if (savingRef.current) return
     const clave = turnoExistente?.id ?? `nuevo:${defaultDate}`
     if (inicializadoParaRef.current === clave) return
     inicializadoParaRef.current = clave
@@ -127,6 +130,8 @@ export default function NewTurnoModal({
       setNuevoTelefono(PREFIJO_AR)
     }
     setSaving(false)
+    savingRef.current = false
+    setSubmitError('')
     setPickerOpen(false)
   }, [open, defaultDate, turnoExistente, servicios, barberos, clientes])
 
@@ -264,22 +269,30 @@ export default function NewTurnoModal({
     e.preventDefault()
     if (!valido || saving) return
     setSaving(true)
-
-    const saved = await onSubmit({
-      paciente: nombreCompleto,
-      telefono: clienteFinal.telefono,
-      clienteId: clienteFinal.clienteId,
-      fecha,
-      hora,
-      motivo: notas.trim() || servicioSeleccionado?.nombre || 'Corte',
-      estado,
-      servicio_id: Number(servicioId),
-      barbero_id: Number(barberoId),
-      precio,
-      duracion,
-    }, turnoExistente?.id)
-    setSaving(false)
-    if (saved !== false) onClose()
+    savingRef.current = true
+    setSubmitError('')
+    try {
+      const saved = await onSubmit({
+        paciente: nombreCompleto,
+        telefono: clienteFinal.telefono,
+        clienteId: clienteFinal.clienteId,
+        fecha,
+        hora,
+        motivo: notas.trim() || servicioSeleccionado?.nombre || 'Corte',
+        estado,
+        servicio_id: Number(servicioId),
+        barbero_id: Number(barberoId),
+        precio,
+        duracion,
+      }, turnoExistente?.id)
+      if (saved !== false) onClose()
+      else setSubmitError('No se pudo guardar el turno. Revisá el aviso y reintentá sin perder los datos.')
+    } catch {
+      setSubmitError('No se pudo guardar el turno. Revisá tu conexión e intentá de nuevo.')
+    } finally {
+      setSaving(false)
+      savingRef.current = false
+    }
   }
 
   // Render helpers
@@ -287,14 +300,14 @@ export default function NewTurnoModal({
   const labelBase = 'modal-label'
 
   return (
-    <div className="modal-overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <FocusTrap open onEscape={onClose} className="modal-box new-turno-box new-turno-box-fixed" role="dialog" aria-modal="true" aria-labelledby="new-turno-title">
+    <div className="modal-overlay" role="presentation" onMouseDown={(e) => { if (!saving && e.target === e.currentTarget) onClose() }}>
+      <FocusTrap open onEscape={() => { if (!saving) onClose() }} className="modal-box new-turno-box new-turno-box-fixed" role="dialog" aria-modal="true" aria-labelledby="new-turno-title">
         <div className="modal-header">
           <span className="panel-title-icon" id="new-turno-title">
             <CalendarPlus size={17} style={{ color: 'var(--accent)' }} />
             {esEdicion ? 'Editar turno' : 'Nuevo turno'}
           </span>
-          <button className="btn-icon-plain" onClick={onClose} aria-label="Cerrar">
+          <button className="btn-icon-plain" onClick={onClose} disabled={saving} aria-label="Cerrar">
             <X size={17} />
           </button>
         </div>
@@ -556,6 +569,7 @@ export default function NewTurnoModal({
               {errorMessage}
             </p>
           )}
+          {submitError && <p className="login-error" role="alert" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={13} style={{ flexShrink: 0 }} />{submitError}</p>}
           {horaFueraHorario && !superpuesto && (
             <p className="login-error" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <AlertTriangle size={13} style={{ flexShrink: 0 }} />
@@ -572,7 +586,7 @@ export default function NewTurnoModal({
 
           {/* ====== Acciones ====== */}
           <div className="modal-actions">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="button" className="btn" onClick={onClose} disabled={saving}>Cancelar</button>
             <button
               type="submit"
               className="btn btn-primary"

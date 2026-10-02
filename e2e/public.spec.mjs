@@ -5,6 +5,11 @@ test.describe('superficies públicas sin efectos externos', () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     await expect(page.locator('a[href="/registro"]').first()).toBeVisible()
+    await expect(page.locator('.marketing-plan-card')).toHaveCount(1)
+    await expect(page.locator('.marketing-plan-card h3', { hasText: 'Austral' })).toHaveCount(1)
+    await expect(page.getByText(/ARS 50\.000 por mes/)).toBeVisible()
+    await expect(page.getByText(/¿Tenés más de una sucursal\? Lo vemos según tu caso\./)).toBeVisible()
+    await expect(page.getByText(/\b(?:Starter|Pro|Premium)\b/i)).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 

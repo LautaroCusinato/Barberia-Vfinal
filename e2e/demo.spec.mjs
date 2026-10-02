@@ -13,7 +13,10 @@ async function clickWorkspaceButton(page, view) {
       // The workspace is still on its default summary view; navigate below.
     }
   }
-  await expect(page.getByRole('heading', { name: 'Resumen' })).toBeVisible({ timeout: 30_000 })
+  // After a reload the demo restores the last persisted view, so the
+  // summary heading is not a reliable readiness signal. The demo banner is
+  // present on every workspace view and confirms that the shell is mounted.
+  await expect(page.getByText('Modo demostración', { exact: true })).toBeVisible({ timeout: 30_000 })
   const directButton = page.getByRole('button', { name: visibleLabel, exact: true }).filter({ visible: true })
   if (await directButton.count()) return directButton.first().click()
   const desktopSidebar = page.locator('.sidebar')
@@ -192,10 +195,14 @@ test.describe('experiencia de producto demo', () => {
 
   test('DEMO-14 Billing es informativo y no inicia checkout', async ({ page }) => {
     await openDemo(page, 'Facturacion')
-    await expect(page.getByText(/14 días de prueba/i)).toBeVisible()
-    await expect(page.getByText(/checkout se habilita al crear tu cuenta real/i)).toBeVisible()
-    await page.getByRole('button', { name: /Empezar prueba gratuita con Starter/i }).click()
-    await expect(page).toHaveURL(/\/registro\?source=demo-billing/)
+    await expect(page.getByText(/15 días de prueba/i)).toBeVisible()
+    await expect(page.locator('.billing-plan')).toHaveCount(1)
+    await expect(page.locator('.billing-plan h3', { hasText: 'Austral' })).toHaveCount(1)
+    await expect(page.getByText(/ARS 50\.000/)).toBeVisible()
+    await expect(page.getByText(/\b(?:Starter|Pro|Premium)\b/i)).toHaveCount(0)
+    await expect(page.locator('.billing-notice').filter({ hasText: /continuidad se coordina manualmente por WhatsApp/i })).toBeVisible()
+    await expect(page.getByText(/Elegí cómo pagar/i)).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Empezar prueba gratuita con Starter/i })).toHaveCount(0)
   })
 
   test('DEMO-15 WhatsApp queda bloqueado con CTA comercial', async ({ page }) => {

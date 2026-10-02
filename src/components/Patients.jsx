@@ -55,7 +55,12 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
       </div>
 
       {pacientes.length === 0 ? (
-        <EmptyState className="empty-state" icon={<Users size={26} style={{ color: 'var(--border-strong)' }} />} description="Todavia no hay clientes registrados" />
+        <EmptyState
+          className="empty-state"
+          icon={<Users size={26} aria-hidden="true" style={{ color: 'var(--border-strong)' }} />}
+          title="Todavía no hay clientes registrados"
+          action={<button type="button" className="btn btn-primary" onClick={() => setAgregando(true)}><UserPlus size={14} /> Agregar cliente</button>}
+        />
       ) : filtrados.length === 0 ? (
         <EmptyState className="empty-state" icon={<Search size={26} style={{ color: 'var(--border-strong)' }} />} description={`Ningun cliente coincide con "${query}"`} />
       ) : (
