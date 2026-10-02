@@ -1,11 +1,15 @@
-import { CalendarOff } from 'lucide-react'
+import { CalendarOff, Plus } from 'lucide-react'
 import TurnoRow from './TurnoRow'
 import { EmptyState } from './ui'
 
-export default function Agenda({ turnos, compact, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, barberos = [] }) {
+export default function Agenda({ turnos, compact, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, barberos = [], onNewTurno }) {
   if (turnos.length === 0) {
     return (
-      <EmptyState icon={<CalendarOff size={26} style={{ color: 'var(--border-strong)' }} />} description="No hay turnos agendados para hoy" />
+      <EmptyState
+        icon={<CalendarOff size={26} aria-hidden="true" style={{ color: 'var(--border-strong)' }} />}
+        description="No hay turnos agendados para hoy"
+        action={onNewTurno && <button type="button" className="btn btn-primary" onClick={onNewTurno}><Plus size={14} aria-hidden="true" /> Agendar turno</button>}
+      />
     )
   }
 

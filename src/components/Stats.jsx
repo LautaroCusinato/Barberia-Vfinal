@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { BarChart3, TrendingUp, Users2, CalendarX2, Wallet, Banknote, CreditCard, Landmark, Search, X } from 'lucide-react'
+import { BarChart3, TrendingUp, Users2, CalendarX2, Wallet, Banknote, CreditCard, Landmark, Search, UserX, X } from 'lucide-react'
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
 import { normalizar } from '../lib/text'
 
@@ -172,7 +172,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
       <div className="stats-row">
         <div className="stat-card">
           <div>
-            <p className="stat-label">Ingresos de turnos atendidos</p>
+            <p className="stat-label">Ingresos totales</p>
             <p className="stat-value">{money(ingresosTotales)}</p>
           </div>
           <div className="stat-icon" style={{ background: 'var(--blue-soft)', color: 'var(--blue-text)' }}>
@@ -195,6 +195,15 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
           </div>
           <div className="stat-icon" style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
             <BarChart3 size={17} />
+          </div>
+        </div>
+        <div className="stat-card">
+          <div>
+            <p className="stat-label">Ausencias</p>
+            <p className="stat-value">{resueltos.length - asistieron}</p>
+          </div>
+          <div className="stat-icon" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
+            <UserX size={17} />
           </div>
         </div>
       </div>
@@ -353,7 +362,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
 
         {historialPagos.length === 0 ? (
           <p className="note-popover-empty">
-            {pagos.length === 0 ? 'Todavia no se registro ningun cobro' : 'Ningun cobro coincide con el filtro'}
+            {pagos.length === 0 ? 'Todavía no se registró ningún cobro' : 'Ningún cobro coincide con el filtro'}
           </p>
         ) : (
           <div className="table-scroll table-scroll--pagos">

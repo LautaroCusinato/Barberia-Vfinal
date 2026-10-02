@@ -212,7 +212,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   if (conversaciones.length === 0) {
     return (
       <div style={{ marginTop: 60 }}>
-        <EmptyState icon={<MessageCircleOff size={32} style={{ color: 'var(--border-strong)' }} />} description="No hay conversaciones registradas" />
+        <EmptyState icon={<MessageCircleOff size={32} aria-hidden="true" style={{ color: 'var(--border-strong)' }} />} title="Todavía no hay conversaciones" description="Cuando tus clientes escriban por WhatsApp, sus conversaciones van a aparecer acá." />
       </div>
     )
   }

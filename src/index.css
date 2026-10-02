@@ -636,7 +636,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 .empty-state { text-align: center; padding: 2.4rem 1rem; color: var(--ink-faint); }
-.empty-state svg { margin: 0 auto 8px; display: block; }
+.empty-state > svg { margin: 0 auto 8px; display: block; }
+.empty-state .btn, .ui-empty-state .btn { margin-top: 12px; }
 .empty-state p { font-size: 13px; margin: 0; }
 
 .search-bar {

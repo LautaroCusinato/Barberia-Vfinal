@@ -131,7 +131,7 @@ function stageLabel(value) {
 }
 
 function formatDate(value) {
-  if (!value) return 'Sin proxima accion'
+  if (!value) return 'Sin próxima acción'
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(value))
 }
 

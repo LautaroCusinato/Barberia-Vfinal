@@ -104,8 +104,8 @@
   color: var(--ink-soft);
 }
 
-.empty-state svg,
-.ui-empty-state svg {
+.empty-state > svg,
+.ui-empty-state > svg {
   color: var(--accent);
 }
 

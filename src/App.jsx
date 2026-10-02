@@ -773,7 +773,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       const { error } = conv.clienteId != null
         ? await base.eq('cliente_id', conv.clienteId)
         : await base.eq('paciente', conv.paciente)
-      if (error) reportError('No se pudo marcar la conversacion como leida', error)
+      if (error) reportError('No se pudo marcar la conversación como leída', error)
     }
   }
 
@@ -1449,6 +1449,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                         notas={notas}
                         onAddNota={addNota}
                         barberos={barberos}
+                        onNewTurno={openNewTurno}
                       />
                     </div>
                   </div>

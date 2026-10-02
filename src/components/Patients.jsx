@@ -62,7 +62,7 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
           action={<button type="button" className="btn btn-primary" onClick={() => setAgregando(true)}><UserPlus size={14} /> Agregar cliente</button>}
         />
       ) : filtrados.length === 0 ? (
-        <EmptyState className="empty-state" icon={<Search size={26} style={{ color: 'var(--border-strong)' }} />} description={`Ningun cliente coincide con "${query}"`} />
+        <EmptyState className="empty-state" icon={<Search size={26} style={{ color: 'var(--border-strong)' }} />} description={`Ningún cliente coincide con "${query}"`} />
       ) : (
         <div className="table-scroll clients-desktop-table">
         <table className="table management-table">

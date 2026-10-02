@@ -204,7 +204,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
       </div>
 
       {notas.length === 0 ? (
-        <EmptyState className="empty-state" icon={<StickyNote size={26} style={{ color: 'var(--border-strong)' }} />} description="Todavia no hay notas guardadas" />
+        <EmptyState className="empty-state" icon={<StickyNote size={26} style={{ color: 'var(--border-strong)' }} />} description="Todavía no hay notas guardadas" />
       ) : notasFiltradas.length === 0 ? (
         <EmptyState className="empty-state" icon={<Search size={26} style={{ color: 'var(--border-strong)' }} />} description={`Ninguna nota coincide con "${query}"`} />
       ) : (
