@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
+import { requireOperator } from '../_shared/supabase.ts'
 import {
   QA_OUTBOUND_INSTANCE,
   QA_OUTBOUND_MESSAGE,
@@ -62,6 +63,7 @@ Deno.serve(async (request) => {
   try {
     const authorization = safeString(request.headers.get('authorization'))
     if (!authorization.toLowerCase().startsWith('bearer ')) return json({ error: 'authorization_required' }, 401)
+    try { await requireOperator(request, adminClient()) } catch (error) { return json({ error: String((error as { code?: string })?.code || 'authorization_required') }, Number((error as { status?: number })?.status) || 401) }
     if (!isQaOutboundRuntime({
       projectRef: projectRef(),
       provisioningEnv: safeString(Deno.env.get('WHATSAPP_PROVISIONING_ENV')),

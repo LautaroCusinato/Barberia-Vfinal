@@ -32,6 +32,33 @@ export async function authenticate(request: Request, admin: SupabaseClient): Pro
   return data.user
 }
 
+function constantTimeEqual(a: string, b: string) {
+  const left = new TextEncoder().encode(a)
+  const right = new TextEncoder().encode(b)
+  let diff = left.length ^ right.length
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) diff |= (left[i] ?? 0) ^ (right[i] ?? 0)
+  return diff === 0
+}
+
+/**
+ * Guard for operator-only functions. The gateway's verify_jwt accepts any
+ * valid project JWT — including the public anon key — so "has a Bearer
+ * header" is not authorization. Accept only the service-role key or a
+ * signed-in platform owner/admin.
+ */
+export async function requireOperator(request: Request, admin: SupabaseClient): Promise<'service_role' | 'platform_admin'> {
+  const authorization = request.headers.get('Authorization') || ''
+  const token = authorization.replace(/^Bearer\s+/i, '').trim()
+  if (!token || token === authorization) throw Object.assign(new Error('Autenticación requerida.'), { status: 401, code: 'authorization_required' })
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+  if (serviceRoleKey && constantTimeEqual(token, serviceRoleKey)) return 'service_role'
+  const { data, error } = await admin.auth.getUser(token)
+  if (error || !data.user) throw Object.assign(new Error('Sesión inválida.'), { status: 401, code: 'authorization_required' })
+  const role = await platformRole(admin, data.user.id)
+  if (!['owner', 'admin'].includes(role || '')) throw Object.assign(new Error('Operador de plataforma requerido.'), { status: 403, code: 'operator_required' })
+  return 'platform_admin'
+}
+
 export async function ownerTenant(admin: SupabaseClient, userId: string) {
   const { data, error } = await admin.from('barberia_members').select('barberia_id, role').eq('user_id', userId).eq('role', 'owner')
   if (error) throw Object.assign(new Error('No se pudo resolver el tenant.'), { status: 500, code: 'tenant_lookup_failed' })

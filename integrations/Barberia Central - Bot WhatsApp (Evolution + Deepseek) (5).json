@@ -914,7 +914,7 @@
         5024
       ],
       "webhookId": "f1b2c3d4-2222-4a2b-9a3d-panel0000002",
-      "notes": "Lo llama el panel web (App.jsx / sendMensaje) cuando el barbero contesta un mensaje a mano. Espera POST JSON: { telefono, texto }."
+      "notes": "Lo llama la edge function whatsapp-panel-send (nunca el navegador) cuando el barbero contesta un mensaje a mano. Espera POST JSON: { telefono, texto, barberia_id } con header X-Austral-Panel-Secret; configurar Header Auth en este nodo."
     },
     {
       "parameters": {

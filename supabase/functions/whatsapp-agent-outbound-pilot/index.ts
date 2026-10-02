@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
+import { requireOperator } from '../_shared/supabase.ts'
 import {
   PROTECTED_WHATSAPP_INSTANCE,
   agentOutboundGuard,
@@ -54,6 +55,7 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
   try {
     if (!safeString(request.headers.get('authorization')).toLowerCase().startsWith('bearer ')) return json({ error: 'authorization_required', outbound_allowed: false }, 401)
+    try { await requireOperator(request, adminClient()) } catch (error) { return json({ error: String((error as { code?: string })?.code || 'authorization_required'), outbound_allowed: false }, Number((error as { status?: number })?.status) || 401) }
     const runtimeValid = isQaAgentOutboundRuntime({
       projectRef: projectRef(),
       provisioningEnv: safeString(Deno.env.get('WHATSAPP_PROVISIONING_ENV')),

@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
+import { requireOperator } from '../_shared/supabase.ts'
 import { isRealPersistedSourceMetadata } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { isConversationStateFresh, isConversationStateForScope } from '../_shared/whatsappConversationState.mjs'
 import {
@@ -66,6 +67,7 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed', mutation_allowed: false }, 405)
   try {
     if (!textFrom(request.headers.get('authorization')).toLowerCase().startsWith('bearer ')) return json({ error: 'authorization_required', mutation_allowed: false }, 401)
+    try { await requireOperator(request, adminClient()) } catch (error) { return json({ error: String((error as { code?: string })?.code || 'authorization_required'), mutation_allowed: false }, Number((error as { status?: number })?.status) || 401) }
 
     const runtimeValid = isQaBookingMutationRuntime({
       projectRef: projectRef(),
