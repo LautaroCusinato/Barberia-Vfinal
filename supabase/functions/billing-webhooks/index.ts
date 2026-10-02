@@ -78,7 +78,13 @@ Deno.serve(async (request) => {
     const resourceId = resource.id
     const resourceType = String((resource as Record<string, unknown>).resourceType || (provider === 'paypal' ? 'payment' : 'preapproval'))
     const verifiedResourceForBinding = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
-    const verifiedPlanIdForBinding = String(verifiedResourceForBinding?.preapproval_plan_id || payload.preapproval_plan_id || '')
+    // Mercado Pago's x-signature covers only data.id, x-request-id and ts; the
+    // JSON body is NOT signed. Tenant/plan context and event ordering must
+    // therefore come from the resource re-fetched from the provider, never
+    // from body fields such as preapproval_plan_id or date_created.
+    const verifiedPlanIdForBinding = String(verifiedResourceForBinding?.preapproval_plan_id || '')
+    const verifiedEventAt = String(verifiedResourceForBinding?.last_modified || verifiedResourceForBinding?.date_last_updated || verifiedResourceForBinding?.update_time || '').trim()
+      || (provider === 'paypal' && minimal.updated_at ? String(minimal.updated_at) : null)
     const billingBinding = provider === 'mercadopago' && verifiedPlanIdForBinding
       ? await resolveBindingByExternalPlan(admin, provider, verifiedPlanIdForBinding)
       : null
@@ -115,7 +121,7 @@ Deno.serve(async (request) => {
     }
     if (checkoutAttempt && provider === 'mercadopago' && (resource as Record<string, unknown>).resourceType === 'preapproval') {
       const verifiedResource = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
-      const verifiedPlanId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
+      const verifiedPlanId = String(verifiedResource?.preapproval_plan_id || '')
       const attemptPlanId = String(checkoutAttempt.metadata?.external_plan_id || '')
       if (!verifiedPlanId || !attemptPlanId || verifiedPlanId !== attemptPlanId) checkoutAttempt = null
     }
@@ -143,7 +149,7 @@ Deno.serve(async (request) => {
       const verifiedResource = (resource as Record<string, unknown>).resource as Record<string, unknown> | undefined
       const verifiedCollectorId = Number(verifiedResource?.collector_id) || null
       const expectedPlanId = String(checkoutAttempt?.metadata?.external_plan_id || externalSubscription?.external_plan_id || '')
-      const verifiedPlanId = String(verifiedResource?.preapproval_plan_id || payload.preapproval_plan_id || '')
+      const verifiedPlanId = String(verifiedResource?.preapproval_plan_id || '')
       const expectedReference = String(checkoutAttempt?.metadata?.tenant_reference || checkoutAttempt?.metadata?.reference || '')
       const verifiedReference = String(verifiedResource?.external_reference || '')
       const productionEnvironment = webhookEnvironment === 'production'
@@ -168,7 +174,7 @@ Deno.serve(async (request) => {
     // subscription. Payment and authorized-payment topics reconcile money but
     // never activate or otherwise transition the subscription by themselves.
     if (provider === 'paypal' || resourceType === 'preapproval') {
-      const { error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: context.suscripcion_id, p_to_state: resource.normalizedStatus || normalizeStatus(provider as 'mercadopago' | 'paypal', resource.status), p_reason: `provider_event:${externalEventId}`, p_source: 'provider', p_provider_event_id: externalEventId, p_provider_event_at: minimal.updated_at || null })
+      const { error: transitionError } = await admin.rpc('transition_saas_subscription', { p_subscription_id: context.suscripcion_id, p_to_state: resource.normalizedStatus || normalizeStatus(provider as 'mercadopago' | 'paypal', resource.status), p_reason: `provider_event:${externalEventId}`, p_source: 'provider', p_provider_event_id: externalEventId, p_provider_event_at: verifiedEventAt })
       if (transitionError) throw Object.assign(new Error('No se pudo actualizar la suscripción.'), { status: 502, code: 'subscription_transition_failed' })
     }
     if (provider === 'mercadopago' && resourceType === 'preapproval' && checkoutAttempt?.suscripcion_id && resourceId) {
