@@ -584,6 +584,7 @@
   .agenda-item--enhanced .turno-status-actions {
     flex: 1 0 100%;
     justify-content: stretch;
+    order: -1; /* estados arriba; notas/editar/borrar juntos debajo */
   }
 
   .agenda-item--enhanced .turno-status-btn {
@@ -716,5 +717,12 @@
 
   .agenda-item--enhanced .turno-status-actions {
     flex: 1 1 auto;
+  }
+}
+
+@container (max-width: 440px) {
+  .agenda-item--enhanced .turno-status-actions {
+    flex: 1 0 100%;
+    order: -1;
   }
 }

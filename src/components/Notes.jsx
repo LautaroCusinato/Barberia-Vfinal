@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NotebookPen, StickyNote, Check, Search, X, Pencil, Trash2 } from 'lucide-react'
-import { normalizar } from '../lib/text'
+import { formatFechaVisible, normalizar } from '../lib/text'
 import { EmptyState } from './ui'
 
 const PACIENTE_GENERAL = 'General'
@@ -52,7 +52,7 @@ function NoteCard({ nota, onUpdate, onDelete }) {
   return (
     <div className="note-card fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <p className="note-meta">{nota.paciente} · {nota.fecha}</p>
+        <p className="note-meta">{nota.paciente} · {formatFechaVisible(nota.fecha)}</p>
         {!editando && (
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
             <button className="btn-icon-plain" onClick={() => { setErrorMsg(''); setEditando(true) }} disabled={deleting} aria-label="Editar nota" title="Editar nota">

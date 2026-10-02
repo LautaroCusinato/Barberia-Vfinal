@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { StickyNote, Trash2, Check, X, Pencil, MessageCircle, Clock3, Scissors, UserRound, Timer } from 'lucide-react'
 import StatusSelect, { statusMeta } from './StatusSelect'
+import { formatFechaVisible } from '../lib/text'
 
 export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, barberos = [] }) {
   const [notesOpen, setNotesOpen] = useState(false)
@@ -144,7 +145,7 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
             <div className="note-popover-list">
               {notasPaciente.map((n) => (
                 <div className="note-popover-item" key={n.id}>
-                  <p className="note-meta">{n.fecha}</p>
+                  <p className="note-meta">{formatFechaVisible(n.fecha)}</p>
                   <p className="note-text">{n.texto}</p>
                 </div>
               ))}

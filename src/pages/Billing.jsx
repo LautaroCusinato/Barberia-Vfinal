@@ -209,7 +209,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
   const trialDaysRemaining = trialActive ? trialRemainingDays(trialEndsAt) : 0
   const trialContinuationHref = getTrialContinuationWhatsAppHref()
   const currentIsTrial = !subscriptionMissing && Boolean(trialEndsAt) && subscription?.estado === 'trialing' && !trialExpiredByDate
-  const currentPrice = currentIsTrial ? 'Sin cargo durante el trial' : formatMoney(currentAmount, plan?.moneda || 'ARS')
+  const currentPrice = currentIsTrial ? 'Sin cargo durante la prueba' : formatMoney(currentAmount, plan?.moneda || 'ARS')
   const tenantCountry = normalizeCountryCode(portal?.tenant?.pais)
   const findExternalPrice = (item) => {
     const prices = (item?.precios_externos || []).filter((price) => price.proveedor_codigo === provider && price.activo !== false && price.habilitado !== false && (!selectedProvider?.entorno || price.entorno === selectedProvider.entorno))
@@ -291,7 +291,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
       {error && <div className="error-banner" role="alert">{error}</div>}
       {returnState && <div className="billing-notice" role="status" data-billing-return={returnState.kind}><ShieldCheck size={16} /> {returnState.message}</div>}
       {demoMode && <div className="billing-notice" role="status"><ShieldCheck size={16} /> La facturación de la demo es informativa: Austral incluye {COMMERCIAL_TRIAL_DAYS} días de prueba y cuesta ARS 50.000 por mes. La continuidad se coordina manualmente por WhatsApp.</div>}
-      {subscriptionMissing && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Todavía no tenés una suscripción activa. El trial y el plan aparecen cuando el onboarding termina de crear la suscripción.</div>}
+      {subscriptionMissing && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Todavía no tenés una suscripción activa. La prueba gratuita y el plan aparecen cuando el onboarding termina de crear la suscripción.</div>}
       {trialActive && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Prueba gratuita · {trialDaysRemaining} {trialDaysRemaining === 1 ? 'día restante' : 'días restantes'}.</div>}
       {trialExpired && <div className="billing-notice billing-notice--expired" role="alert"><ShieldCheck size={16} /> Tu período de prueba terminó.</div>}
       {notice && <div className="billing-notice" role="status"><CheckCircle2 size={16} /> {notice}</div>}
@@ -299,19 +299,20 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
       <section className="billing-summary-grid">
         <div className="panel billing-current-card">
           <div className="billing-card-heading"><div><p className="panel-kicker">Plan actual</p><h2>{subscriptionMissing ? 'Sin suscripción activa' : plan?.nombre || subscription?.plan_codigo || 'Sin plan'}</h2></div><span className={`status-pill billing-status-${trialExpired ? 'expired' : subscription?.estado || 'unknown'}`}>{subscriptionMissing ? 'Pendiente de iniciar' : trialExpired ? 'Prueba finalizada' : statusLabel(subscription?.estado)}</span></div>
-          <p className={`billing-price ${currentIsTrial ? 'billing-price--trial' : ''}`}>{subscriptionMissing ? '—' : currentPrice} {!subscriptionMissing && <small>{currentIsTrial ? 'No se cobra durante el trial' : `/ ${subscription?.periodicidad === 'yearly' ? 'año' : 'mes'}`}</small>}</p>
+          <p className={`billing-price ${currentIsTrial ? 'billing-price--trial' : ''}`}>{subscriptionMissing ? '—' : currentPrice} {!subscriptionMissing && <small>{currentIsTrial ? 'No se cobra durante la prueba' : `/ ${subscription?.periodicidad === 'yearly' ? 'año' : 'mes'}`}</small>}</p>
           <dl className="billing-facts">
             <div><dt>Acceso</dt><dd>{subscriptionMissing ? 'Pendiente de activar' : statusLabel(portal?.access_state)}</dd></div>
-            <div><dt>Trial</dt><dd>{trialActive ? `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'día restante' : 'días restantes'} · vence ${formatDate(trialEndsAt)}` : formatDate(trialEndsAt)}</dd></div>
+            <div><dt>Prueba gratuita</dt><dd>{trialActive ? `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'día restante' : 'días restantes'} · vence ${formatDate(trialEndsAt)}` : formatDate(trialEndsAt)}</dd></div>
             <div><dt>Período actual</dt><dd>{formatDate(subscription?.current_period_end)}</dd></div>
           </dl>
-          {trialExpired && (trialContinuationHref ? <a className="btn btn-primary billing-continuation-cta" href={trialContinuationHref} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Quiero seguir usando Austral</a> : <p className="billing-helper">Configurá VITE_SALES_WHATSAPP_NUMBER para habilitar la continuidad comercial por WhatsApp.</p>)}
+          {trialExpired && (trialContinuationHref ? <a className="btn btn-primary billing-continuation-cta" href={trialContinuationHref} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Quiero seguir usando Austral</a> : <p className="billing-helper">Tu prueba terminó. Escribinos al equipo de Austral para continuar: tus datos quedan guardados.</p>)}
         </div>
         {manualBilling ? <div className="panel billing-provider-card billing-manual-card">
           <p className="panel-kicker">Facturación manual</p>
           <h2>Continuá por WhatsApp</h2>
           <p className="panel-subtitle">Durante esta etapa no se ofrecen Mercado Pago, PayPal, tarjetas ni suscripciones automáticas. Conservamos tus datos y coordinamos la continuidad con el equipo.</p>
           <span className="status-pill">Sin cobros automáticos</span>
+          {trialContinuationHref && !trialExpired && <a className="btn btn-primary billing-continuation-cta" href={trialContinuationHref} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Hablar con el equipo</a>}
         </div> : <div className="panel billing-provider-card">
           <p className="panel-kicker">Proveedor para el checkout</p>
           <h2>Elegí cómo pagar</h2>

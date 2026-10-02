@@ -1505,6 +1505,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                 selectedId={selectedConversationId}
                 onSelectConversation={openConversation}
                 onSendMessage={sendMensaje}
+                pacientes={pacientes}
               />
             )}
           </div>

@@ -2,11 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ArrowDown, MessageCircleOff, ChevronLeft, Search, Send, X, Bot, User } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { isNearBottom, shouldFollowNewMessages } from '../lib/chatScroll'
-import { normalizar } from '../lib/text'
+import { formatTelefonoDisplay, normalizar } from '../lib/text'
 import SafeMarkdown, { stripMarkdown } from './SafeMarkdown'
 import { EmptyState } from './ui'
 
-export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage }) {
+export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage, pacientes = [] }) {
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -31,6 +31,8 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
 
   const selected = conversaciones.find((c) => c.id === selectedId) || conversaciones[0]
   const selectedConversationId = selected?.id || null
+  // El encabezado muestra el número real (antes repetía "WhatsApp" junto al badge).
+  const telefonoSeleccionado = selected?.clienteId != null ? pacientes.find((p) => p.id === selected.clienteId)?.telefono : null
   const selectedMessageCount = selected?.mensajes?.length || 0
 
   const scrollToBottom = useCallback((behavior = 'auto') => {
@@ -278,7 +280,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
               </div>
               <div>
                 <p className="thread-header-name">{selected.paciente}</p>
-                <p className="thread-header-phone">WhatsApp</p>
+                <p className="thread-header-phone">{telefonoSeleccionado ? formatTelefonoDisplay(telefonoSeleccionado) : 'Sin teléfono en la ficha'}</p>
               </div>
             </div>
             <span className="badge badge-muted">WhatsApp</span>
