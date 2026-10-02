@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 import { exportarCSV, isDangerousCsvValue, neutralizarFormulaCsv, parseLeadsCsv } from './csv.js'
 

@@ -1,5 +1,3 @@
-import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
 // Ningún test habla con Supabase. Un test que necesite un cliente concreto
@@ -10,17 +8,12 @@ vi.mock('/src/lib/supabaseClient.js', () => ({
   isSupabaseConfigured: false,
 }))
 
-// jsdom no implementa scrollIntoView (lo usa el hilo de Mensajes).
-if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
-  Element.prototype.scrollIntoView = function scrollIntoView() {}
-}
-
 afterEach(() => {
-  cleanup()
   vi.useRealTimers()
+  if (typeof window === 'undefined') return
   try {
-    globalThis.localStorage?.clear()
-    globalThis.sessionStorage?.clear()
+    window.localStorage.clear()
+    window.sessionStorage.clear()
   } catch {
     // Storage bloqueado: no hay nada que limpiar.
   }
