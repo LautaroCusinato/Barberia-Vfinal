@@ -627,7 +627,7 @@ export default function PlatformCRM({ role = 'owner' }) {
             <label className="crm-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === 'businesses' ? 'Buscar negocio…' : 'Buscar lead…'} aria-label={view === 'businesses' ? 'Buscar negocio' : 'Buscar lead'} /></label>
           </div>
           {loading ? <div className="empty-state">Cargando CRM…</div> : view === 'businesses' ? (filteredBusinesses.length === 0 ? (
-            <div className="empty-state">No hay negocios que coincidan con la busqueda.</div>
+            <div className="empty-state">No hay negocios que coincidan con la búsqueda.</div>
           ) : (
             <div className="table-scroll">
               <table className="table platform-table">
@@ -645,7 +645,7 @@ export default function PlatformCRM({ role = 'owner' }) {
               </table>
             </div>
           )) : filteredLeads.length === 0 ? (
-            <div className="empty-state">No hay leads que coincidan con la busqueda.</div>
+            <div className="empty-state">No hay leads que coincidan con la búsqueda.</div>
           ) : (
             <div className="table-scroll">
               <table className="table platform-table">

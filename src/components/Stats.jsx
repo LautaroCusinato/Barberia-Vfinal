@@ -325,7 +325,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
               onChange={(e) => setFiltroPagoNombre(e.target.value)}
             />
             {filtroPagoNombre && (
-              <button className="btn-icon-plain" onClick={() => setFiltroPagoNombre('')} aria-label="Limpiar busqueda">
+              <button className="btn-icon-plain" onClick={() => setFiltroPagoNombre('')} aria-label="Limpiar búsqueda">
                 <X size={15} />
               </button>
             )}

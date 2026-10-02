@@ -1,4 +1,5 @@
 import { CheckCircle2 } from 'lucide-react'
+import { formatPrecio } from '../lib/text'
 
 export default function ServiceSelector({ servicios, selectedId, onSelect }) {
   return (
@@ -17,7 +18,7 @@ export default function ServiceSelector({ servicios, selectedId, onSelect }) {
             </div>
             <div className="service-card-details">
               <span>⏱ {s.duracion} min</span>
-              <span className="service-price">${s.precio}</span>
+              <span className="service-price">{formatPrecio(s.precio)}</span>
             </div>
           </button>
         )

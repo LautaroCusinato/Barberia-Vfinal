@@ -12,6 +12,16 @@ export function capitalizar(str = '') {
   return value.charAt(0).toLocaleUpperCase('es-AR') + value.slice(1)
 }
 
+// Precios del panel: "$ 8.500" (antes se mostraba "$8500").
+export function formatPrecio(value, moneda = 'ARS') {
+  const amount = Number(value) || 0
+  try {
+    return amount.toLocaleString('es-AR', { style: 'currency', currency: moneda || 'ARS', maximumFractionDigits: amount % 1 ? 2 : 0 })
+  } catch {
+    return `$ ${amount.toLocaleString('es-AR')}`
+  }
+}
+
 export function soloDigitos(str = '') {
   return str.replace(/\D/g, '')
 }

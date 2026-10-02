@@ -6,6 +6,7 @@ import { FocusTrap } from './ui'
 import {
   PREFIJO_AR,
   TELEFONO_NACIONAL_DIGITOS,
+  formatPrecio,
   digitosNacionales,
   soloDigitos,
   normalizar,
@@ -415,7 +416,7 @@ export default function NewTurnoModal({
                       </span>
                       <span className="service-meta">
                         <span>{s.duracion} min</span>
-                        <strong>${s.precio}</strong>
+                        <strong>{formatPrecio(s.precio)}</strong>
                       </span>
                     </button>
                   )

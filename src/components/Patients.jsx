@@ -43,7 +43,7 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
             onChange={(e) => setQuery(e.target.value)}
           />
           {query && (
-            <button className="btn-icon-plain" onClick={() => setQuery('')} aria-label="Limpiar busqueda">
+            <button className="btn-icon-plain" onClick={() => setQuery('')} aria-label="Limpiar búsqueda">
               <X size={15} />
             </button>
           )}
