@@ -26,6 +26,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      - run: npm run test:unit
       - run: npm run build
       - run: node scripts/scan-secrets.mjs
       - run: node scripts/check-bundle-size.mjs
