@@ -5,6 +5,8 @@ import PhoneField from './PhoneField'
 import { FocusTrap } from './ui'
 import {
   PREFIJO_AR,
+  TELEFONO_NACIONAL_DIGITOS,
+  digitosNacionales,
   soloDigitos,
   normalizar,
   barberoDisponible,
@@ -72,8 +74,18 @@ export default function NewTurnoModal({
   // Cuando se edita un turno, lo vinculamos al cliente por su cliente_id
   // (el turno lo guarda desde que se crea) — nunca por el nombre, porque
   // el nombre puede cambiar o no coincidir exacto y el cliente ya existe.
+  // El formulario se inicializa una vez por apertura (o al cambiar de turno a
+  // editar). Antes se reiniciaba con cada recarga de clientes/barberos/
+  // servicios —realtime o el polling de respaldo— y se perdía lo tipeado.
+  const inicializadoParaRef = useRef(null)
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      inicializadoParaRef.current = null
+      return
+    }
+    const clave = turnoExistente?.id ?? `nuevo:${defaultDate}`
+    if (inicializadoParaRef.current === clave) return
+    inicializadoParaRef.current = clave
 
     if (turnoExistente) {
       setFecha(turnoExistente.fecha || defaultDate)
@@ -224,7 +236,7 @@ export default function NewTurnoModal({
 
   const clienteFinal = resolverCliente()
   const nombreCompleto = clienteFinal.nombre
-  const telefonoLocal = soloDigitos(nuevoTelefono.slice(PREFIJO_AR.length))
+  const telefonoLocal = digitosNacionales(nuevoTelefono)
 
   // Validaciones
   const horaFueraHorario = barberoSeleccionado && fecha && hora && !barberoDisponible(barberoSeleccionado, fecha, hora, duracion, bloqueos, zonaHoraria, demoMode && esEdicion)
@@ -246,7 +258,7 @@ export default function NewTurnoModal({
 
   // El nombre del cliente es válido si: lo elegiste del picker, o lo
   // estás tipeando como nuevo y tiene nombre.
-  const clienteValido = !!clienteElegido || (crearNuevo && nuevoNombre.trim() && telefonoLocal.length === 8)
+  const clienteValido = !!clienteElegido || (crearNuevo && nuevoNombre.trim() && telefonoLocal.length === TELEFONO_NACIONAL_DIGITOS)
 
   const submit = async (e) => {
     e.preventDefault()

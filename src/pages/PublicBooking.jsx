@@ -3,13 +3,16 @@ import { CalendarDays, CheckCircle2, Clock3, MapPin, Moon, Scissors, Sun, UserRo
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import PhoneField from '../components/PhoneField'
 import { Badge, Button, Card, EmptyState, FormField, IconButton, Input, LiveRegion, Skeleton, Spinner, StatusBadge } from '../components/ui'
-import { PREFIJO_AR, soloDigitos } from '../lib/text'
+import { PREFIJO_AR, soloDigitos, telefonoNacionalValido } from '../lib/text'
 import './PublicBooking.css'
 
 const STEPS = [{ label: 'Servicio', short: 'Serv.' }, { label: 'Profesional', short: 'Prof.' }, { label: 'Fecha y hora', short: 'Fecha' }, { label: 'Tus datos', short: 'Datos' }, { label: 'Confirmación', short: 'Listo' }]
-const PHONE_HINT = 'Formato: +54 9 11 0000-0000. Completá los 8 dígitos locales.'
-const PHONE_ERROR = 'Ingresá tu número completo: 8 dígitos después de +54 9 11. ' + PHONE_HINT
-const dateKey = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+const PHONE_HINT = 'Código de área sin 0 y número sin 15. Ej.: 11 5555-1234 o 351 555-1234.'
+const PHONE_ERROR = 'Ingresá tu número completo: 10 dígitos después de +54 9. ' + PHONE_HINT
+const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
+const dateKey = (timezone = DEFAULT_TIMEZONE) => {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: timezone || DEFAULT_TIMEZONE }).format(new Date()) } catch { return new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE }).format(new Date()) }
+}
 const formatTime = (time) => String(time || '').slice(0, 5)
 const normalizeCurrency = (currency) => /^[A-Z]{3}$/.test(String(currency || '').toUpperCase()) ? String(currency).toUpperCase() : 'ARS'
 const formatMoney = (amount, currency) => `${normalizeCurrency(currency)} ${Number(amount || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
@@ -113,6 +116,7 @@ export default function PublicBooking({ slug }) {
   const [fieldErrors, setFieldErrors] = useState({})
   const [availabilityNotice, setAvailabilityNotice] = useState('')
   const [success, setSuccess] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
   const [theme, setTheme] = useState(() => initialTheme(slug))
   const selectionRef = useRef({ barberoId: null, hora: null })
   const previousSlotsContextRef = useRef(null)
@@ -135,7 +139,7 @@ export default function PublicBooking({ slug }) {
   }, [slug])
 
   const cargarSlots = useCallback(async () => {
-    if (!servicio || !fecha || !isSupabaseConfigured) return
+    if (!servicio || !fecha || !isSupabaseConfigured) return null
     const requestId = ++slotsRequestRef.current
     setLoadingSlots(true)
     const { data, error: rpcError } = await supabase.rpc('horarios_disponibles_reserva_publica', {
@@ -144,11 +148,12 @@ export default function PublicBooking({ slug }) {
     // A service/date change can leave an older RPC in flight. Only the latest
     // response may update the visible availability; stale responses must not
     // replace valid slots with an empty result.
-    if (requestId !== slotsRequestRef.current) return
+    if (requestId !== slotsRequestRef.current) return null
+    let nextSlots = null
     if (rpcError) {
       setError('No pudimos actualizar la disponibilidad. Intentá nuevamente.')
     } else {
-      const nextSlots = data ?? []
+      nextSlots = data ?? []
       const previous = selectionRef.current
       const sameContext = previousSlotsContextRef.current?.serviceId === servicio.id && previousSlotsContextRef.current?.fecha === fecha
       const stillAvailable = nextSlots.some((slot) => slot.barbero_id === previous.barberoId && slot.hora === previous.hora)
@@ -159,6 +164,7 @@ export default function PublicBooking({ slug }) {
       previousSlotsContextRef.current = { serviceId: servicio.id, fecha }
     }
     setLoadingSlots(false)
+    return nextSlots
   }, [slug, servicio, fecha])
 
   useEffect(() => { cargarCatalogo() }, [cargarCatalogo])
@@ -191,7 +197,7 @@ export default function PublicBooking({ slug }) {
   const accent = normalizeHex(catalogo?.barberia?.color_principal)
   const secondary = normalizeHex(catalogo?.barberia?.color_secundario, '#ede6d8')
   const accentText = accentForeground(accent)
-  const phoneIsValid = soloDigitos(telefono).length === 13
+  const phoneIsValid = telefonoNacionalValido(telefono)
   const activeStep = !servicio ? 1 : !barbero ? 2 : !hora ? 3 : !nombre.trim() || !phoneIsValid ? 4 : 5
 
   const seleccionarServicio = (nextService) => { setServicio(nextService); setBarberoId(null); setHora(null); setAvailabilityNotice(''); setFieldErrors({}); setError('') }
@@ -209,16 +215,26 @@ export default function PublicBooking({ slug }) {
     if (Object.keys(nextErrors).length) { setFieldErrors(nextErrors); setError('Revisá los datos marcados antes de confirmar.'); return }
     setFieldErrors({})
     setError('')
-    setLoadingSlots(true)
-    // Reconsultamos primero, para no confirmar una opción que cambió mientras el formulario estaba abierto.
-    await cargarSlots()
-    const { data, error: rpcError } = await supabase.rpc('crear_reserva_publica', {
-      p_slug: slug, p_servicio_id: servicio.id, p_barbero_id: barbero.barbero_id,
-      p_fecha: fecha, p_hora: hora, p_nombre: nombre, p_telefono: soloDigitos(telefono), p_email: email || null,
-    })
-    setLoadingSlots(false)
-    if (rpcError) { setError(safeRpcError(rpcError)); await cargarSlots(); return }
-    setSuccess({ ...(data?.[0] ?? { fecha, hora, duracion_min: barbero.duracion_min }), servicio, barbero, nombre: nombre.trim(), telefono: soloDigitos(telefono), moneda: currency })
+    if (submitting) return
+    // Estado propio del envío: cargarSlots apaga loadingSlots al terminar y
+    // antes eso re-habilitaba el botón mientras se creaba la reserva.
+    setSubmitting(true)
+    try {
+      // Reconsultamos primero, para no confirmar una opción que cambió mientras el formulario estaba abierto.
+      const disponibles = await cargarSlots()
+      if (disponibles && !disponibles.some((slot) => slot.barbero_id === barbero.barbero_id && slot.hora === hora)) {
+        setError('Ese horario acaba de ocuparse. Elegí otro horario.')
+        return
+      }
+      const { data, error: rpcError } = await supabase.rpc('crear_reserva_publica', {
+        p_slug: slug, p_servicio_id: servicio.id, p_barbero_id: barbero.barbero_id,
+        p_fecha: fecha, p_hora: hora, p_nombre: nombre, p_telefono: soloDigitos(telefono), p_email: email || null,
+      })
+      if (rpcError) { setError(safeRpcError(rpcError)); await cargarSlots(); return }
+      setSuccess({ ...(data?.[0] ?? { fecha, hora, duracion_min: barbero.duracion_min }), servicio, barbero, nombre: nombre.trim(), telefono: soloDigitos(telefono), moneda: currency })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const retry = () => { setError(''); setLoading(true); cargarCatalogo() }
@@ -241,9 +257,9 @@ export default function PublicBooking({ slug }) {
 
           <div className="booking-section" aria-labelledby="booking-service-title"><div className="booking-section-heading"><div><p className="booking-step-label">Paso 1</p><h2 id="booking-service-title"><Scissors size={18} /> Servicio</h2></div><span className="booking-section-meta">{catalogo.servicios.length} disponibles</span></div>{catalogo.servicios.length === 0 ? <EmptyState title="No hay servicios disponibles" description="Este negocio todavía no publicó servicios para reservar." action={<Button variant="secondary" onClick={retry}>Actualizar</Button>} /> : <div className="service-list">{catalogo.servicios.map((service) => <button type="button" key={service.id} className={servicio?.id === service.id ? 'selected' : ''} aria-pressed={servicio?.id === service.id} onClick={() => seleccionarServicio(service)}><span className="booking-option-check" aria-hidden="true">{servicio?.id === service.id ? '✓' : ''}</span><span className="booking-option-content"><strong>{service.nombre}</strong>{service.descripcion && <small>{service.descripcion}</small>}<span>{service.duracion_min} min · {formatMoney(service.precio, currency)}</span></span></button>)}</div>}</div>
 
-          <div className="booking-section" aria-labelledby="booking-date-title"><div className="booking-section-heading"><div><p className="booking-step-label">Paso 2</p><h2 id="booking-date-title"><CalendarDays size={18} /> Fecha y hora</h2></div><span className="booking-section-meta">Hora local</span></div><FormField label="Fecha elegida" hint={`Disponible desde hoy · ${formatTimezone(business.zona_horaria)}.`} id="booking-date"><Input className="booking-date" type="date" min={dateKey()} value={fecha} onChange={seleccionarFecha} /></FormField><div className="booking-subsection"><div className="booking-subsection-heading"><h3><UserRound size={17} /> Profesional</h3><span>{profesionales.length ? `${profesionales.length} disponibles` : 'Sin disponibilidad'}</span></div>{loadingSlots ? <div className="booking-inline-loading" role="status"><Spinner size={16} /> Actualizando disponibilidad…</div> : profesionales.length === 0 ? <EmptyState title="No hay profesionales disponibles" description="Probá con otra fecha o servicio para ver nuevas opciones." /> : <div className="professional-list">{profesionales.map((professional) => <button type="button" key={professional.barbero_id} className={barberoId === professional.barbero_id ? 'selected' : ''} aria-pressed={barberoId === professional.barbero_id} onClick={() => seleccionarProfesional(professional.barbero_id)}><span className="booking-avatar" style={{ '--avatar-color': normalizeHex(professional.barbero_color, accent) }}>{initials(professional.barbero_nombre)}</span><span><strong>{professional.barbero_nombre}</strong><small>Disponible para {servicio?.nombre || 'este servicio'}</small></span><span className="booking-option-check" aria-hidden="true">{barberoId === professional.barbero_id ? '✓' : ''}</span></button>)}</div>}</div><div className="booking-subsection"><div className="booking-subsection-heading"><h3><Clock3 size={17} /> Horario</h3><span>{barbero ? `${horarios.length} opciones` : 'Elegí un profesional'}</span></div>{loadingSlots ? <div className="time-skeleton-grid">{[1, 2, 3, 4, 5, 6].map((item) => <Skeleton height={50} key={item} />)}</div> : !barbero ? <p className="booking-muted">Seleccioná un profesional para ver sus horarios.</p> : horarios.length === 0 ? <EmptyState title="No quedan horarios libres" description="Elegí otra fecha o profesional para continuar." /> : <div className="time-list">{horarios.map((slot) => <button type="button" key={slot.hora} className={hora === slot.hora ? 'selected' : ''} aria-pressed={hora === slot.hora} onClick={() => seleccionarHora(slot.hora)}>{formatTime(slot.hora)}</button>)}</div>}</div></div>
+          <div className="booking-section" aria-labelledby="booking-date-title"><div className="booking-section-heading"><div><p className="booking-step-label">Paso 2</p><h2 id="booking-date-title"><CalendarDays size={18} /> Fecha y hora</h2></div><span className="booking-section-meta">Hora local</span></div><FormField label="Fecha elegida" hint={`Disponible desde hoy · ${formatTimezone(business.zona_horaria)}.`} id="booking-date"><Input className="booking-date" type="date" min={dateKey(business.zona_horaria)} value={fecha} onChange={seleccionarFecha} /></FormField><div className="booking-subsection"><div className="booking-subsection-heading"><h3><UserRound size={17} /> Profesional</h3><span>{profesionales.length ? `${profesionales.length} disponibles` : 'Sin disponibilidad'}</span></div>{loadingSlots ? <div className="booking-inline-loading" role="status"><Spinner size={16} /> Actualizando disponibilidad…</div> : profesionales.length === 0 ? <EmptyState title="No hay profesionales disponibles" description="Probá con otra fecha o servicio para ver nuevas opciones." /> : <div className="professional-list">{profesionales.map((professional) => <button type="button" key={professional.barbero_id} className={barberoId === professional.barbero_id ? 'selected' : ''} aria-pressed={barberoId === professional.barbero_id} onClick={() => seleccionarProfesional(professional.barbero_id)}><span className="booking-avatar" style={{ '--avatar-color': normalizeHex(professional.barbero_color, accent) }}>{initials(professional.barbero_nombre)}</span><span><strong>{professional.barbero_nombre}</strong><small>Disponible para {servicio?.nombre || 'este servicio'}</small></span><span className="booking-option-check" aria-hidden="true">{barberoId === professional.barbero_id ? '✓' : ''}</span></button>)}</div>}</div><div className="booking-subsection"><div className="booking-subsection-heading"><h3><Clock3 size={17} /> Horario</h3><span>{barbero ? `${horarios.length} opciones` : 'Elegí un profesional'}</span></div>{loadingSlots ? <div className="time-skeleton-grid">{[1, 2, 3, 4, 5, 6].map((item) => <Skeleton height={50} key={item} />)}</div> : !barbero ? <p className="booking-muted">Seleccioná un profesional para ver sus horarios.</p> : horarios.length === 0 ? <EmptyState title="No quedan horarios libres" description="Elegí otra fecha o profesional para continuar." /> : <div className="time-list">{horarios.map((slot) => <button type="button" key={slot.hora} className={hora === slot.hora ? 'selected' : ''} aria-pressed={hora === slot.hora} onClick={() => seleccionarHora(slot.hora)}>{formatTime(slot.hora)}</button>)}</div>}</div></div>
 
-          <form className="booking-section booking-form" onSubmit={confirmar} noValidate aria-labelledby="booking-data-title"><div className="booking-section-heading"><div><p className="booking-step-label">Paso 3</p><h2 id="booking-data-title">Tus datos</h2></div><span className="booking-section-meta">Sólo para confirmar</span></div><div className="booking-form-grid"><FormField label="Nombre y apellido" required error={fieldErrors.nombre} id="booking-name"><Input value={nombre} onChange={(event) => { setNombre(event.target.value); setFieldErrors((current) => ({ ...current, nombre: '' })) }} placeholder="Ej. Lautaro Cusinato" autoComplete="name" enterKeyHint="next" /></FormField><FormField label="Teléfono" required hint={PHONE_HINT} error={fieldErrors.telefono} id="booking-phone"><PhoneField data-booking-phone value={telefono} onChange={(value) => { setTelefono(value); setFieldErrors((current) => ({ ...current, telefono: '' })) }} className="booking-phone-field" aria-label="Teléfono" enterKeyHint="next" /></FormField><FormField label="Email (opcional)" hint="Te lo pedimos sólo si querés recibir el detalle." error={fieldErrors.email} id="booking-email"><Input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setFieldErrors((current) => ({ ...current, email: '' })) }} placeholder="tu@email.com" autoComplete="email" /></FormField></div><div className="booking-final-summary"><div><p className="booking-step-label">Paso 4 · Confirmación</p><h3>Revisá tu reserva</h3></div><dl><div><dt>Negocio</dt><dd>{business.nombre}</dd></div><div><dt>Servicio</dt><dd>{servicio?.nombre || 'Pendiente'}</dd></div><div><dt>Profesional</dt><dd>{barbero?.barbero_nombre || 'Pendiente'}</dd></div><div><dt>Fecha y hora</dt><dd>{fecha ? `${formatDateLabel(fecha)} · ${formatTime(hora) || 'Pendiente'}` : 'Pendiente'}</dd></div><div><dt>Duración y total</dt><dd>{barbero && servicio ? `${barbero.duracion_min} min · ${formatMoney(servicio.precio, currency)}` : 'Pendiente'}</dd></div><div><dt>Cliente</dt><dd>{nombre.trim() || 'Pendiente'}{phoneIsValid ? ` · ${telefono}` : ''}</dd></div></dl></div><Button type="submit" variant="primary" size="lg" className="booking-button" disabled={!hora || loadingSlots} loading={loadingSlots}>{loadingSlots ? 'Validando disponibilidad' : 'Confirmar reserva'}</Button><p className="booking-form-note">Al confirmar, verificamos nuevamente que el horario siga libre.</p></form>
+          <form className="booking-section booking-form" onSubmit={confirmar} noValidate aria-labelledby="booking-data-title"><div className="booking-section-heading"><div><p className="booking-step-label">Paso 3</p><h2 id="booking-data-title">Tus datos</h2></div><span className="booking-section-meta">Sólo para confirmar</span></div><div className="booking-form-grid"><FormField label="Nombre y apellido" required error={fieldErrors.nombre} id="booking-name"><Input value={nombre} onChange={(event) => { setNombre(event.target.value); setFieldErrors((current) => ({ ...current, nombre: '' })) }} placeholder="Ej. Lautaro Cusinato" autoComplete="name" enterKeyHint="next" /></FormField><FormField label="Teléfono" required hint={PHONE_HINT} error={fieldErrors.telefono} id="booking-phone"><PhoneField data-booking-phone value={telefono} onChange={(value) => { setTelefono(value); setFieldErrors((current) => ({ ...current, telefono: '' })) }} className="booking-phone-field" aria-label="Teléfono" enterKeyHint="next" /></FormField><FormField label="Email (opcional)" hint="Te lo pedimos sólo si querés recibir el detalle." error={fieldErrors.email} id="booking-email"><Input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setFieldErrors((current) => ({ ...current, email: '' })) }} placeholder="tu@email.com" autoComplete="email" /></FormField></div><div className="booking-final-summary"><div><p className="booking-step-label">Paso 4 · Confirmación</p><h3>Revisá tu reserva</h3></div><dl><div><dt>Negocio</dt><dd>{business.nombre}</dd></div><div><dt>Servicio</dt><dd>{servicio?.nombre || 'Pendiente'}</dd></div><div><dt>Profesional</dt><dd>{barbero?.barbero_nombre || 'Pendiente'}</dd></div><div><dt>Fecha y hora</dt><dd>{fecha ? `${formatDateLabel(fecha)} · ${formatTime(hora) || 'Pendiente'}` : 'Pendiente'}</dd></div><div><dt>Duración y total</dt><dd>{barbero && servicio ? `${barbero.duracion_min} min · ${formatMoney(servicio.precio, currency)}` : 'Pendiente'}</dd></div><div><dt>Cliente</dt><dd>{nombre.trim() || 'Pendiente'}{phoneIsValid ? ` · ${telefono}` : ''}</dd></div></dl></div><Button type="submit" variant="primary" size="lg" className="booking-button" disabled={!hora || loadingSlots || submitting} loading={loadingSlots || submitting}>{submitting ? 'Confirmando reserva' : loadingSlots ? 'Validando disponibilidad' : 'Confirmar reserva'}</Button><p className="booking-form-note">Al confirmar, verificamos nuevamente que el horario siga libre.</p></form>
         </Card>
       </div>
     </main>

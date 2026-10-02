@@ -1,7 +1,17 @@
+// Nombres y textos pueden venir de WhatsApp (los escribe un tercero). Una
+// celda que empieza con = + - @ se ejecuta como fórmula al abrir el CSV en
+// Excel/Sheets; la prefijamos con ' para que quede como texto. Los números
+// (precios, teléfonos en dígitos) no se tocan.
+export function neutralizarFormulaCsv(value) {
+  const s = String(value ?? '')
+  if (/^[+-]?\d+([.,]\d+)?$/.test(s.trim())) return s
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
+}
+
 export function exportarCSV(filename, rows, headers) {
   const escape = (val) => {
-    const s = String(val ?? '')
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    const s = neutralizarFormulaCsv(val)
+    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
       return `"${s.replace(/"/g, '""')}"`
     }
     return s

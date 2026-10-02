@@ -71,7 +71,7 @@ const checklistSource = readFileSync(resolve('src', 'components', 'OnboardingChe
 const settingsSource = readFileSync(resolve('src', 'components', 'TenantSettings.jsx'), 'utf8')
 const operationsSource = readFileSync(resolve('src', 'components', 'Operations.jsx'), 'utf8')
 assert.match(appSource, /turno\.id === existingId/, 'La validación de carrera debe excluir el turno que se está editando')
-assert.match(appSource, /error\.code === '23P01'/, 'El conflicto de exclusión debe convertirse en error de horario ocupado')
+assert.match(appSource, /error\??\.code === '23P01'/, 'El conflicto de exclusión debe convertirse en error de horario ocupado')
 assert.match(modalSource, /t\.id !== turnoExistente\?\.id/, 'La edición debe excluir su propio turno de la grilla de ocupación')
 assert.match(modalSource, /saved !== false/, 'El modal no debe cerrarse si el backend rechaza el guardado')
 assert.match(appSource, /saas_integraciones/, 'WhatsApp debe resolver la integración propia del tenant')

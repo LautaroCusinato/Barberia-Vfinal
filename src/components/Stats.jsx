@@ -3,7 +3,7 @@ import { BarChart3, TrendingUp, Users2, CalendarX2, Wallet, Banknote, CreditCard
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
 import { normalizar } from '../lib/text'
 
-const TZ = 'America/Argentina/Buenos_Aires'
+const DEFAULT_TZ = 'America/Argentina/Buenos_Aires'
 
 const money = (n) =>
   (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
@@ -14,22 +14,24 @@ const METODO_META = {
   transferencia: { label: 'Transferencia', Icon: Landmark, bg: 'var(--violet-soft)', color: 'var(--violet-text)' },
 }
 
-function fechaEnTZ(isoString) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(isoString))
+// Los pagos se agrupan por día en la zona del negocio, la misma que usa
+// todayKey; con una zona fija no coincidían para negocios fuera de AR.
+function fechaEnTZ(isoString, timezone = DEFAULT_TZ) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date(isoString))
 }
 
 function ultimosNDias(n, todayKey) {
   const dias = []
-  const base = new Date(`${todayKey}T12:00:00`)
+  const base = new Date(`${todayKey}T12:00:00Z`)
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(base)
-    d.setDate(d.getDate() - i)
+    d.setUTCDate(d.getUTCDate() - i)
     dias.push(d.toISOString().slice(0, 10))
   }
   return dias
 }
 
-export default function Stats({ turnos, pacientes, conversaciones: _conversaciones, todayKey, barberos = [], servicios = [], pagos = [] }) {
+export default function Stats({ turnos, pacientes, conversaciones: _conversaciones, todayKey, barberos = [], servicios = [], pagos = [], timezone = DEFAULT_TZ }) {
   const atendidos = useMemo(() => turnos.filter((t) => statusMeta(t.estado).value === 'atendido'), [turnos])
   const ingresosTotales = useMemo(() => atendidos.reduce((acc, t) => acc + (Number(t.precio) || 0), 0), [atendidos])
   const ticketPromedio = atendidos.length > 0 ? Math.round(ingresosTotales / atendidos.length) : 0
@@ -94,8 +96,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
   const confirmadosTotal = turnos.filter((t) => statusMeta(t.estado).value === 'confirmado').length
 
   const pagosHoy = useMemo(
-    () => pagos.filter((p) => fechaEnTZ(p.created_at) === todayKey),
-    [pagos, todayKey]
+    () => pagos.filter((p) => fechaEnTZ(p.created_at, timezone) === todayKey),
+    [pagos, todayKey, timezone]
   )
 
   const totalesPorMetodoHoy = useMemo(() => {
@@ -112,11 +114,11 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
   const historialPagos = useMemo(() => {
     const q = normalizar(filtroPagoNombre.trim())
     return pagos
-      .filter((p) => !filtroPagoFecha || fechaEnTZ(p.created_at) === filtroPagoFecha)
+      .filter((p) => !filtroPagoFecha || fechaEnTZ(p.created_at, timezone) === filtroPagoFecha)
       .filter((p) => !q || normalizar(p.paciente || '').includes(q))
       .slice()
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-  }, [pagos, filtroPagoNombre, filtroPagoFecha])
+  }, [pagos, filtroPagoNombre, filtroPagoFecha, timezone])
 
   return (
     <div>
@@ -362,7 +364,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
                   return (
                     <tr key={p.id}>
                       <td>
-                        {new Intl.DateTimeFormat('es-AR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(fecha)}
+                        {new Intl.DateTimeFormat('es-AR', { timeZone: timezone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(fecha)}
                       </td>
                       <td>{p.paciente || '—'}</td>
                       <td>{p.servicio || '—'}</td>

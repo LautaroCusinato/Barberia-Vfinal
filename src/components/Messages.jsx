@@ -52,7 +52,12 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     setSending(true)
     pendingOwnMessageRef.current = true
     try {
-      await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
+      const saved = await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
+      if (saved === false) {
+        // No se guardó: conservamos el texto para que se pueda reintentar.
+        pendingOwnMessageRef.current = false
+        return
+      }
       setDraft('')
       // El callback puede actualizar el hilo de forma asincrónica. El frame
       // siguiente es el primer momento en que el nuevo mensaje está medido.

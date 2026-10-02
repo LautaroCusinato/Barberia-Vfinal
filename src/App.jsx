@@ -43,7 +43,19 @@ import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './li
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
-const N8N_SEND_WEBHOOK_URL = import.meta.env.VITE_N8N_SEND_WEBHOOK_URL || ''
+const WHATSAPP_PANEL_SEND_FUNCTION = 'whatsapp-panel-send'
+const CAMPOS_NUMERICOS_SERVICIO = new Set(['precio', 'duracion'])
+
+// Traduce los rechazos de la base (exclusión, triggers de agenda) a un
+// mensaje accionable. Devuelve null si el error no es de reglas de agenda.
+function mensajeErrorTurno(error) {
+  const message = String(error?.message || '').toLowerCase()
+  if (error?.code === '23P01' || /exclusion|solap|ocup/.test(message)) return 'Ese horario acaba de ocuparse. Elegí otro horario.'
+  if (/servicio|profesional/.test(message)) return 'El profesional seleccionado ya no realiza ese servicio.'
+  if (/horario|jornada|trabaja/.test(message)) return 'El horario está fuera de la jornada laboral o atraviesa un descanso.'
+  if (/bloque/.test(message)) return 'Ese horario está bloqueado. Elegí otro horario.'
+  return null
+}
 
 function nextLocalId(items) {
   return Math.max(0, ...items.map((item) => Number(item.id) || 0)) + 1
@@ -170,6 +182,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [dbError, setDbError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const barberoWritesRef = useRef({})
+  const servicioWritesRef = useRef({})
 
   useEffect(() => {
     const handlePopState = () => {
@@ -251,7 +264,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       return
     }
     // El control del sidebar no habilita automatizaciones ni escribe
-    // `config.bot_activo` desde el navegador. La conexión y cualquier futura
+    // `config.bot_activo` desde el navegador (la única excepción es la pausa
+    // por respuesta manual en sendMensaje). La conexión y cualquier futura
     // activación se gestionan desde la superficie server-side de WhatsApp,
     // con guard de owner/admin, tenant y entorno.
     navigateFromMenu('configuracion')
@@ -517,6 +531,19 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     let channel = null
     let cancelado = false
 
+    // Realtime dispara un evento por fila: una conversación del bot o una
+    // edición masiva generan ráfagas. Agrupamos cada ráfaga en una sola
+    // recarga por tabla en vez de repetir la consulta completa N veces.
+    const recargasPendientes = new Map()
+    const programarRecarga = (clave, recargar) => {
+      if (cancelado) return
+      window.clearTimeout(recargasPendientes.get(clave))
+      recargasPendientes.set(clave, window.setTimeout(() => {
+        recargasPendientes.delete(clave)
+        if (!cancelado) recargar()
+      }, 400))
+    }
+
     async function cargarTodo() {
       const clientesPromise = cargarClientes()
       const mensajesPromise = cargarMensajes(clientesPromise)
@@ -563,17 +590,17 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         // Nunca imprimir el payload: puede contener texto, teléfonos o datos
         // de clientes. En desarrollo sólo dejamos el tipo de evento.
         if (import.meta.env.DEV) console.debug('[realtime] mensaje actualizado', { event: payload.event })
-        cargarMensajes()
+        programarRecarga('mensajes', () => cargarMensajes())
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'turnos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarTurnos())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notas', filter: `barberia_id=eq.${barberiaId}` }, () => cargarNotas())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: `barberia_id=eq.${barberiaId}` }, () => { const clientesPromise = cargarClientes(); cargarMensajes(clientesPromise) })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicios', filter: `barberia_id=eq.${barberiaId}` }, () => cargarServicios())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'barberos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarBarberos())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'config', filter: `barberia_id=eq.${barberiaId}` }, () => cargarConfig())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'saas_integraciones', filter: `barberia_id=eq.${barberiaId}` }, () => cargarIntegracionWhatsApp())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bloqueos_agenda', filter: `barberia_id=eq.${barberiaId}` }, () => cargarBloqueos())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos', filter: `barberia_id=eq.${barberiaId}` }, () => cargarPagos())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'turnos', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('turnos', cargarTurnos))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notas', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('notas', cargarNotas))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('clientes', () => { const clientesPromise = cargarClientes(); cargarMensajes(clientesPromise) }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicios', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('servicios', cargarServicios))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'barberos', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('barberos', cargarBarberos))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'config', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('config', cargarConfig))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'saas_integraciones', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('integracion', cargarIntegracionWhatsApp))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bloqueos_agenda', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('bloqueos', cargarBloqueos))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('pagos', cargarPagos))
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           realtimeActivo = true
@@ -625,6 +652,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
     return () => {
       cancelado = true
+      for (const timer of recargasPendientes.values()) window.clearTimeout(timer)
+      recargasPendientes.clear()
       if (channel) supabase.removeChannel(channel)
       detenerFallback()
     }
@@ -632,6 +661,25 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   if (isSupabaseConfigured && (loading || loadedForTenant !== barberiaId)) {
     return <WorkspacePreparing businessName={barberiaNombre || DEFAULT_BUSINESS_NAME} />
+  }
+
+  // Borrado optimista: saca el elemento al instante y, si la base lo
+  // rechaza, lo restaura en su posición original y avisa.
+  const eliminarOptimista = async (lista, setLista, id, tabla, mensajeError) => {
+    const anterior = lista.find((item) => item.id === id)
+    const indiceAnterior = lista.findIndex((item) => item.id === id)
+    setLista((prev) => prev.filter((item) => item.id !== id))
+    if (!isSupabaseConfigured) return true
+    const { error } = await supabase.from(tabla).delete().eq('id', id)
+    if (!error) return true
+    setLista((prev) => {
+      if (!anterior || prev.some((item) => item.id === id)) return prev
+      const restaurados = [...prev]
+      restaurados.splice(Math.max(0, Math.min(indiceAnterior, restaurados.length)), 0, anterior)
+      return restaurados
+    })
+    reportError(mensajeError, error)
+    return false
   }
 
   const addNota = async (nueva) => {
@@ -672,8 +720,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       if (error) {
         setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, estado: estadoAnterior } : t)))
         reportError('No se pudo actualizar el estado del turno', error)
+        return false
       }
     }
+    return true
   }
 
   // Antes de marcar un turno como "Atendido" pedimos cómo se cobró. El
@@ -691,7 +741,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const confirmarCobro = async ({ monto, metodo }) => {
     if (!cobroTurno) return
     const turno = cobroTurno
-    await updateTurnoEstado(turno.id, 'atendido')
+    // Sin turno atendido no registramos el cobro: evita pagos huérfanos de
+    // turnos que en la base siguen como pendientes.
+    if (!(await updateTurnoEstado(turno.id, 'atendido'))) { setCobroTurno(null); return }
 
     const servicioDelTurno = servicios.find((s) => String(s.id) === String(turno.servicio_id))
     const nuevoPago = {
@@ -714,23 +766,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     setCobroTurno(null)
   }
 
-  const deleteTurno = async (turnoId) => {
-    const turnoAnterior = turnos.find((t) => t.id === turnoId)
-    const indiceAnterior = turnos.findIndex((t) => t.id === turnoId)
-    setTurnos((prev) => prev.filter((t) => t.id !== turnoId))
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.from('turnos').delete().eq('id', turnoId)
-      if (error) {
-        setTurnos((prev) => {
-          if (!turnoAnterior || prev.some((t) => t.id === turnoId)) return prev
-          const restaurados = [...prev]
-          restaurados.splice(Math.max(0, Math.min(indiceAnterior, restaurados.length)), 0, turnoAnterior)
-          return restaurados
-        })
-        reportError('No se pudo eliminar el turno', error)
-      }
-    }
-  }
+  const deleteTurno = (turnoId) => eliminarOptimista(turnos, setTurnos, turnoId, 'turnos', 'No se pudo eliminar el turno')
 
   const saveTurno = async ({ paciente, telefono, clienteId, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }, existingId) => {
     const servicio = servicios.find((item) => String(item.id) === String(servicio_id))
@@ -771,7 +807,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         if (isSupabaseConfigured) {
           const { data, error } = await supabase.from('clientes').insert({ ...nuevoPaciente, barberia_id: barberiaId }).select()
           if (error) {
+            // Sin ficha el turno quedaría desvinculado del cliente (sin
+            // historial ni teléfono para WhatsApp), así que no lo creamos.
             reportError('No se pudo guardar el cliente nuevo', error)
+            return false
           } else if (data?.[0]) {
             setPacientes((prev) => [...prev, data[0]])
             finalClienteId = data[0].id
@@ -806,11 +845,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         const { error } = await supabase.from('turnos').update(dbPayload).eq('id', existingId)
         if (error) {
           if (turnoAnterior) setTurnos((prev) => prev.map((t) => (t.id === existingId ? turnoAnterior : t)))
-          const message = String(error?.message || '').toLowerCase()
-          if (error.code === '23P01' || /exclusion|solap|ocup/.test(message)) setDbError('Ese horario acaba de ocuparse. Elegí otro horario.')
-          else if (/servicio|profesional/.test(message)) setDbError('El profesional seleccionado ya no realiza ese servicio.')
-          else if (/horario|jornada|trabaja/.test(message)) setDbError('El horario está fuera de la jornada laboral o atraviesa un descanso.')
-          else if (/bloque/.test(message)) setDbError('Ese horario está bloqueado. Elegí otro horario.')
+          const mensaje = mensajeErrorTurno(error)
+          if (mensaje) setDbError(mensaje)
           else reportError('No se pudo guardar el turno', error)
           return false
         }
@@ -821,11 +857,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.from('turnos').insert({ ...dbPayload, barberia_id: barberiaId }).select()
       if (error) {
-        const message = String(error?.message || '').toLowerCase()
-        if (error.code === '23P01' || /exclusion|solap|ocup/.test(message)) setDbError('Ese horario acaba de ocuparse. Elegí otro horario.')
-        else if (/servicio|profesional/.test(message)) setDbError('El profesional seleccionado ya no realiza ese servicio.')
-        else if (/horario|jornada|trabaja/.test(message)) setDbError('El horario está fuera de la jornada laboral o atraviesa un descanso.')
-        else if (/bloque/.test(message)) setDbError('Ese horario está bloqueado. Elegí otro horario.')
+        const mensaje = mensajeErrorTurno(error)
+        if (mensaje) setDbError(mensaje)
         else reportError('No se pudo crear el turno', error)
         return false
       }
@@ -868,23 +901,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
   }
 
-  const deletePaciente = async (id) => {
-    const anterior = pacientes.find((p) => p.id === id)
-    const indiceAnterior = pacientes.findIndex((p) => p.id === id)
-    setPacientes((prev) => prev.filter((p) => p.id !== id))
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.from('clientes').delete().eq('id', id)
-      if (error) {
-        setPacientes((prev) => {
-          if (!anterior || prev.some((p) => p.id === id)) return prev
-          const restaurados = [...prev]
-          restaurados.splice(Math.max(0, Math.min(indiceAnterior, restaurados.length)), 0, anterior)
-          return restaurados
-        })
-        reportError('No se pudo eliminar el cliente', error)
-      }
-    }
-  }
+  const deletePaciente = (id) => eliminarOptimista(pacientes, setPacientes, id, 'clientes', 'No se pudo eliminar el cliente')
 
   const updateNota = async (id, texto) => {
     const anterior = notas.find((n) => n.id === id)
@@ -898,26 +915,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
   }
 
-  const deleteNota = async (id) => {
-    const anterior = notas.find((n) => n.id === id)
-    const indiceAnterior = notas.findIndex((n) => n.id === id)
-    setNotas((prev) => prev.filter((n) => n.id !== id))
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.from('notas').delete().eq('id', id)
-      if (error) {
-        setNotas((prev) => {
-          if (!anterior || prev.some((n) => n.id === id)) return prev
-          const restauradas = [...prev]
-          restauradas.splice(Math.max(0, Math.min(indiceAnterior, restauradas.length)), 0, anterior)
-          return restauradas
-        })
-        reportError('No se pudo eliminar la nota', error)
-      }
-    }
-  }
+  const deleteNota = (id) => eliminarOptimista(notas, setNotas, id, 'notas', 'No se pudo eliminar la nota')
 
   const sendMensaje = async (paciente, texto, clienteId) => {
-    const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
+    const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: zonaHoraria || TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
     const nuevoMensaje = { paciente, texto, de: 'clinica', hora: horaActual, leido: true, cliente_id: clienteId ?? null }
     const esLaConversacion = (c) => (clienteId != null ? c.clienteId === clienteId : c.paciente === paciente)
     const conversacionAnterior = conversaciones.find(esLaConversacion)
@@ -941,32 +942,46 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
           return { ...c, mensajes: mensajesAnteriores, ultimaHora: conversacionAnterior?.ultimaHora ?? null, ultimoCreatedAt: conversacionAnterior?.ultimoCreatedAt ?? new Date(0).toISOString() }
         }))
         reportError('No se pudo guardar el mensaje', error)
+        // Sin registro en el panel no lo enviamos: el cliente recibiría un
+        // mensaje que nadie del equipo puede ver. El chat conserva el borrador.
+        return false
       }
     }
 
+    // El envío real pasa por una edge function autenticada: valida la
+    // membresía del usuario y toma el teléfono de la ficha del cliente. El
+    // navegador nunca conoce la URL del webhook de n8n.
     const telefono = clienteId ? pacientes.find((p) => p.id === clienteId)?.telefono : null
-    if (!demoMode && telefono && N8N_SEND_WEBHOOK_URL) {
+    if (!telefono) {
+      reportError('No se pudo enviar por WhatsApp', new Error('Este cliente no tiene un teléfono cargado en su ficha'))
+    } else if (isSupabaseConfigured) {
       try {
-        const res = await fetch(N8N_SEND_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telefono, texto }),
+        const { error } = await supabase.functions.invoke(WHATSAPP_PANEL_SEND_FUNCTION, {
+          body: { tenant_id: barberiaId, cliente_id: clienteId, texto },
         })
-        if (!res.ok) reportError('El mensaje se guardo pero no se pudo enviar por WhatsApp', new Error(`HTTP ${res.status}`))
+        if (error) reportError('El mensaje se guardó pero no se pudo enviar por WhatsApp', error)
       } catch (err) {
-        reportError('El mensaje se guardo pero no se pudo enviar por WhatsApp', err)
+        reportError('El mensaje se guardó pero no se pudo enviar por WhatsApp', err)
       }
-    } else if (!telefono) {
-      reportError('No se pudo enviar por WhatsApp', new Error('Este cliente no tiene un telefono cargado en su ficha'))
     }
 
+    // Traspaso a atención humana: una respuesta manual pausa el bot. Es la
+    // única escritura de `bot_activo` desde el navegador y sólo puede apagarlo;
+    // la RPC lo permite a cualquier miembro (la política de `config` es sólo
+    // para owners y dejaba al bot activo si respondía otro rol).
     if (botActivo) {
       setBotActivo(false)
       if (isSupabaseConfigured) {
-        const { error } = await supabase
-          .from('config')
-          .upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: 'false' })
-        if (error) reportError('No se pudo apagar el bot', error)
+        let { error } = await supabase.rpc('pause_whatsapp_bot_for_manual_reply', { p_barberia_id: barberiaId })
+        // Compatibilidad mientras la migración no esté aplicada: el owner
+        // todavía puede pausarlo con la escritura directa.
+        if (error?.code === 'PGRST202') {
+          ({ error } = await supabase.from('config').upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: 'false' }))
+        }
+        if (error) {
+          setBotActivo(true)
+          reportError('No se pudo pausar el bot: puede seguir respondiendo este chat', error)
+        }
       }
     }
   }
@@ -1004,18 +1019,40 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
   }
 
+  // Los inputs de servicios guardan en cada tecla. Igual que updateBarbero,
+  // serializamos por (servicio, campo) y mandamos siempre el último valor:
+  // con updates en paralelo la base podía quedarse con uno intermedio.
+  // Sólo precio y duración son numéricos (antes la descripción se volvía 0).
   const updateServicio = async (id, field, value) => {
-    const parsed = field === 'nombre' ? value : Number(value) || 0
-    const anterior = servicios.find((s) => s.id === id)
+    const parsed = CAMPOS_NUMERICOS_SERVICIO.has(field) ? Number(value) || 0 : value
     setServicios((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: parsed } : s)))
-    if (isSupabaseConfigured) {
-      const dbField = field === 'duracion' ? 'duracion_min' : field
-      const { error } = await supabase.from('servicios').update({ [dbField]: parsed }).eq('id', id)
-      if (error) {
-        if (anterior) setServicios((prev) => prev.map((s) => (s.id === id ? anterior : s)))
-        const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
-        reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo actualizar el servicio', error)
+    if (!isSupabaseConfigured) return
+
+    const key = `${id}:${field}`
+    const estado = servicioWritesRef.current[key] || { inFlight: false, latest: parsed, guardado: servicios.find((s) => s.id === id)?.[field] }
+    estado.latest = parsed
+    servicioWritesRef.current[key] = estado
+    if (estado.inFlight) return
+
+    const dbField = field === 'duracion' ? 'duracion_min' : field
+    estado.inFlight = true
+    try {
+      while (true) {
+        const valorAGuardar = estado.latest
+        const { error } = await supabase.from('servicios').update({ [dbField]: valorAGuardar }).eq('id', id)
+        if (!error) estado.guardado = valorAGuardar
+        if (estado.latest !== valorAGuardar) continue // llegó un valor más nuevo: lo mandamos
+        if (error) {
+          // Sólo el valor final revierte y avisa: un nombre intermedio que
+          // coincide con otro servicio no debe interrumpir mientras se tipea.
+          setServicios((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: estado.guardado } : s)))
+          const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
+          reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo actualizar el servicio', error)
+        }
+        break
       }
+    } finally {
+      estado.inFlight = false
     }
   }
 
@@ -1178,23 +1215,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
   }
 
-  const deleteBarbero = async (id) => {
-    const anterior = barberos.find((b) => b.id === id)
-    const indiceAnterior = barberos.findIndex((b) => b.id === id)
-    setBarberos((prev) => prev.filter((b) => b.id !== id))
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.from('barberos').delete().eq('id', id)
-      if (error) {
-        setBarberos((prev) => {
-          if (!anterior || prev.some((b) => b.id === id)) return prev
-          const restaurados = [...prev]
-          restaurados.splice(Math.max(0, Math.min(indiceAnterior, restaurados.length)), 0, anterior)
-          return restaurados
-        })
-        reportError('No se pudo eliminar el barbero', error)
-      }
-    }
-  }
+  const deleteBarbero = (id) => eliminarOptimista(barberos, setBarberos, id, 'barberos', 'No se pudo eliminar el barbero')
 
   const addBloqueo = async ({ barbero_id, fecha, motivo, tipo }) => {
     const nuevo = { barberia_id: barberiaId, barbero_id, fecha, motivo, tipo, start_time: '00:00', end_time: '23:59' }
@@ -1208,23 +1229,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return true
   }
 
-  const deleteBloqueo = async (id) => {
-    const anterior = bloqueos.find((b) => b.id === id)
-    const indiceAnterior = bloqueos.findIndex((b) => b.id === id)
-    setBloqueos((prev) => prev.filter((b) => b.id !== id))
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.from('bloqueos_agenda').delete().eq('id', id)
-      if (error) {
-        setBloqueos((prev) => {
-          if (!anterior || prev.some((b) => b.id === id)) return prev
-          const restaurados = [...prev]
-          restaurados.splice(Math.max(0, Math.min(indiceAnterior, restaurados.length)), 0, anterior)
-          return restaurados
-        })
-        reportError('No se pudo eliminar el día libre', error)
-      }
-    }
-  }
+  const deleteBloqueo = (id) => eliminarOptimista(bloqueos, setBloqueos, id, 'bloqueos_agenda', 'No se pudo eliminar el día libre')
 
   const turnosHoy = turnos.filter((t) => t.fecha === todayKey).sort((a, b) => a.hora.localeCompare(b.hora))
   const unreadCount = conversaciones.filter((c) => c.noLeido).length
@@ -1265,7 +1270,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         {dbError && (
           <div className="error-banner" role="alert" aria-live="assertive">
             <AlertTriangle size={15} />
-            <span>{dbError}. Podés reintentar sin perder los datos visibles.</span>
+            <span>{dbError.replace(/[.\s]+$/, '')}. Podés reintentar sin perder los datos visibles.</span>
             {isSupabaseConfigured && <button className="btn btn-ghost" type="button" onClick={() => { setDbError(''); setReloadKey((value) => value + 1) }}>Reintentar</button>}
             <button className="btn-icon-plain" type="button" onClick={() => setDbError('')} aria-label="Cerrar aviso de error" title="Cerrar aviso">
               <X size={14} />
@@ -1273,10 +1278,13 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
           </div>
         )}
 
-        {!demoMode && !botActivo && (
-          <div className="demo-banner" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
+        {/* Sólo cuando hay algo que contar: WhatsApp conectado con automatización
+            habilitada pero el bot en pausa. Sin conexión, el sidebar ya muestra
+            el estado y la acción para configurarla; repetirlo acá era ruido fijo. */}
+        {!demoMode && !botActivo && whatsappIntegration.connected && whatsappIntegration.automationEnabled && (
+          <div className="demo-banner" role="status" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
             <Bot size={15} />
-            La automatización de WhatsApp está desactivada. Podés revisar su estado desde Configuración; la atención manual permanece disponible.
+            El bot de WhatsApp está en pausa: las conversaciones se atienden de forma manual desde el panel.
           </div>
         )}
 
@@ -1485,7 +1493,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
               </div>
             </div>
             {loading ? <SkeletonBlock height={420} /> : (
-              <Stats turnos={turnos} pacientes={pacientes} conversaciones={conversaciones} todayKey={todayKey} barberos={barberos} servicios={servicios} pagos={pagos} />
+              <Stats turnos={turnos} pacientes={pacientes} conversaciones={conversaciones} todayKey={todayKey} barberos={barberos} servicios={servicios} pagos={pagos} timezone={zonaHoraria} />
             )}
           </div>
         )}

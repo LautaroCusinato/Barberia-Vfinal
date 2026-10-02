@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X, Banknote, CreditCard, Landmark, Check } from 'lucide-react'
 
 const METODOS = [
@@ -12,8 +12,16 @@ export default function CobroModal({ turno, servicios = [], onClose, onConfirm }
   const [metodo, setMetodo] = useState('efectivo')
   const [saving, setSaving] = useState(false)
 
+  // Se inicializa una vez por turno: una recarga de servicios (realtime)
+  // no debe pisar el monto que la persona ya corrigió.
+  const inicializadoParaRef = useRef(null)
   useEffect(() => {
-    if (!turno) return
+    if (!turno) {
+      inicializadoParaRef.current = null
+      return
+    }
+    if (inicializadoParaRef.current === turno.id) return
+    inicializadoParaRef.current = turno.id
     const servicioDelTurno = servicios.find((s) => String(s.id) === String(turno.servicio_id))
     setMonto(String(turno.precio ?? servicioDelTurno?.precio ?? ''))
     setMetodo('efectivo')
