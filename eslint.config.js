@@ -34,4 +34,14 @@ export default [
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Suite de Vitest: los tests importan la API desde 'vitest', pero se
+    // declaran los globals por si alguno usa describe/it/expect sin importar.
+    files: ['**/*.test.{js,jsx}', 'src/test/**/*.{js,jsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.vitest,
+      },
+    },
+  },
 ]

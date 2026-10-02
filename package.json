@@ -11,8 +11,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint \"src/**/*.{js,jsx}\" \"scripts/**/*.mjs\" \"e2e/**/*.mjs\" vite.config.js eslint.config.js playwright.config.mjs",
+    "lint": "eslint \"src/**/*.{js,jsx}\" \"scripts/**/*.mjs\" \"e2e/**/*.mjs\" vite.config.js vitest.config.js eslint.config.js playwright.config.mjs",
     "test": "node scripts/verify-agenda.mjs && node scripts/verify-mutation-feedback.mjs && node scripts/verify-saas-foundation.mjs && node scripts/verify-onboarding.mjs && node scripts/verify-workspace-transition.mjs && node scripts/verify-auth-production-polish.mjs && node scripts/verify-billing.mjs && node scripts/verify-billing-serverless.mjs && node scripts/verify-mercadopago-flow.mjs && node scripts/verify-billing-multi-environment.mjs && node scripts/verify-commercial-trial.mjs && node scripts/verify-commercial-single-plan.mjs && node scripts/verify-billing-sandbox-e2e.mjs && node scripts/verify-commercial-prep.mjs && node scripts/verify-crm-commercial.mjs && node scripts/verify-sales-infrastructure.mjs && node scripts/verify-commercial-pilot.mjs && node scripts/verify-monitoring.mjs && node scripts/verify-billing-production-dry-run.mjs && node scripts/verify-billing-production-readiness.mjs && node scripts/verify-billing-readiness-contract.mjs && node scripts/verify-whatsapp-evolution-state.mjs && node scripts/verify-whatsapp-integration-state-sync.mjs && node scripts/verify-whatsapp-shadow.mjs && node scripts/verify-whatsapp-webhook-config.mjs && node scripts/verify-whatsapp-webhook-batch.mjs && node scripts/verify-whatsapp-shadow-offline.mjs && node scripts/verify-whatsapp-agent-shadow.mjs && node scripts/verify-whatsapp-outbound-pilot.mjs && node scripts/verify-whatsapp-agent-outbound-pilot.mjs && node scripts/verify-whatsapp-booking-mutation.mjs && node scripts/verify-whatsapp-robustness.mjs && node scripts/verify-whatsapp-conversation-state.mjs && node scripts/verify-whatsapp-multiturn-runtime.mjs && node scripts/verify-whatsapp-conversation-quality.mjs && node scripts/verify-whatsapp-reply-only-offline.mjs && node scripts/verify-whatsapp-multitenant-architecture.mjs && node scripts/verify-whatsapp-ui-status.mjs && node scripts/verify-runtime-stability.mjs && node scripts/verify-mobile-polish.mjs && node scripts/verify-mobile-session-chat-fix.mjs && node scripts/verify-rc2-hardening.mjs && node scripts/verify-whatsapp-qa-harness.mjs && node scripts/verify-whatsapp-conversation-quality-matrix.mjs && node scripts/verify-first-customer-readiness.mjs && node scripts/verify-whatsapp-production-contract.mjs && node scripts/verify-whatsapp-production-runtime.mjs && node scripts/verify-whatsapp-production-workflow.mjs && node scripts/verify-whatsapp-tenant-preflight.mjs && node scripts/verify-whatsapp-production-diagnostics.mjs && node scripts/verify-whatsapp-operations.mjs && node scripts/verify-secret-safety.mjs && node scripts/verify-production-rls-declarations.mjs && node scripts/verify-panel-send-boundary.mjs && node scripts/verify-phone-format.mjs && node scripts/verify-csv-export.mjs",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
     "verify:whatsapp-production:operations": "node scripts/verify-whatsapp-operations.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -51,7 +53,7 @@
     "whatsapp:webhook:dry-run": "node scripts/whatsapp-webhook-config.mjs --dry-run",
     "whatsapp:webhook:apply": "node scripts/whatsapp-webhook-config.mjs --apply",
     "whatsapp:webhook:rollback": "node scripts/whatsapp-webhook-config.mjs --rollback",
-    "check": "npm run lint && npm test && npm run build",
+    "check": "npm run lint && npm test && npm run test:unit && npm run build",
     "test:e2e:public": "playwright test e2e/public.spec.mjs",
     "test:e2e:demo": "playwright test e2e/demo.spec.mjs",
     "test:e2e:qa": "playwright test e2e/qa-authenticated.spec.mjs"
@@ -66,11 +68,17 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@vitejs/plugin-react": "^6.0.5",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.9.0",
-    "vite": "^8.2.0"
+    "jsdom": "^29.1.1",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.11"
   }
 }

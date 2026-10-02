@@ -27,7 +27,17 @@ export const TELEFONO_NACIONAL_DIGITOS = 10
 // una tabla, así que usamos 2 para el AMBA y 3 para el resto, con guion antes
 // de los últimos 4. La base siempre guarda dígitos crudos.
 export function formatNumeroNacional(value = '') {
-  const digitos = soloDigitos(value).slice(0, TELEFONO_NACIONAL_DIGITOS)
+  let digitos = soloDigitos(value)
+  // Al pegar un número completo (+54 9 11..., 54 351..., 011...) sobran
+  // dígitos: quitamos el código de país o el 0 troncal antes de recortar, en
+  // vez de guardar "549 115-5221". Ningún área argentina empieza con 0 ni con
+  // 5, así que lo que se tipea dígito a dígito no cambia.
+  if (digitos.length > TELEFONO_NACIONAL_DIGITOS) {
+    if (digitos.startsWith('549')) digitos = digitos.slice(3)
+    else if (digitos.startsWith('54')) digitos = digitos.slice(2)
+    else if (digitos.startsWith('0')) digitos = digitos.slice(1)
+  }
+  digitos = digitos.slice(0, TELEFONO_NACIONAL_DIGITOS)
   const area = digitos.startsWith('11') ? 2 : 3
   if (digitos.length <= area) return digitos
   const resto = digitos.slice(area)

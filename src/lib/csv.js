@@ -74,7 +74,9 @@ export function parseLeadsCsv(text) {
   const normalized = originalHeaders.map(normalizeHeader)
   const mapping = {}
   Object.entries(FIELD_ALIASES).forEach(([field, aliases]) => {
-    const index = normalized.findIndex((header) => aliases.includes(header))
+    // Los alias se normalizan igual que los encabezados: "E-mail" llega como
+    // "e_mail" y antes no coincidía con el alias 'e-mail' (se perdía la columna).
+    const index = normalized.findIndex((header) => aliases.some((alias) => normalizeHeader(alias) === header))
     if (index >= 0) mapping[field] = index
   })
   const errors = []; const warnings = []
