@@ -558,15 +558,15 @@ export default function PlatformCRM({ role = 'owner' }) {
           <CRMLeadsWorkspace role={role} />
         </section> : <section className={`panel platform-crm-panel platform-records-panel platform-records-${view}`}>
           <div className="panel-header">
-            <div><h2 className="panel-title">{view === 'businesses' ? 'Negocios' : 'Leads'}</h2><p className="panel-subtitle">Los registros estan protegidos por RLS para miembros de plataforma.</p></div>
-            <label className="crm-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === 'businesses' ? 'Buscar negocio...' : 'Buscar lead...'} aria-label={view === 'businesses' ? 'Buscar negocio' : 'Buscar lead'} /></label>
+            <div><h2 className="panel-title">{view === 'businesses' ? 'Negocios' : 'Leads'}</h2><p className="panel-subtitle">Los registros están protegidos por RLS para miembros de plataforma.</p></div>
+            <label className="crm-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === 'businesses' ? 'Buscar negocio…' : 'Buscar lead…'} aria-label={view === 'businesses' ? 'Buscar negocio' : 'Buscar lead'} /></label>
           </div>
-          {loading ? <div className="empty-state">Cargando CRM...</div> : view === 'businesses' ? (filteredBusinesses.length === 0 ? (
+          {loading ? <div className="empty-state">Cargando CRM…</div> : view === 'businesses' ? (filteredBusinesses.length === 0 ? (
             <div className="empty-state">No hay negocios que coincidan con la busqueda.</div>
           ) : (
             <div className="table-scroll">
               <table className="table platform-table">
-                <thead><tr><th>Negocio</th><th>Rubro / pais</th><th>Etapa</th><th>Interes</th><th>Proxima accion</th></tr></thead>
+                <thead><tr><th>Negocio</th><th>Rubro / pais</th><th>Etapa</th><th>Interes</th><th>Próxima acción</th></tr></thead>
                 <tbody>{filteredBusinesses.map((business) => (
                   <tr key={business.id}>
                     <td><div className="table-name-cell"><span className="avatar avatar-sm">{business.nombre.slice(0, 1).toUpperCase()}</span><div><strong>{business.nombre}</strong><small>{business.email || business.telefono || 'Sin contacto'}</small></div></div></td>
@@ -583,7 +583,7 @@ export default function PlatformCRM({ role = 'owner' }) {
           ) : (
             <div className="table-scroll">
               <table className="table platform-table">
-                <thead><tr><th>Contacto</th><th>Negocio</th><th>Canal</th><th>Estado</th><th>Interes</th><th>Proxima accion</th></tr></thead>
+                <thead><tr><th>Contacto</th><th>Negocio</th><th>Canal</th><th>Estado</th><th>Interes</th><th>Próxima acción</th></tr></thead>
                 <tbody>{filteredLeads.map((lead) => (
                   <tr key={lead.id}>
                     <td><div className="table-name-cell"><span className="avatar avatar-sm">{(lead.nombre_contacto || '?').slice(0, 1).toUpperCase()}</span><div><strong>{lead.nombre_contacto || 'Sin nombre'}</strong><small>{lead.email || lead.telefono || 'Sin contacto'}</small></div></div></td>
@@ -602,14 +602,14 @@ export default function PlatformCRM({ role = 'owner' }) {
 
       {showForm && <div className="modal-overlay" onClick={() => setShowForm(false)}>
         <form className="modal-box platform-crm-form" onSubmit={createBusiness} onClick={(event) => event.stopPropagation()}>
-          <div className="modal-header"><div><h2 className="panel-title">Nuevo negocio</h2><p className="panel-subtitle">Solo guarda datos del CRM; no envia mensajes.</p></div><button type="button" className="btn-icon-plain" onClick={() => setShowForm(false)} aria-label="Cerrar"><X size={18} /></button></div>
+          <div className="modal-header"><div><h2 className="panel-title">Nuevo negocio</h2><p className="panel-subtitle">Sólo guarda datos del CRM; no envía mensajes.</p></div><button type="button" className="btn-icon-plain" onClick={() => setShowForm(false)} aria-label="Cerrar"><X size={18} /></button></div>
           <div className="modal-row"><div className="modal-field"><label className="modal-label">Nombre *</label><input className="text-input" required value={form.nombre} onChange={(event) => updateForm('nombre', event.target.value)} autoFocus /></div><div className="modal-field"><label className="modal-label">Rubro</label><input className="text-input" value={form.rubro} onChange={(event) => updateForm('rubro', event.target.value)} /></div></div>
           <div className="modal-row"><div className="modal-field"><label className="modal-label">Pais</label><input className="text-input" value={form.pais} onChange={(event) => updateForm('pais', event.target.value)} /></div><div className="modal-field"><label className="modal-label">Idioma</label><input className="text-input" value={form.idioma} onChange={(event) => updateForm('idioma', event.target.value)} /></div></div>
           <div className="modal-row"><div className="modal-field"><label className="modal-label">Email</label><input className="text-input" type="email" value={form.email} onChange={(event) => updateForm('email', event.target.value)} /></div><div className="modal-field"><label className="modal-label">Telefono</label><input className="text-input" inputMode="tel" value={form.telefono} onChange={(event) => updateForm('telefono', event.target.value)} /></div></div>
-          <div className="modal-row"><div className="modal-field"><label className="modal-label">Canal de origen</label><input className="text-input" placeholder="web, referido, WhatsApp..." value={form.canal_origen} onChange={(event) => updateForm('canal_origen', event.target.value)} /></div><div className="modal-field"><label className="modal-label">Etapa</label><select className="text-input" value={form.etapa} onChange={(event) => updateForm('etapa', event.target.value)}>{STAGES.map((stage) => <option key={stage} value={stage}>{stageLabel(stage)}</option>)}</select></div></div>
+          <div className="modal-row"><div className="modal-field"><label className="modal-label">Canal de origen</label><input className="text-input" placeholder="web, referido, WhatsApp…" value={form.canal_origen} onChange={(event) => updateForm('canal_origen', event.target.value)} /></div><div className="modal-field"><label className="modal-label">Etapa</label><select className="text-input" value={form.etapa} onChange={(event) => updateForm('etapa', event.target.value)}>{STAGES.map((stage) => <option key={stage} value={stage}>{stageLabel(stage)}</option>)}</select></div></div>
           <div className="modal-row"><div className="modal-field"><label className="modal-label">Interes</label><input className="text-input" value={form.interes} onChange={(event) => updateForm('interes', event.target.value)} /></div><div className="modal-field"><label className="modal-label">Precio ofrecido ({form.moneda})</label><input className="text-input" type="number" min="0" step="0.01" value={form.precio_ofrecido} onChange={(event) => updateForm('precio_ofrecido', event.target.value)} /></div></div>
           <div className="modal-field"><label className="modal-label">Notas</label><textarea className="text-input" rows="3" value={form.notas} onChange={(event) => updateForm('notas', event.target.value)} /></div>
-          <div className="modal-actions"><button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar negocio'}</button></div>
+          <div className="modal-actions"><button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando…' : 'Guardar negocio'}</button></div>
         </form>
       </div>}
     </div>

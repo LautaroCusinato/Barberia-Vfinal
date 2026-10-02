@@ -73,7 +73,7 @@ export default function Agenda({ turnos, compact, onChangeEstado, onDeleteTurno,
 
   // Si solo hay 1 barbero, mostrar lista plana
   return (
-    <div>
+    <div className="agenda-list-flat">
       {turnos.map((t) => (
         <TurnoRow
           key={t.id}

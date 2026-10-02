@@ -197,7 +197,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <span className="panel-title-icon">Turnos por estado</span>
           </p>
           {porEstado.length === 0 ? (
-            <p className="note-popover-empty">Todavia no hay turnos cargados</p>
+            <p className="note-popover-empty">Todavía no hay turnos cargados</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {porEstado.map((o) => (
@@ -217,10 +217,10 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
 
         <div className="panel">
           <p className="panel-title">
-            <span className="panel-title-icon">Servicios mas frecuentes</span>
+            <span className="panel-title-icon">Servicios más frecuentes</span>
           </p>
           {motivos.length === 0 ? (
-            <p className="note-popover-empty">Todavia no hay turnos cargados</p>
+            <p className="note-popover-empty">Todavía no hay turnos cargados</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {motivos.map((m) => (
@@ -262,7 +262,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
 
       <div className="panel" style={{ marginTop: '1.15rem' }}>
         <p className="panel-title">
-          <span className="panel-title-icon">Turnos de los ultimos 8 dias</span>
+          <span className="panel-title-icon">Turnos de los últimos 8 días</span>
         </p>
         <div className="bar-chart-row">
           {porDia.map((d) => (
@@ -319,7 +319,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <Search size={15} style={{ color: 'var(--ink-faint)' }} />
             <input
               className="search-input"
-              placeholder="Buscar por cliente..."
+              placeholder="Buscar por cliente…"
               value={filtroPagoNombre}
               onChange={(e) => setFiltroPagoNombre(e.target.value)}
             />

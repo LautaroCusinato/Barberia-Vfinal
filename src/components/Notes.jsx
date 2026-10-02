@@ -58,7 +58,7 @@ function NoteCard({ nota, onUpdate, onDelete }) {
           <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn" onClick={cancelar}>Cancelar</button>
             <button className="btn btn-primary" onClick={guardar} disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar'}
+              {saving ? 'Guardando…' : 'Guardar'}
             </button>
           </div>
         </div>
@@ -136,14 +136,14 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
 
         <textarea
           className="note-input"
-          placeholder="Escribi una preferencia del cliente o recordatorio..."
+          placeholder="Escribí una preferencia del cliente o recordatorio…"
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
         />
         <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn btn-primary" onClick={submit} disabled={saving}>
             <Check size={14} strokeWidth={2.5} />
-            {saving ? 'Guardando...' : 'Guardar nota'}
+            {saving ? 'Guardando…' : 'Guardar nota'}
           </button>
         </div>
       </div>
@@ -152,7 +152,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
         <Search size={16} style={{ color: 'var(--ink-faint)' }} />
         <input
           className="search-input"
-          placeholder="Filtrar notas por cliente..."
+          placeholder="Filtrar notas por cliente…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />

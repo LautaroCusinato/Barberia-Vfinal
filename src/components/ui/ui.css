@@ -31,12 +31,12 @@
 .ui-button:disabled { cursor: not-allowed; opacity: .6; }
 .ui-button-default { background: var(--surface); border-color: var(--border); color: var(--ink); }
 .ui-button-default:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-muted); }
-.ui-button-primary { background: var(--accent); color: #fff; }
+.ui-button-primary { background: var(--accent); color: var(--on-accent); }
 .ui-button-primary:hover:not(:disabled) { background: var(--accent-strong); }
 .ui-button-secondary { background: var(--surface-muted); border-color: var(--border); color: var(--ink); }
 .ui-button-ghost { background: transparent; color: var(--ink-soft); }
 .ui-button-ghost:hover:not(:disabled) { background: var(--surface-muted); color: var(--ink); }
-.ui-button-danger { background: var(--rose); color: #fff; }
+.ui-button-danger { background: var(--rose); color: var(--on-danger); }
 .ui-button-link { min-height: auto; padding: 0; background: transparent; color: var(--accent-strong); }
 .ui-button-sm { min-height: 36px; padding-inline: var(--space-3); font-size: .875rem; }
 .ui-button-lg { min-height: 48px; padding-inline: var(--space-5); }

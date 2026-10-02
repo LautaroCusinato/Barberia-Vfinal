@@ -16,7 +16,7 @@ import {
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, ChevronDown, Check, CalendarX, LayoutGrid, List, Plus, Users, Clock3, Coffee, Ban, UserRound } from 'lucide-react'
-import { slotsOcupados, parseHorarioBarbero } from '../lib/text'
+import { capitalizar, slotsOcupados, parseHorarioBarbero } from '../lib/text'
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
 import { EmptyState } from './ui'
@@ -207,7 +207,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
             <span className="calendar-heading-kicker">{viewMode === 'mes' ? 'Vista mensual' : 'Vista semanal'}</span>
             <h2 className="calendar-heading-title">
               {viewMode === 'mes'
-                ? format(month, 'MMMM yyyy', { locale: es })
+                ? capitalizar(format(month, 'MMMM yyyy', { locale: es }))
                 : `${format(weekDays[0], 'd MMM', { locale: es })} al ${format(weekDays[6], 'd MMM', { locale: es })}`}
             </h2>
             <span className="calendar-heading-sub">
@@ -578,12 +578,12 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
           <div className="day-panel-header">
             <div>
               <span className="day-panel-eyebrow">Detalle del día</span>
-              <span className="day-panel-date">{format(selected, "EEEE d 'de' MMMM", { locale: es })}</span>
+              <span className="day-panel-date">{capitalizar(format(selected, "EEEE d 'de' MMMM", { locale: es }))}</span>
             </div>
             {onNewTurno && (
               <button className="btn btn-primary day-panel-new" onClick={() => onNewTurno(selectedKey)}>
                 <Plus size={15} strokeWidth={2.5} />
-                Agendar en este dia
+                Agendar en este día
               </button>
             )}
           </div>

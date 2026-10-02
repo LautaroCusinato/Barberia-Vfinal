@@ -24,7 +24,7 @@ import Billing from './pages/Billing.jsx'
 import TenantSettings from './components/TenantSettings.jsx'
 import WorkspacePreparing from './components/WorkspacePreparing.jsx'
 import { supabase, isSupabaseConfigured as supabaseConfigured } from './lib/supabaseClient'
-import { barberoRealizaServicio, duracionServicioBarbero, generarIdHabilidad, generarSlotsDisponibles, parseHabilidades, parseHorarioTexto, siguienteNombreServicio, soloDigitos, turnosSeSuperponen } from './lib/text'
+import { barberoRealizaServicio, capitalizar, duracionServicioBarbero, generarIdHabilidad, generarSlotsDisponibles, parseHabilidades, parseHorarioTexto, siguienteNombreServicio, soloDigitos, turnosSeSuperponen } from './lib/text'
 import { DEFAULT_BUSINESS_NAME, tenantStorageKey } from './lib/tenant'
 import { clearWorkspaceTransition } from './lib/workspaceTransition.js'
 import {
@@ -1233,7 +1233,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const turnosHoy = turnos.filter((t) => t.fecha === todayKey).sort((a, b) => a.hora.localeCompare(b.hora))
   const unreadCount = conversaciones.filter((c) => c.noLeido).length
-  const hoyLegible = format(new Date(`${todayKey}T12:00:00`), "EEEE d 'de' MMMM", { locale: es })
+  const hoyLegible = capitalizar(format(new Date(`${todayKey}T12:00:00`), "EEEE d 'de' MMMM", { locale: es }))
 
   return (
     <div className="app-shell">
@@ -1502,10 +1502,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
           <div className="fade-in">
             <div className="page-header">
               <div>
-                <p className="page-kicker">Configuracion comercial</p>
+                <p className="page-kicker">Configuración comercial</p>
                 <h1 className="page-title">Operación</h1>
               </div>
-              <span className="page-date">Precios, duracion y barberos disponibles</span>
+              <span className="page-date">Precios, duración y barberos disponibles</span>
             </div>
             {loading ? <SkeletonBlock height={420} /> : (
               <Operations

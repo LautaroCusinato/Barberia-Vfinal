@@ -113,7 +113,7 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
         <div className="note-popover">
           <p className="note-popover-title">Notas de {turno.paciente}</p>
           {notasPaciente.length === 0 ? (
-            <p className="note-popover-empty">Sin notas todavia</p>
+            <p className="note-popover-empty">Sin notas todavía</p>
           ) : (
             <div className="note-popover-list">
               {notasPaciente.map((n) => (
@@ -126,7 +126,7 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
           )}
           <textarea
             className="note-input"
-            placeholder="Agregar una nota sobre este cliente..."
+            placeholder="Agregar una nota sobre este cliente…"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
@@ -137,7 +137,7 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
             onClick={guardarNota}
             disabled={saving}
           >
-            {saving ? 'Guardando...' : 'Agregar nota'}
+            {saving ? 'Guardando…' : 'Agregar nota'}
           </button>
         </div>
       )}

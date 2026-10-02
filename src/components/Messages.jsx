@@ -221,7 +221,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
           <Search size={16} style={{ color: 'var(--ink-faint)' }} />
           <input
             className="search-input"
-            placeholder="Buscar cliente o mensaje..."
+            placeholder="Buscar cliente o mensaje…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />

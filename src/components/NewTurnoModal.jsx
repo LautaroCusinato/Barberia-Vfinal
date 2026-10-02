@@ -438,7 +438,7 @@ export default function NewTurnoModal({
                     <Search size={14} className="client-search-icon" />
                     <input
                       className={`${inputBase} client-search-input`}
-                      placeholder="Buscar por nombre o teléfono..."
+                      placeholder="Buscar por nombre o teléfono…"
                       value={clienteQuery}
                       onChange={(e) => setClienteQuery(e.target.value)}
                       onFocus={() => setPickerOpen(true)}
@@ -578,7 +578,7 @@ export default function NewTurnoModal({
               className="btn btn-primary"
               disabled={!valido || !clienteValido || saving}
             >
-              {saving ? 'Guardando...' : esEdicion ? 'Guardar cambios' : 'Agendar turno'}
+              {saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Agendar turno'}
             </button>
           </div>
         </form>

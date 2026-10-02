@@ -149,7 +149,6 @@
   font-size: 15px;
   font-weight: 850;
   line-height: 1.2;
-  text-transform: capitalize;
 }
 
 .day-panel-metrics {
@@ -683,4 +682,33 @@
 @media (prefers-reduced-motion: reduce) {
   .calendar-mobile-day { transition: none; }
   .calendar-mobile-day:hover { transform: none; }
+}
+
+/* La tarjeta de turno se adapta al ancho de su contenedor, no al de la
+ * pantalla. En el Resumen (dos columnas) a 1280px el panel mide ~590px y los
+ * botones de estado dejaban el nombre del cliente reducido a una letra. */
+.agenda-groups,
+.agenda-list-flat,
+.day-side-list,
+.equipo-fecha-grupo {
+  container-type: inline-size;
+}
+
+@container (max-width: 660px) {
+  .agenda-item--enhanced {
+    grid-template-columns: minmax(56px, auto) minmax(0, 1fr);
+  }
+
+  .agenda-item--enhanced .agenda-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .agenda-item--enhanced .turno-status-actions {
+    flex: 1 1 auto;
+  }
 }

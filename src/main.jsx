@@ -365,7 +365,7 @@ function Root() {
       // token en segundo plano (ej: volviste a la pestaña despues de un
       // rato). En esos casos NO hay que volver a preguntar la barberia
       // (ya la tenemos resuelta) — si lo hacemos, parpadea el cartel de
-      // "Cargando tu barbería..." sin necesidad. Solo resolvemos de nuevo
+      // "Cargando tu barbería…" sin necesidad. Solo resolvemos de nuevo
       // en un login real, o si por algun motivo todavia no la resolvimos.
       if (event === 'SIGNED_IN' || !yaResolvioAlgunaVezRef.current) {
         if (!sessionResolutionRef.current) {
@@ -433,7 +433,7 @@ function Root() {
   }
 
   if (opciones === null && !barberiaId) {
-    return <EstadoCentrado>Cargando tu barbería...</EstadoCentrado>
+    return <EstadoCentrado>Cargando tu barbería…</EstadoCentrado>
   }
   if (opciones !== null && opciones.length === 0) {
     if (onboardingNeeded) return <OnboardingWizard />

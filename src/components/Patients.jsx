@@ -65,8 +65,8 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
             <tr>
               <th>Cliente</th>
               <th>Telefono</th>
-              <th>Ultima visita</th>
-              <th>Proximo turno</th>
+              <th>Última visita</th>
+              <th>Próximo turno</th>
               <th>Notas</th>
               <th></th>
             </tr>

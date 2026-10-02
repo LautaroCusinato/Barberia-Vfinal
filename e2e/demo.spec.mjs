@@ -53,7 +53,7 @@ async function createDemoTurn(page, name = 'Cliente E2E Demo') {
   await page.getByRole('button', { name: 'Nuevo turno', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: /Corte clásico 35 min/i }).click()
   await selectFirstAvailableTime(page)
-  await page.getByPlaceholder('Buscar por nombre o teléfono...').fill(name)
+  await page.getByPlaceholder('Buscar por nombre o teléfono…').fill(name)
   await page.getByRole('button', { name: 'Crear nuevo cliente' }).click()
   await page.getByRole('textbox', { name: 'Nombre y apellido', exact: true }).fill(name)
   await page.getByPlaceholder('11 0000-0000').fill('1112345678')

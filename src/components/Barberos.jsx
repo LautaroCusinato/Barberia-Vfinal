@@ -5,6 +5,7 @@ import { CalendarCheck, Wallet, Clock, ChevronRight, Users2, X } from 'lucide-re
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
 import { EmptyState } from './ui'
+import { capitalizar } from '../lib/text'
 
 const money = (n) =>
   (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
@@ -12,7 +13,7 @@ const money = (n) =>
 function fechaLegible(fecha, todayKey) {
   if (fecha === todayKey) return 'Hoy'
   try {
-    return format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es })
+    return capitalizar(format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es }))
   } catch {
     return fecha
   }

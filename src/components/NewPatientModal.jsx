@@ -115,7 +115,7 @@ export default function NewPatientModal({ open, onClose, onSubmit }) {
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={!valido || saving}>
-              {saving ? 'Guardando...' : 'Agregar cliente'}
+              {saving ? 'Guardando…' : 'Agregar cliente'}
             </button>
           </div>
         </form>

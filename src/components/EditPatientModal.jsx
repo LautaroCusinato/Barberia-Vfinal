@@ -66,14 +66,14 @@ export default function EditPatientModal({ paciente, onClose, onSubmit }) {
           </div>
 
           <div className="modal-field">
-            <label className="modal-label">Ultima visita</label>
+            <label className="modal-label">Última visita</label>
             <input className="text-input" type="date" value={ultimaVisita || ''} onChange={(e) => setUltimaVisita(e.target.value)} />
           </div>
 
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={!valido || saving}>
-              {saving ? 'Guardando...' : 'Guardar cambios'}
+              {saving ? 'Guardando…' : 'Guardar cambios'}
             </button>
           </div>
         </form>

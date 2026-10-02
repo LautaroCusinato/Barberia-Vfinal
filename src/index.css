@@ -4,7 +4,7 @@
 .marketing-loading .marketing-header { position: relative; border-bottom: 1px solid var(--border); background: var(--surface); }
 .marketing-loading .marketing-nav { display: flex; align-items: center; justify-content: space-between; width: min(1240px, calc(100% - 32px)); min-height: 72px; margin-inline: auto; }
 .marketing-loading .marketing-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); }
-.marketing-loading .marketing-brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--accent); color: #fff; font: 600 21px/1 Georgia, serif; }
+.marketing-loading .marketing-brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--accent); color: var(--on-accent); font: 600 21px/1 Georgia, serif; }
 .marketing-loading .marketing-brand > span:last-child { display: grid; gap: 1px; }
 .marketing-loading .marketing-brand strong { font-size: 14px; }
 .marketing-loading .marketing-brand small { color: var(--ink-faint); font-size: 10px; }
@@ -17,7 +17,7 @@
 .marketing-loading .marketing-hero p { max-width: 575px; margin: 0; color: var(--ink-soft); font-size: clamp(16px, 1.4vw, 18px); line-height: 1.65; }
 .marketing-loading .marketing-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 30px 0 20px; }
 .marketing-loading .marketing-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 17px; border: 1px solid var(--border); border-radius: var(--radius-control); font-size: 13px; font-weight: 750; text-decoration: none; }
-.marketing-loading .marketing-button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.marketing-loading .marketing-button.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .marketing-loading .marketing-button.secondary { background: var(--surface); color: var(--ink); }
 .marketing-loading .marketing-loading-preview { display: grid; gap: 13px; min-height: 330px; padding: 24px; border: 1px solid var(--border); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-lg); }
 .marketing-loading .marketing-loading-preview span { display: block; min-height: 42px; border-radius: 12px; background: var(--surface-muted); }
@@ -36,12 +36,14 @@
   --surface-sunken: #D8CDB5;
   --ink: #202020;
   --ink-soft: #62605B;
-  --ink-faint: #8B8378;
+  --ink-faint: #6F675C;
   --accent: #9B6A2F;
   --accent-strong: #724B1F;
   --accent-soft: #EFE0C8;
   --accent-soft-2: #E4CCA6;
-  --rose: #B76767;
+  --rose: #A85B5B;
+  --on-accent: #FFFFFF;
+  --on-danger: #FFFFFF;
   --rose-soft: #F1DDDA;
   --rose-text: #843D3D;
   --amber: #C58A35;
@@ -105,12 +107,16 @@
   --surface-sunken: #352E25;
   --ink: #F1ECE4;
   --ink-soft: #B9B0A4;
-  --ink-faint: #81786D;
+  --ink-faint: #9A9184;
   --accent: #C8954B;
   --accent-strong: #E0B56F;
   --accent-soft: #3B2D1C;
   --accent-soft-2: #4A3924;
   --rose: #D68178;
+  /* El dorado y el rosa del modo oscuro son claros: el texto encima va oscuro
+     para superar 4.5:1 (el blanco quedaba en 2.7:1 en el botón primario). */
+  --on-accent: #1C150C;
+  --on-danger: #2A1210;
   --rose-soft: #3A2522;
   --rose-text: #E5A39B;
   --amber: #D8A24D;
@@ -391,7 +397,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .nav-badge {
   margin-left: auto;
   background: var(--rose);
-  color: #fff;
+  color: var(--on-danger);
   font-size: 10px;
   font-weight: 700;
   min-width: 16px;
@@ -672,7 +678,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 .btn-icon-plain:hover { background: var(--surface-muted); color: var(--ink); }
 .btn-icon-plain.has-notes { color: var(--accent); }
-.btn-icon-plain.danger-solid { color: #fff; background: var(--rose); }
+.btn-icon-plain.danger-solid { color: var(--on-danger); background: var(--rose); }
 .btn-icon-plain.danger-solid:hover { filter: brightness(0.92); }
 
 .note-count {
@@ -680,7 +686,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   top: -3px;
   right: -3px;
   background: var(--rose);
-  color: #fff;
+  color: var(--on-danger);
   font-size: 9px;
   font-weight: 700;
   border-radius: 50%;
@@ -744,7 +750,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 .delete-btn-wrap { position: relative; display: inline-flex; }
 
-.btn-icon-plain.danger-active { color: #fff; background: var(--rose); }
+.btn-icon-plain.danger-active { color: var(--on-danger); background: var(--rose); }
 
 .delete-confirm-popover {
   position: absolute;
@@ -971,7 +977,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .new-messages-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent); outline-offset: 2px; }
 .bubble { max-width: 78%; padding: 9px 13px; border-radius: 13px; font-size: 13px; line-height: 1.5; box-shadow: var(--shadow-xs); }
 .bubble.in { background: var(--surface-muted); align-self: flex-start; border-bottom-left-radius: 4px; }
-.bubble.out { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+.bubble.out { background: var(--accent); color: var(--on-accent); align-self: flex-end; border-bottom-right-radius: 4px; }
 .bubble.bot { background: var(--accent-soft); color: var(--accent-strong); align-self: flex-end; border-bottom-right-radius: 4px; }
 .bubble-meta { font-size: 10px; opacity: 0.65; margin-top: 3px; }
 
@@ -1128,7 +1134,7 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 
 .btn:hover { background: var(--surface-muted); border-color: var(--border-strong); }
 .btn:active { transform: scale(0.97); }
-.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 2px 6px rgba(47, 93, 80, 0.25); }
+.btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); box-shadow: 0 2px 6px rgba(47, 93, 80, 0.25); }
 .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn-icon { width: 32px; height: 32px; padding: 0; justify-content: center; border-radius: var(--radius-sm); }
 
@@ -1304,7 +1310,7 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 .step-list-item.active { background: var(--accent-soft); color: var(--ink); font-weight: 700; }
 .step-list-item.done { color: var(--ink-soft); }
 .step-list-number { display: inline-flex; align-items: center; justify-content: center; width: 23px; height: 23px; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 50%; font-size: 10px; font-weight: 800; }
-.step-list-item.active .step-list-number { border-color: var(--accent); background: var(--accent); color: #fff; }
+.step-list-item.active .step-list-number { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .step-list-item.done .step-list-number { border-color: var(--green); background: var(--green-soft); color: var(--green-text); }
 .onboarding-card { align-self: start; min-height: 500px; padding: clamp(1.25rem, 4vw, 2.25rem); border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-lg); }
 .onboarding-card-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 2rem; }
@@ -1442,7 +1448,7 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 
 .barbero-filter-item:hover { background: var(--surface-muted); }
 .barbero-filter-item svg { color: var(--accent); flex-shrink: 0; }
-.calendar-month-label { font-family: var(--font-display); font-size: 16.5px; font-weight: 500; min-width: 150px; text-align: center; text-transform: capitalize; }
+.calendar-month-label { font-family: var(--font-display); font-size: 16.5px; font-weight: 500; min-width: 150px; text-align: center; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 0.9rem; }
 
 .calendar-dow {
@@ -1472,7 +1478,7 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 .calendar-day:hover { border-color: var(--border-strong); transform: translateY(-1px); }
 .calendar-day.outside { background: transparent; border-color: transparent; cursor: default; }
 .calendar-day.outside:hover { transform: none; }
-.calendar-day.outside .calendar-day-num { color: var(--border-strong); }
+.calendar-day.outside .calendar-day-num { color: var(--ink-faint); font-weight: 500; }
 .calendar-day.today { border-color: var(--accent); border-width: 1.5px; }
 .calendar-day.selected { background: var(--accent-soft); border-color: var(--accent); }
 .calendar-day-num { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
@@ -1493,7 +1499,7 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 }
 
 .day-panel-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.2rem; }
-.day-panel-date { font-family: var(--font-display); font-size: 16px; font-weight: 500; text-transform: capitalize; }
+.day-panel-date { font-family: var(--font-display); font-size: 16px; font-weight: 500; }
 .day-panel-sub { font-size: 12px; color: var(--ink-faint); margin: 2px 0 1rem; }
 
 .view-toggle {
@@ -1826,7 +1832,7 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 .day-toggle.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .agenda-groups { display: flex; flex-direction: column; gap: 16px; }
@@ -1970,7 +1976,6 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   margin: 0 0 6px;
   font-size: 11.5px;
   font-weight: 700;
-  text-transform: capitalize;
   color: var(--ink-faint);
 }
 
@@ -2185,7 +2190,7 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
   top: 2px;
   right: 22%;
   background: var(--rose);
-  color: #fff;
+  color: var(--on-danger);
   font-size: 9px;
   font-weight: 700;
   min-width: 14px;
@@ -2285,11 +2290,11 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 
 .slot-chip.slot-active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--accent);
   box-shadow: 0 2px 6px rgba(47, 93, 80, 0.25);
 }
-.slot-chip.slot-active:hover { background: var(--accent-strong); color: #fff; }
+.slot-chip.slot-active:hover { background: var(--accent-strong); color: var(--on-accent); }
 
 .slot-summary {
   display: inline-flex;
@@ -2341,7 +2346,7 @@ textarea.note-input:focus, input.text-input:focus, select.text-input:focus { out
 .service-chip.service-active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: 0 2px 6px rgba(47, 93, 80, 0.25);
 }
 .service-chip.service-active .service-meta { color: rgba(255, 255, 255, 0.85); }
@@ -2443,7 +2448,7 @@ input.client-search-input {
   height: 32px;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2527,7 +2532,7 @@ input.client-search-input {
   border-radius: 8px;
   background: var(--accent);
   box-shadow: none;
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .brand-name {
@@ -2616,7 +2621,6 @@ input.client-search-input {
 }
 
 .page-date-cap {
-  text-transform: capitalize;
 }
 
 .page-actions,
@@ -2962,7 +2966,7 @@ input.client-search-input {
 }
 
 .service-chip.service-active .service-meta strong {
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .service-active,
@@ -3126,7 +3130,6 @@ input.client-search-input {
   font-family: var(--font-ui);
   font-size: 24px;
   font-weight: 800;
-  text-transform: capitalize;
 }
 
 .calendar-heading-sub {
@@ -3134,7 +3137,6 @@ input.client-search-input {
   margin-top: 5px;
   color: var(--ink-faint);
   font-size: 12.5px;
-  text-transform: capitalize;
 }
 
 .calendar-actions {
@@ -3217,7 +3219,7 @@ input.client-search-input {
 .calendar-day-add:hover {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .calendar-day-dots {
@@ -3246,7 +3248,6 @@ input.client-search-input {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
-  text-transform: capitalize;
 }
 
 .selected-day-strip-head strong {
@@ -3760,11 +3761,11 @@ input.client-search-input {
 .habilidad-tag.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .habilidad-tag.active .habilidad-check {
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .habilidad-check {
@@ -3964,7 +3965,7 @@ input.client-search-input {
 .slot-chip-public.active {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .slot-chip-public.ocupado {
@@ -3981,7 +3982,7 @@ input.client-search-input {
   top: -4px;
   right: -4px;
   background: var(--rose);
-  color: #fff;
+  color: var(--on-danger);
   border-radius: 50%;
   width: 16px;
   height: 16px;
@@ -3996,7 +3997,7 @@ input.client-search-input {
   top: -4px;
   right: -4px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-radius: 50%;
   width: 16px;
   height: 16px;
@@ -4268,7 +4269,6 @@ input.client-search-input {
   margin: 0 0 6px 0;
   font-size: 12px;
   font-weight: 700;
-  text-transform: capitalize;
   color: var(--ink-faint);
   letter-spacing: 0.3px;
 }
@@ -4404,7 +4404,7 @@ input.client-search-input {
   top: -4px;
   right: -4px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 8px;
   font-weight: 700;
   border-radius: 50%;
@@ -4883,7 +4883,6 @@ input.client-search-input {
   margin: 0 0 6px 0;
   font-size: 12px;
   font-weight: 700;
-  text-transform: capitalize;
   color: var(--ink-faint);
   letter-spacing: 0.3px;
 }

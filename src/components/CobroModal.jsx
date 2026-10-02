@@ -92,7 +92,7 @@ export default function CobroModal({ turno, servicios = [], onClose, onConfirm }
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={!valido || saving}>
-              {saving ? 'Guardando...' : 'Confirmar cobro'}
+              {saving ? 'Guardando…' : 'Confirmar cobro'}
             </button>
           </div>
         </form>

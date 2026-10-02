@@ -5,6 +5,13 @@ export function normalizar(str = '') {
     .replace(/[̀-ͯ]/g, '')
 }
 
+// Fechas en español: "viernes 2 de octubre" → "Viernes 2 de octubre".
+// (text-transform: capitalize producía "Viernes 2 De Octubre".)
+export function capitalizar(str = '') {
+  const value = String(str || '')
+  return value.charAt(0).toLocaleUpperCase('es-AR') + value.slice(1)
+}
+
 export function soloDigitos(str = '') {
   return str.replace(/\D/g, '')
 }
