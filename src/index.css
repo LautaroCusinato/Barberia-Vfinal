@@ -5557,3 +5557,23 @@ input.client-search-input {
   justify-content: flex-start;
   gap: 8px;
 }
+
+/* Aviso informativo del panel (no es un error: sin rojo ni "Reintentar"). */
+.notice-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 var(--space-4, 16px);
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface));
+  color: var(--ink);
+  font-size: 13px;
+}
+.notice-banner > svg { flex: 0 0 auto; color: var(--accent); }
+.notice-banner > span { flex: 1; min-width: 0; line-height: 1.4; }
+
+.bot-paused-banner { flex-wrap: wrap; }
+.bot-paused-banner > span { flex: 1 1 260px; min-width: 0; }
+.bot-paused-banner .btn { margin-left: auto; min-height: 32px; color: inherit; border-color: currentColor; }

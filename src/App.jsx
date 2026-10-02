@@ -180,6 +180,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [horariosDefault, setHorariosDefault] = useState(() => demoSnapshot?.horariosDefault || ({ dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00', breaks: [] }))
   const [zonaHoraria, setZonaHoraria] = useState(() => demoSnapshot?.zonaHoraria || TZ)
   const [dbError, setDbError] = useState('')
+  // Errores de sistema (red/base) admiten "Reintentar"; las validaciones no.
+  const [errorRecuperable, setErrorRecuperable] = useState(false)
+  // Avisos informativos: no son errores y no van en rojo.
+  const [aviso, setAviso] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const barberoWritesRef = useRef({})
   const servicioWritesRef = useRef({})
@@ -203,8 +207,14 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     reportClientError(error, { source: 'workspace', tenant_id: barberiaId, user_message: mensaje })
     // El detalle técnico queda sólo en observabilidad; el panel muestra una
     // instrucción comprensible y nunca expone códigos/RPC al usuario.
+    setErrorRecuperable(true)
     setDbError(mensaje)
   }, [barberiaId])
+
+  const mostrarValidacion = (mensaje) => {
+    setErrorRecuperable(false)
+    setDbError(mensaje)
+  }
 
   useEffect(() => {
     if (!demoMode || !demoSessionId) return undefined
@@ -254,16 +264,16 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const toggleBot = async () => {
     if (demoMode) {
-      setDbError('WhatsApp está disponible al crear tu cuenta.')
+      setAviso('WhatsApp está disponible al crear tu cuenta.')
       navigateFromMenu('facturacion')
       return
     }
     if (whatsappEntitlement.entitlementLoading) {
-      setDbError('Estamos verificando el plan antes de configurar WhatsApp. Intentá nuevamente en unos segundos.')
+      setAviso('Estamos verificando el plan antes de configurar WhatsApp. Intentá nuevamente en unos segundos.')
       return
     }
     if (!whatsappEntitlement.entitled) {
-      setDbError(whatsappEntitlement.entitlement === 'unavailable'
+      setAviso(whatsappEntitlement.entitlement === 'unavailable'
         ? 'No pudimos verificar la habilitación de WhatsApp. Revisá Facturación antes de activarlo.'
         : 'WhatsApp requiere un plan habilitado. Revisá Facturación para continuar.')
       navigateFromMenu('facturacion')
@@ -275,8 +285,35 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     // activación se gestionan desde la superficie server-side de WhatsApp,
     // con guard de owner/admin, tenant y entorno.
     navigateFromMenu('configuracion')
-    setDbError('Gestioná la conexión de WhatsApp desde Configuración.')
+    setAviso('Gestioná la conexión de WhatsApp desde Configuración.')
     return
+  }
+
+  // Reanuda la respuesta automática después de un traspaso manual. La
+  // política de `config` sólo permite escribir al owner; para otros roles la
+  // base rechaza el cambio y lo explicamos sin tratarlo como falla técnica.
+  const [reanudandoBot, setReanudandoBot] = useState(false)
+  const reanudarBot = async () => {
+    if (!isSupabaseConfigured || reanudandoBot) return
+    setReanudandoBot(true)
+    try {
+      const { data, error } = await supabase
+        .from('config')
+        .upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: 'true' })
+        .select('clave')
+      if (error || !data?.length) {
+        const sinPermiso = !error || error.code === '42501' || /row-level security|permission/i.test(String(error.message || ''))
+        if (sinPermiso) mostrarValidacion('Sólo el dueño del negocio puede reanudar el bot de WhatsApp.')
+        else reportError('No se pudo reanudar el bot de WhatsApp', error)
+        return
+      }
+      setBotActivo(true)
+      setAviso('El bot de WhatsApp volvió a responder automáticamente.')
+    } catch (error) {
+      reportError('No se pudo reanudar el bot de WhatsApp', error)
+    } finally {
+      setReanudandoBot(false)
+    }
   }
 
   const verNotasDePaciente = (nombre) => {
@@ -809,7 +846,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     const barbero = barberos.find((item) => String(item.id) === String(barbero_id))
     const duracionReal = duracionServicioBarbero(barbero, servicio, duracion)
     if (!servicio || !barbero || !barbero.activo || !barberoRealizaServicio(barbero, servicio)) {
-      setDbError('El profesional seleccionado ya no realiza ese servicio. Elegí otro profesional.')
+      mostrarValidacion('El profesional seleccionado ya no realiza ese servicio. Elegí otro profesional.')
       return false
     }
     const horaMinutos = (value) => {
@@ -824,7 +861,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       return start < otherStart + Number(turno.duracion || turno.duracion_min || 30) && otherStart < start + duracionReal
     })
     if (superpuesto) {
-      setDbError('Ese horario acaba de ocuparse. Elegí otro horario.')
+      mostrarValidacion('Ese horario acaba de ocuparse. Elegí otro horario.')
       return false
     }
     // Resolvemos el cliente ANTES de tocar el turno: si no vino ya elegido
@@ -882,7 +919,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         if (error) {
           if (turnoAnterior) setTurnos((prev) => prev.map((t) => (t.id === existingId ? turnoAnterior : t)))
           const mensaje = mensajeErrorTurno(error)
-          if (mensaje) setDbError(mensaje)
+          if (mensaje) mostrarValidacion(mensaje)
           else reportError('No se pudo guardar el turno', error)
           return false
         }
@@ -894,7 +931,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       const { data, error } = await supabase.from('turnos').insert({ ...dbPayload, barberia_id: barberiaId }).select()
       if (error) {
         const mensaje = mensajeErrorTurno(error)
-        if (mensaje) setDbError(mensaje)
+        if (mensaje) mostrarValidacion(mensaje)
         else reportError('No se pudo crear el turno', error)
         return false
       }
@@ -1157,7 +1194,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         return false
       }
       if (data?.[0]) setServicios((prev) => prev.map((s) => (s.id === id ? servicioFromDb(data[0]) : s)))
-      setDbError('Este servicio tiene turnos asociados, asi que no se puede borrar sin perder ese historial. Lo desactivamos: ya no va a aparecer para agendar turnos nuevos.')
+      setAviso('Este servicio tiene turnos asociados, así que no se puede borrar sin perder ese historial. Lo desactivamos: ya no va a aparecer para agendar turnos nuevos.')
       return true
     }
 
@@ -1257,7 +1294,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         if (!error && field === 'horario') {
           const franjas = parseHorarioTexto(valorAGuardar)
           if (!franjas) {
-            setDbError('El texto del horario se guardó, pero no pudimos convertirlo en agenda. Usá un formato como “Lun, Mar y Vie 09:00-18:00” o agregá “break 13:00-14:00”.')
+            setAviso('El texto del horario se guardó, pero no pudimos convertirlo en agenda. Usá un formato como “Lun, Mar y Vie 09:00-18:00” o agregá “break 13:00-14:00”.')
           } else {
             const { error: borrarError } = await supabase.from('horarios_barbero').delete().eq('barbero_id', id)
             if (borrarError) reportError('No se pudo actualizar la agenda del barbero', borrarError)
@@ -1341,9 +1378,19 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         {dbError && (
           <div className="error-banner" role="alert" aria-live="assertive">
             <AlertTriangle size={15} />
-            <span>{dbError.replace(/[.\s]+$/, '')}. Podés reintentar sin perder los datos visibles.</span>
-            {isSupabaseConfigured && <button className="btn btn-ghost" type="button" onClick={() => { setDbError(''); setReloadKey((value) => value + 1) }}>Reintentar</button>}
+            <span>{errorRecuperable ? `${dbError.replace(/[.\s]+$/, '')}. Podés reintentar sin perder los datos visibles.` : dbError}</span>
+            {isSupabaseConfigured && errorRecuperable && <button className="btn btn-ghost" type="button" onClick={() => { setDbError(''); setReloadKey((value) => value + 1) }}>Reintentar</button>}
             <button className="btn-icon-plain" type="button" onClick={() => setDbError('')} aria-label="Cerrar aviso de error" title="Cerrar aviso">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {aviso && (
+          <div className="notice-banner" role="status" aria-live="polite">
+            <Info size={15} aria-hidden="true" />
+            <span>{aviso}</span>
+            <button className="btn-icon-plain" type="button" onClick={() => setAviso('')} aria-label="Cerrar aviso" title="Cerrar aviso">
               <X size={14} />
             </button>
           </div>
@@ -1353,9 +1400,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
             habilitada pero el bot en pausa. Sin conexión, el sidebar ya muestra
             el estado y la acción para configurarla; repetirlo acá era ruido fijo. */}
         {!demoMode && !botActivo && whatsappIntegration.connected && whatsappIntegration.automationEnabled && (
-          <div className="demo-banner" role="status" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
-            <Bot size={15} />
-            El bot de WhatsApp está en pausa: las conversaciones se atienden de forma manual desde el panel.
+          <div className="demo-banner bot-paused-banner" role="status" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
+            <Bot size={15} aria-hidden="true" />
+            <span>El bot de WhatsApp está en pausa: las conversaciones se atienden de forma manual desde el panel.</span>
+            <button type="button" className="btn btn-ghost" onClick={reanudarBot} disabled={reanudandoBot}>{reanudandoBot ? 'Reanudando…' : 'Reanudar bot'}</button>
           </div>
         )}
 

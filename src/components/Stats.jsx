@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { BarChart3, TrendingUp, Users2, CalendarX2, Wallet, Banknote, CreditCard, Landmark, Search, X } from 'lucide-react'
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
 import { normalizar } from '../lib/text'
@@ -33,7 +33,15 @@ function ultimosNDias(n, todayKey) {
 
 export default function Stats({ turnos, pacientes, conversaciones: _conversaciones, todayKey, barberos = [], servicios = [], pagos = [], timezone = DEFAULT_TZ }) {
   const atendidos = useMemo(() => turnos.filter((t) => statusMeta(t.estado).value === 'atendido'), [turnos])
-  const ingresosTotales = useMemo(() => atendidos.reduce((acc, t) => acc + (Number(t.precio) || 0), 0), [atendidos])
+  // Lo cobrado de verdad (modal de cobro) manda; el precio de lista queda
+  // sólo como respaldo para turnos atendidos sin cobro registrado.
+  const cobradoPorTurno = useMemo(() => {
+    const totales = {}
+    for (const p of pagos) if (p.turno_id != null) totales[String(p.turno_id)] = (totales[String(p.turno_id)] || 0) + (Number(p.monto) || 0)
+    return totales
+  }, [pagos])
+  const ingresoDeTurno = useCallback((t) => cobradoPorTurno[String(t.id)] ?? (Number(t.precio) || 0), [cobradoPorTurno])
+  const ingresosTotales = useMemo(() => atendidos.reduce((acc, t) => acc + ingresoDeTurno(t), 0), [atendidos, ingresoDeTurno])
   const ticketPromedio = atendidos.length > 0 ? Math.round(ingresosTotales / atendidos.length) : 0
 
   const ingresosPorBarbero = useMemo(() => {
@@ -43,11 +51,11 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
     for (const t of atendidos) {
       const key = String(t.barbero_id)
       if (!totales[key]) totales[key] = { label: nombreDe(t.barbero_id), color: colorDe(t.barbero_id), total: 0, turnos: 0 }
-      totales[key].total += Number(t.precio) || 0
+      totales[key].total += ingresoDeTurno(t)
       totales[key].turnos += 1
     }
     return Object.values(totales).sort((a, b) => b.total - a.total)
-  }, [atendidos, barberos])
+  }, [atendidos, barberos, ingresoDeTurno])
 
   const maxIngresoBarbero = Math.max(1, ...ingresosPorBarbero.map((b) => b.total))
 
@@ -164,7 +172,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
       <div className="stats-row">
         <div className="stat-card">
           <div>
-            <p className="stat-label">Ingresos facturados</p>
+            <p className="stat-label">Ingresos de turnos atendidos</p>
             <p className="stat-value">{money(ingresosTotales)}</p>
           </div>
           <div className="stat-icon" style={{ background: 'var(--blue-soft)', color: 'var(--blue-text)' }}>
@@ -182,7 +190,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         </div>
         <div className="stat-card">
           <div>
-            <p className="stat-label">Cortes atendidos</p>
+            <p className="stat-label">Turnos atendidos</p>
             <p className="stat-value">{atendidos.length}</p>
           </div>
           <div className="stat-icon" style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
@@ -248,7 +256,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             {ingresosPorBarbero.map((b) => (
               <div key={b.label}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
-                  <span>{b.label} <span style={{ color: 'var(--ink-faint)' }}>({b.turnos} cortes)</span></span>
+                  <span>{b.label} <span style={{ color: 'var(--ink-faint)' }}>({b.turnos} {b.turnos === 1 ? 'turno' : 'turnos'})</span></span>
                   <span style={{ color: 'var(--ink-faint)' }}>{money(b.total)}</span>
                 </div>
                 <div className="stat-bar">
