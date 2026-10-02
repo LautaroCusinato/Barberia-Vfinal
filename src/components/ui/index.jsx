@@ -62,6 +62,11 @@ export function Panel({ as: Component = 'section', className = '', children, ...
 export function FocusTrap({ open = true, onEscape, className = '', children, ...props }) {
   const containerRef = useRef(null)
   const returnFocusRef = useRef(null)
+  // onEscape suele llegar como función nueva en cada render del padre. Si
+  // fuera dependencia del efecto, cada re-render (realtime, polling) volvería
+  // a enfocar el primer botón y cortaría lo que la persona está escribiendo.
+  const onEscapeRef = useRef(onEscape)
+  useEffect(() => { onEscapeRef.current = onEscape }, [onEscape])
 
   useEffect(() => {
     if (!open) return undefined
@@ -77,7 +82,7 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
     const frame = window.requestAnimationFrame(focusFirst)
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        onEscape?.()
+        onEscapeRef.current?.()
         return
       }
       if (event.key !== 'Tab') return
@@ -102,7 +107,7 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
       document.body.style.overflow = previousOverflow
       returnFocusRef.current?.focus?.()
     }
-  }, [onEscape, open])
+  }, [open])
 
   return <div ref={containerRef} className={joinClass('ui-focus-trap', className)} {...props}>{children}</div>
 }
