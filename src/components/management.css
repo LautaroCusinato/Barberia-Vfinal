@@ -795,3 +795,16 @@
     transition: none;
   }
 }
+
+/* Configuración en escritorio: Identidad a la izquierda; Logo y Región
+ * apilados a la derecha (antes Región quedaba sola con un hueco al lado). */
+@media (min-width: 901px) {
+  .management-settings .settings-grid { align-items: start; }
+  .management-settings .settings-grid > .settings-card:first-child { grid-row: span 2; }
+}
+
+.management-settings .invitations-list > .empty-state,
+.management-settings .settings-card > .empty-state {
+  min-height: 0;
+  padding: 1.25rem 1rem;
+}

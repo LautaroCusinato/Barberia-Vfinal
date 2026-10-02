@@ -5437,7 +5437,7 @@ input.client-search-input {
 .logo-preview img { width: 82px; height: 82px; object-fit: contain; border-radius: 12px; background: var(--surface-muted); }
 .logo-preview input + * { pointer-events: none; }
 .panel-header-inline { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 14px; }
-.invite-form { display: grid; grid-template-columns: minmax(0, 1fr) 180px auto; gap: 8px; margin-bottom: 14px; }
+.invite-form { display: grid; grid-template-columns: minmax(0, 1fr) 170px 170px auto; gap: 8px; margin-bottom: 14px; }
 .invite-link { display: flex; gap: 8px; margin-bottom: 14px; }
 .invite-link input { flex: 1; min-width: 0; }
 .member-list { display: grid; gap: 6px; }
