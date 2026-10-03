@@ -1,0 +1,202 @@
+/* Operación → tarjetas de barberos: nombre + color en una fila, habilidades
+ * con íconos y los 7 días en una sola fila. Los selectores llevan el prefijo
+ * .operations para ganarle a index.css / management.css sin tocarlos. */
+
+/* La tarjeta es una grilla: fila 1 = avatar | nombre + color | eliminar;
+ * el resto (habilidades, días, horario) ocupa todo el ancho debajo.
+ * .ops-edit-main pasa a display: contents para que sus hijos sean celdas. */
+.operations .ops-barbero-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+  column-gap: var(--space-3, 12px);
+  row-gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+}
+
+.operations .ops-barbero-card > .ops-edit-main {
+  display: contents;
+}
+
+.operations .ops-barbero-card > .ops-avatar {
+  grid-row: 1;
+  grid-column: 1;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 0;
+  border-radius: 12px;
+}
+
+.operations .ops-barbero-card .ops-barbero-head {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.operations .ops-barbero-card > .btn-icon-plain {
+  position: static;
+  grid-row: 1;
+  grid-column: 3;
+  align-self: end;
+  margin-bottom: 2px;
+}
+
+.operations .ops-barbero-card > .ops-delete-confirm {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.operations .ops-barbero-card > .ops-edit-main > :not(.ops-barbero-head) {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.operations .ops-barbero-card .management-hours-range,
+.operations .ops-barbero-card .management-break-range {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3, 12px);
+}
+
+/* Cabecera: nombre (flexible) + muestra de color compacta. */
+.operations .ops-barbero-head {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+}
+
+.operations .ops-barbero-head .ops-barbero-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.operations .ops-color-swatch {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 2px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.operations .ops-color-swatch-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--swatch, var(--accent));
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--border-strong, var(--border));
+  transition: box-shadow var(--motion-fast, .12s) ease, transform var(--motion-fast, .12s) ease;
+}
+
+.operations .ops-color-swatch:hover .ops-color-swatch-dot {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--accent);
+  transform: scale(1.05);
+}
+
+/* El input nativo cubre la muestra: sigue siendo el control real (clic,
+ * teclado, lector de pantalla) pero invisible. */
+.operations .ops-color-swatch input[type='color'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.operations .ops-color-swatch:focus-within .ops-color-swatch-dot {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+
+/* Habilidades con ícono lucide. */
+.operations .ops-barbero-card .habilidades-tag-row {
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.operations .ops-barbero-card .habilidad-tag {
+  gap: 6px;
+  padding: 5px 11px 5px 9px;
+  font-weight: 600;
+}
+
+.operations .ops-barbero-card .habilidad-icon {
+  flex-shrink: 0;
+  color: var(--ink-faint);
+}
+
+.operations .ops-barbero-card .habilidad-tag.active .habilidad-icon,
+.operations .ops-barbero-card .habilidad-tag.active .habilidad-check {
+  color: currentColor;
+}
+
+/* Días que atiende: siempre 7 columnas iguales en una fila. */
+.operations .ops-barbero-card .ops-day-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.operations .ops-barbero-card .ops-day-row .day-toggle {
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 2px;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.operations .ops-barbero-card .ops-day-row .day-toggle:not(.active) {
+  background: var(--surface-muted, var(--surface));
+}
+
+@media (max-width: 640px) {
+  .operations .ops-barbero-card .ops-day-row {
+    gap: 4px;
+  }
+
+  .operations .ops-barbero-card .ops-day-row .day-toggle {
+    min-width: 0;
+    font-size: 11.5px;
+  }
+
+  .operations .ops-barbero-card {
+    column-gap: var(--space-2, 8px);
+    padding: var(--space-3, 12px);
+  }
+
+  .operations .ops-barbero-card > .ops-avatar {
+    width: 40px;
+    height: 40px;
+    border-width: 2px;
+    border-radius: 11px;
+    font-size: 12px;
+  }
+
+  .operations .ops-barbero-card .management-hours-range,
+  .operations .ops-barbero-card .management-break-range {
+    gap: var(--space-2, 8px);
+  }
+}
+
+@media (max-width: 359px) {
+  .operations .ops-barbero-card .ops-day-row {
+    gap: 3px;
+  }
+
+  .operations .ops-barbero-card .ops-day-row .day-toggle {
+    min-height: 36px;
+    font-size: 10.5px;
+  }
+}
