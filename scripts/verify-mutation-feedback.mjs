@@ -55,7 +55,7 @@ const requiredContracts = [
   ['src/components/Notes.jsx', /El borrador quedó preservado/, /finally/, /disabled=\{saving\}/],
   ['src/components/Messages.jsx', /sent === false/, /El borrador quedó preservado/, /aria-busy=\{sending\}/],
   ['src/components/StatusSelect.jsx', /setPending\(true\)/, /disabled=\{pending\}/, /role="alert"/],
-  ['src/components/TurnoRow.jsx', /eliminarTurno/, /El borrador quedó preservado/, /disabled=\{deleting\}/],
+  ['src/components/TurnoRow.jsx', /eliminarTurno/, /El borrador quedó preservado/, /disabled=\{saving \|\| saliendo\}/], // borrar con "Deshacer": se bloquea mientras la fila se colapsa
   ['src/components/TenantSettings.jsx', /finally \{\s*setSaving\(false\)/, /setUploading\(false\)/, /memberPending/],
 ]
 for (const [file, ...patterns] of requiredContracts) {
