@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react'
 import { Users, Search, X, StickyNote, UserPlus, Pencil, Trash2, Check } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { normalizar, soloDigitos, formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
-import PatientDetailModal from './PatientDetailModal'
-import EditPatientModal from './EditPatientModal'
-import NewPatientModal from './NewPatientModal'
+import ClientDetailModal from './ClientDetailModal'
+import EditClientModal from './EditClientModal'
+import NewClientModal from './NewClientModal'
 import { EmptyState } from './ui'
 
-export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente }) {
+export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente }) {
   const [query, setQuery] = useState('')
   const [detalle, setDetalle] = useState(null)
   const [editando, setEditando] = useState(null)
@@ -200,20 +200,20 @@ export default function Patients({ pacientes, notas, turnos, onViewNotes, onAddP
         </div>
       )}
 
-      <PatientDetailModal
+      <ClientDetailModal
         paciente={detalle}
         turnos={turnos || []}
         notas={notas || []}
         onClose={() => setDetalle(null)}
       />
 
-      <NewPatientModal
+      <NewClientModal
         open={agregando}
         onClose={() => setAgregando(false)}
         onSubmit={onAddPaciente}
       />
 
-      <EditPatientModal
+      <EditClientModal
         paciente={editando}
         onClose={() => setEditando(null)}
         onSubmit={onUpdatePaciente}

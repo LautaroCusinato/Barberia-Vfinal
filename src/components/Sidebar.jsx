@@ -9,7 +9,7 @@ const ITEMS = [
   { id: 'agenda', label: 'Agenda', Icon: Calendar },
   { id: 'equipo', label: 'Equipo', Icon: Users2 },
   { id: 'mensajes', label: 'Mensajes', Icon: MessageCircle },
-  { id: 'pacientes', label: 'Clientes', Icon: Users },
+  { id: 'clientes', label: 'Clientes', Icon: Users },
   { id: 'notas', label: 'Notas', Icon: StickyNote },
   { id: 'estadisticas', label: 'Estadísticas', Icon: BarChart3 },
   { id: 'operacion', label: 'Operación', Icon: BriefcaseBusiness },
@@ -25,7 +25,7 @@ const GROUPS = [
 
 // En el celular, abajo del todo, solo entran comodas 4 secciones + "Mas".
 // Las 4 mas usadas van directo en la barra; el resto queda en el desplegable.
-const TABBAR_PRINCIPAL = ['resumen', 'agenda', 'mensajes', 'pacientes']
+const TABBAR_PRINCIPAL = ['resumen', 'agenda', 'mensajes', 'clientes']
 const TABBAR_MAS = ITEMS.filter((i) => !TABBAR_PRINCIPAL.includes(i.id))
 
 export default function Sidebar({ view, setView, clinicName, unreadCount, theme, onToggleTheme, onToggleBot, whatsappStatus = {}, onConfigureWhatsApp, onOpenBilling, onLogout, onAccountSecurity, branding, demoMode = false }) {

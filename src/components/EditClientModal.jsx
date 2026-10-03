@@ -4,7 +4,7 @@ import { PREFIJO_AR, TELEFONO_NACIONAL_DIGITOS, digitosNacionales, soloDigitos, 
 import PhoneField from './PhoneField'
 import { conPresencia } from '../lib/presencia'
 
-function EditPatientModal({ paciente, onClose, onSubmit }) {
+function EditClientModal({ paciente, onClose, onSubmit }) {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState(PREFIJO_AR)
   const [ultimaVisita, setUltimaVisita] = useState('')
@@ -101,4 +101,4 @@ function EditPatientModal({ paciente, onClose, onSubmit }) {
 }
 
 // Animación de salida sin cambiar la lógica del modal.
-export default conPresencia(EditPatientModal, 'paciente')
+export default conPresencia(EditClientModal, 'paciente')

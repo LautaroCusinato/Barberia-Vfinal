@@ -4,7 +4,7 @@ import { statusMeta } from './StatusSelect'
 import { formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
 import { conPresencia } from '../lib/presencia'
 
-function PatientDetailModal({ paciente, turnos, notas, onClose }) {
+function ClientDetailModal({ paciente, turnos, notas, onClose }) {
   if (!paciente) return null
 
   const esDelPaciente = (item) =>
@@ -85,4 +85,4 @@ function PatientDetailModal({ paciente, turnos, notas, onClose }) {
 }
 
 // Animación de salida sin cambiar la lógica del modal.
-export default conPresencia(PatientDetailModal, 'paciente')
+export default conPresencia(ClientDetailModal, 'paciente')

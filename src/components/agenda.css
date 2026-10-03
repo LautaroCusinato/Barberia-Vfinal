@@ -780,3 +780,5 @@
   font-size: 11.5px;
 }
 .day-side-list .turno-status-btn span { display: inline; white-space: nowrap; }
+
+.day-panel-new { white-space: nowrap; }

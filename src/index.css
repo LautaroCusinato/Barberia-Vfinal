@@ -5585,7 +5585,7 @@ input.client-search-input {
   .day-side-list .turno-status-btn { min-height: 44px; }
   .link-btn { min-height: 40px; padding-inline: 12px; }
   .agenda-item--enhanced .btn-icon-plain { min-width: 44px; min-height: 44px; }
-  .btn-icon-plain { min-width: 40px; min-height: 40px; }
+  .btn-icon-plain { min-width: 44px; min-height: 44px; }
   .habilidad-tag { min-height: 38px; }
   .day-toggle { min-height: 40px; min-width: 40px; }
 }

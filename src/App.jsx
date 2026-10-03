@@ -15,7 +15,7 @@ import Agenda from './components/Agenda'
 import Barberos from './components/Barberos'
 import Calendar from './components/Calendar'
 import Messages from './components/Messages'
-import Patients from './components/Patients'
+import Clientes from './components/Clientes'
 import Notes from './components/Notes'
 import Stats from './components/Stats'
 import Operations from './components/Operations'
@@ -130,10 +130,12 @@ function initialTheme(tenantId, storageKey = null) {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-const WORKSPACE_VIEWS = new Set(['resumen', 'agenda', 'equipo', 'mensajes', 'pacientes', 'notas', 'estadisticas', 'operacion', 'configuracion', 'facturacion'])
+const WORKSPACE_VIEWS = new Set(['resumen', 'agenda', 'equipo', 'mensajes', 'clientes', 'notas', 'estadisticas', 'operacion', 'configuracion', 'facturacion'])
 
 function workspaceViewFromUrl() {
-  const requested = new URLSearchParams(window.location.search).get('view')
+  // Compatibilidad: enlaces viejos con ?view=pacientes abren Clientes.
+  const pedido = new URLSearchParams(window.location.search).get('view')
+  const requested = pedido === 'pacientes' ? 'clientes' : pedido
   return WORKSPACE_VIEWS.has(requested) ? requested : 'resumen'
 }
 
@@ -1588,7 +1590,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
           </div>
         )}
 
-        {view === 'pacientes' && (
+        {view === 'clientes' && (
           <div className="fade-in">
             <div className="page-header">
               <div>
@@ -1598,7 +1600,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
             </div>
             {loading ? <SkeletonBlock height={320} /> : (
               <div className="panel">
-                <Patients
+                <Clientes
                   pacientes={pacientes}
                   notas={notas}
                   turnos={turnos}

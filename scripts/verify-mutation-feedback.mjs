@@ -51,7 +51,7 @@ assert.equal(await draftAfter('nota pendiente', async () => false), 'nota pendie
 assert.equal(await draftAfter('nota guardada', async () => true), '')
 
 const requiredContracts = [
-  ['src/components/EditPatientModal.jsx', /saved !== false/, /finally/, /aria-busy/],
+  ['src/components/EditClientModal.jsx', /saved !== false/, /finally/, /aria-busy/],
   ['src/components/Notes.jsx', /El borrador quedó preservado/, /finally/, /disabled=\{saving\}/],
   ['src/components/Messages.jsx', /sent === false/, /El borrador quedó preservado/, /aria-busy=\{sending\}/],
   ['src/components/StatusSelect.jsx', /setPending\(true\)/, /disabled=\{pending\}/, /role="alert"/],

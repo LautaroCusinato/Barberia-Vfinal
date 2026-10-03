@@ -598,9 +598,9 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               <span className="day-panel-date">{capitalizar(format(selected, "EEEE d 'de' MMMM", { locale: es }))}</span>
             </div>
             {onNewTurno && (
-              <button className="btn btn-primary day-panel-new" onClick={() => onNewTurno(selectedKey)}>
+              <button className="btn btn-primary day-panel-new" onClick={() => onNewTurno(selectedKey)} aria-label={`Agendar turno el ${format(selected, "d 'de' MMMM", { locale: es })}`}>
                 <Plus size={15} strokeWidth={2.5} />
-                Agendar en este día
+                Agendar
               </button>
             )}
           </div>

@@ -12,7 +12,7 @@ assert.equal(formatFechaVisible(''), '—')
 
 const calendar = await read('src/components/Calendar.jsx')
 const agendaStyles = await read('src/components/agenda.css')
-const patients = await read('src/components/Patients.jsx')
+const patients = await read('src/components/Clientes.jsx')
 const managementStyles = await read('src/components/management.css')
 const markdown = await read('src/components/SafeMarkdown.jsx')
 const messages = await read('src/components/Messages.jsx')
