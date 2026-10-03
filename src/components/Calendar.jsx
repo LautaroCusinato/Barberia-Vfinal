@@ -157,7 +157,11 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
     .slice()
     .sort((a, b) => a.hora.localeCompare(b.hora) || barberoNombre(a.barbero_id).localeCompare(barberoNombre(b.barbero_id)))
 
+  // Dirección de la última navegación: el período nuevo entra desde ese lado.
+  const [navDir, setNavDir] = useState('none')
+
   const goPrevious = () => {
+    setNavDir('prev')
     if (viewMode === 'mes') {
       setMonth((m) => subMonths(m, 1))
       setSelected((d) => subMonths(d, 1))
@@ -167,6 +171,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   }
 
   const goNext = () => {
+    setNavDir('next')
     if (viewMode === 'mes') {
       setMonth((m) => addMonths(m, 1))
       setSelected((d) => addMonths(d, 1))
@@ -176,6 +181,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   }
 
   const goToday = () => {
+    setNavDir('none')
     setMonth(initial)
     setSelected(initial)
   }
@@ -302,7 +308,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
 
         {viewMode === 'mes' ? (
           <>
-            <div className="calendar-grid">
+            <div className="calendar-grid calendar-swap" key={`grid-${format(month, 'yyyy-MM')}`} data-dir={navDir}>
             {DOW.map((d) => (
               <div className="calendar-dow" key={d}>{d}</div>
             ))}
@@ -360,7 +366,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               )
             })}
           </div>
-            <div className="calendar-mobile-days" role="grid" aria-label="Días del mes">
+            <div className="calendar-mobile-days calendar-swap" key={`mobile-${format(month, 'yyyy-MM')}`} data-dir={navDir} role="grid" aria-label="Días del mes">
             {days.filter((day) => isSameMonth(day, month)).map((day) => {
               const key = format(day, 'yyyy-MM-dd')
               const eventos = byDate[key] || []
@@ -409,7 +415,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
           </>
         ) : (
           <div className="week-scroll">
-            <div className="week-grid" style={{ gridTemplateRows: `54px repeat(${slots.length}, minmax(56px, auto))` }}>
+            <div className="week-grid calendar-swap" key={`week-${format(weekDays[0], 'yyyy-MM-dd')}`} data-dir={navDir} style={{ gridTemplateRows: `54px repeat(${slots.length}, minmax(56px, auto))` }}>
               <div className="week-cell week-corner" />
               {weekDays.map((day) => {
                 const key = format(day, 'yyyy-MM-dd')

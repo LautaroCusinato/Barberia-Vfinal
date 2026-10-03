@@ -260,7 +260,15 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     localStorage.setItem(themeKey, theme)
   }, [theme, themeKey])
 
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
+  const toggleTheme = () => {
+    // Transición breve de colores al cambiar de tema (se omite con movimiento reducido).
+    const root = document.documentElement
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      root.classList.add('theme-transition')
+      window.setTimeout(() => root.classList.remove('theme-transition'), 320)
+    }
+    setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
+  }
 
   const toggleBot = async () => {
     if (demoMode) {

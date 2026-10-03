@@ -571,3 +571,69 @@
     animation: none !important;
   }
 }
+
+/* ===== Microtransiciones del panel ===== */
+@keyframes swap-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes swap-from-right { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes swap-from-left { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes bar-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+/* Calendario: el período nuevo entra desde el lado hacia el que se navegó. */
+.calendar-swap { animation: swap-fade 200ms var(--ease-standard) both; }
+.calendar-swap[data-dir="next"] { animation-name: swap-from-right; }
+.calendar-swap[data-dir="prev"] { animation-name: swap-from-left; }
+
+/* Popovers y desplegables aparecen desde su ancla. */
+.note-popover,
+.delete-confirm-popover,
+.client-dropdown,
+.barbero-filter-list {
+  animation: pop-in 160ms var(--ease-standard) both;
+  transform-origin: top center;
+}
+.barbero-filter-chevron { transition: transform 180ms var(--ease-standard); }
+.barbero-filter-chevron.open { transform: rotate(180deg); }
+
+/* Avisos y banners entran suave en lugar de aparecer de golpe. */
+.error-banner,
+.notice-banner,
+.bot-paused-banner,
+.demo-mode-banner {
+  animation: polish-enter var(--motion-enter) var(--ease-standard) both;
+}
+
+/* Gráficos de estadísticas: las barras crecen al entrar a la vista. */
+.stat-bar-fill { transform-origin: left center; animation: bar-grow 600ms cubic-bezier(.2, .8, .2, 1) both; }
+.bar-chart-bar { transform-origin: bottom center; animation: bar-rise 600ms cubic-bezier(.2, .8, .2, 1) both; }
+
+/* Tarjetas interactivas: elevación consistente al pasar el mouse. */
+@media (hover: hover) {
+  .stat-card,
+  .barbero-card {
+    transition: transform var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+  }
+  .barbero-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+}
+
+/* Celular: la lista de chats y el hilo se deslizan como pantallas. */
+@media (max-width: 900px) {
+  .messages-grid-full .thread-panel:not(.mobile-hide) { animation: swap-from-right 220ms cubic-bezier(.2, .8, .2, 1) both; }
+  .messages-grid-full .conv-panel:not(.mobile-hide) { animation: swap-from-left 220ms cubic-bezier(.2, .8, .2, 1) both; }
+}
+
+/* Cambio de tema sin salto brusco de colores (la clase dura ~300ms). */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 280ms ease, border-color 280ms ease, color 280ms ease, fill 280ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-swap, .note-popover, .delete-confirm-popover, .client-dropdown, .barbero-filter-list,
+  .error-banner, .notice-banner, .bot-paused-banner, .demo-mode-banner, .stat-bar-fill, .bar-chart-bar,
+  .messages-grid-full .thread-panel, .messages-grid-full .conv-panel { animation: none !important; }
+  html.theme-transition, html.theme-transition * { transition: none !important; }
+}
