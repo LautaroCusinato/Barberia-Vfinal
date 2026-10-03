@@ -166,9 +166,10 @@ function NewTurnoModal({
     if (!open) return
     const pendiente = inicialPendienteRef.current
     if (pendiente) {
-      // Los valores iniciales mandan: esperamos a que lleguen y no autoseleccionamos.
-      if (String(servicioId) === pendiente.servicioId && fecha === pendiente.fecha) inicialPendienteRef.current = null
-      return
+      // Hasta que el estado refleje los valores iniciales no hay nada que validar;
+      // cuando llegan, se valida una vez con el estado ya aplicado.
+      if (String(servicioId) !== pendiente.servicioId || fecha !== pendiente.fecha) return
+      inicialPendienteRef.current = null
     }
     const sigueSiendoValido = barberosDisponibles.some((b) => String(b.id) === String(barberoId))
     if (!sigueSiendoValido) {
