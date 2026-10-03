@@ -23,7 +23,7 @@ for (const contract of ['crm_preview_import', 'crm_import_leads_batch', 'batchKe
 for (const contract of ['get_crm_outreach_queue', 'record_crm_outreach_activity', 'no envía mensajes']) assert.match(queue, new RegExp(contract), `falta cola comercial ${contract}`)
 for (const contract of ['E2E_QA_', 'crm_preview_import', 'crm_import_leads_batch', 'external_effects', 'production_writes']) assert.match(qa, new RegExp(contract), `falta cobertura QA comercial ${contract}`)
 assert.match(platform, /Listos para contactar/)
-assert.match(sidebar, /WhatsApp en validación/)
+assert.match(sidebar, /whatsappDisplay.resumen.badge/)
 assert.match(demo, /WhatsApp está en validación/)
 assert.doesNotMatch(migration + crm + queue, /(sk_live_|service_role_key\s*=\s*['"][^$])/i)
 console.log('Sales infrastructure checks passed: normalization, dedupe, DNC, preview, idempotent batch import, outreach queue and sales-safe UI.')

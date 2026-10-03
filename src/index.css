@@ -5610,3 +5610,13 @@ input.client-search-input {
 /* Íconos de tarjetas: un solo tono de marca; rojo sólo para alertas reales. */
 .stat-icon { background: var(--accent-soft); color: var(--accent-strong); }
 .stat-icon.stat-icon--alert { background: var(--rose-soft); color: var(--rose-text); }
+
+/* Estado de WhatsApp unificado en el menú lateral: un badge y una línea. */
+.sidebar-whatsapp-status .theme-toggle .sidebar-status-badge { margin-left: auto; }
+.sidebar-whatsapp-status .sidebar-status { display: block; margin: 0; padding: 0 4px; font-size: 11.5px; line-height: 1.4; color: var(--ink-soft); }
+.live-dot.live-dot--ok { background: var(--green); }
+.live-dot.live-dot--pendiente { background: var(--amber); animation: none; }
+.live-dot.live-dot--alerta { background: var(--rose); animation: none; }
+.sidebar-status-badge--ok { color: var(--green-text); background: var(--green-soft); border-color: color-mix(in srgb, var(--green-text) 25%, var(--border)); }
+.sidebar-status-badge--pendiente { color: var(--amber-text); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber-text) 25%, var(--border)); }
+.sidebar-status-badge--alerta { color: var(--rose-text); background: var(--rose-soft); border-color: color-mix(in srgb, var(--rose-text) 25%, var(--border)); }

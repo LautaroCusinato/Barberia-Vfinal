@@ -46,6 +46,7 @@ export function getWhatsAppDisplayState({
       canConfigure: false,
       entitlementLoading: false,
       whatsappReady: false,
+      resumen: { badge: 'Próximamente', descripcion: 'Disponible próximamente. La demo no envía mensajes.', tono: 'pendiente' },
     }
   }
 
@@ -70,7 +71,31 @@ export function getWhatsAppDisplayState({
     ? 'Automatización pendiente de habilitación'
     : null
 
+  // Un único estado para mostrar: antes el panel lateral decía a la vez
+  // "WhatsApp conectado", "Conectado" y "Automatización pendiente de habilitación".
+  const DESCRIPCION = {
+    checking: 'Estamos verificando la conexión.',
+    connecting: 'Conectando con WhatsApp…',
+    'qr-ready': 'Escaneá el código QR desde Configuración.',
+    error: 'Hubo un problema con la conexión. Revisala en Configuración.',
+    disconnected: 'Volvé a vincular el número desde Configuración.',
+    'needs-config': 'Vinculá el WhatsApp del negocio desde Configuración.',
+    unavailable: 'No pudimos verificar el estado de WhatsApp.',
+  }
+  const resumen = connectionUnavailable
+    ? { badge: 'Sin verificar', descripcion: DESCRIPCION.unavailable, tono: 'alerta' }
+    : requiresPlan
+      ? { badge: 'Requiere plan', descripcion: 'Activá un plan para usar WhatsApp.', tono: 'pendiente' }
+      : billingUnavailable
+        ? { badge: 'Sin verificar', descripcion: 'No pudimos verificar tu plan.', tono: 'alerta' }
+        : whatsappReady
+          ? { badge: 'Activo', descripcion: 'Responde y confirma turnos automáticamente.', tono: 'ok' }
+          : technicallyConnected
+            ? { badge: 'Conectado', descripcion: 'Respondés desde Mensajes; las respuestas automáticas se activan pronto.', tono: 'ok' }
+            : { badge: copy.badge, descripcion: DESCRIPCION[connectionState] || DESCRIPCION.unavailable, tono: connectionState === 'error' ? 'alerta' : 'pendiente' }
+
   return {
+    resumen,
     connectionState,
     connectionLabel: copy.label,
     connectionTitle: copy.title,

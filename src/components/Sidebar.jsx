@@ -45,11 +45,6 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
   const requiresPlan = whatsappDisplay.requiresPlan
   const billingUnavailable = whatsappDisplay.billingUnavailable
   const whatsappReady = whatsappDisplay.whatsappReady
-  const whatsappStatusDescriptionIds = [
-    whatsappDisplay.connectionNotice ? 'whatsapp-connection-notice' : null,
-    whatsappDisplay.entitlementLabel ? 'whatsapp-entitlement-status' : null,
-    whatsappDisplay.automationLabel ? 'whatsapp-automation-status' : null,
-  ].filter(Boolean)
   const [mostrarMas, setMostrarMas] = useState(false)
   const hojaMas = usePresencia(mostrarMas)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
@@ -94,21 +89,15 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
 
         <div className="sidebar-footer">
           <div className={`sidebar-whatsapp-status whatsapp-state-${whatsappState}`} aria-label="Estado de WhatsApp">
-            <button className="theme-toggle" type="button" aria-describedby={['whatsapp-status', ...whatsappStatusDescriptionIds].join(' ')} onClick={onToggleBot} aria-label="Abrir configuración de WhatsApp">
+            <button className="theme-toggle" type="button" aria-describedby="whatsapp-status" onClick={onToggleBot} aria-label={`WhatsApp: ${whatsappDisplay.resumen.badge}. Abrir configuración`}>
               <span className="theme-toggle-label">
-                <Bot size={14} />
-                {demoMode ? 'WhatsApp en validación' : whatsappDisplay.connectionTitle}
+                <span className={`live-dot live-dot--${whatsappDisplay.resumen.tono}`} aria-hidden="true" />
+                <Bot size={14} aria-hidden="true" />
+                WhatsApp
               </span>
-              <Settings2 size={14} aria-hidden="true" />
+              <span className={`sidebar-status-badge sidebar-status-badge--${whatsappDisplay.resumen.tono}`}>{whatsappDisplay.resumen.badge}</span>
             </button>
-            <div className="sidebar-status">
-              <span className={`live-dot ${whatsappState === 'connected' ? '' : 'is-offline'}`} />
-              <span id="whatsapp-status">{demoMode ? 'Disponible próximamente · sin mensajes reales' : whatsappDisplay.connectionLabel}</span>
-              <span className="sidebar-status-badge">{demoMode ? 'En validación' : whatsappDisplay.connectionBadge}</span>
-            </div>
-            {whatsappDisplay.connectionNotice && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-connection-notice">{whatsappDisplay.connectionNotice}</span>}
-            {whatsappDisplay.entitlementLabel && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-entitlement-status">{whatsappDisplay.entitlementLabel}</span>}
-            {whatsappDisplay.automationLabel && !demoMode && <span className="sidebar-status-entitlement" id="whatsapp-automation-status">{whatsappDisplay.automationLabel}</span>}
+            <p className="sidebar-status" id="whatsapp-status">{whatsappDisplay.connectionNotice || whatsappDisplay.resumen.descripcion}</p>
             {requiresPlan && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Ver facturación y planes</button>}
             {!requiresPlan && !billingUnavailable && !whatsappReady && whatsappDisplay.canConfigure && onConfigureWhatsApp && <button className="sidebar-status-action" type="button" onClick={onConfigureWhatsApp}>Configurar integración</button>}
             {billingUnavailable && onOpenBilling && <button className="sidebar-status-action" type="button" onClick={onOpenBilling}>Revisar facturación</button>}
