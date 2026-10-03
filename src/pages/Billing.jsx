@@ -291,7 +291,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
 
       {error && <div className="error-banner" role="alert">{error}</div>}
       {returnState && <div className="billing-notice" role="status" data-billing-return={returnState.kind}><ShieldCheck size={16} /> {returnState.message}</div>}
-      {demoMode && <div className="billing-notice" role="status"><ShieldCheck size={16} /> La facturación de la demo es informativa: Austral incluye {COMMERCIAL_TRIAL_DAYS} días de prueba y cuesta ARS 50.000 por mes. La continuidad se coordina manualmente por WhatsApp.</div>}
+      {demoMode && <div className="billing-notice" role="status"><ShieldCheck size={16} /> La facturación de la demo es informativa: Austral incluye {COMMERCIAL_TRIAL_DAYS} días de prueba y cuesta {formatPrecio(catalogPlan('austral')?.precio_mensual ?? 50000)} por mes. La continuidad se coordina manualmente por WhatsApp.</div>}
       {subscriptionMissing && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Todavía no tenés una suscripción activa. La prueba gratuita y el plan aparecen cuando el onboarding termina de crear la suscripción.</div>}
       {trialActive && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Prueba gratuita · {trialDaysRemaining} {trialDaysRemaining === 1 ? 'día restante' : 'días restantes'}.</div>}
       {trialExpired && <div className="billing-notice billing-notice--expired" role="alert"><ShieldCheck size={16} /> Tu período de prueba terminó.</div>}
