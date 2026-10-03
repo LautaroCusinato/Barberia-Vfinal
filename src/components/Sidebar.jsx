@@ -48,6 +48,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
   const [mostrarMas, setMostrarMas] = useState(false)
   const hojaMas = usePresencia(mostrarMas)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
+  const indiceTab = mostrarMas || enSeccionMas ? TABBAR_PRINCIPAL.length : Math.max(0, TABBAR_PRINCIPAL.indexOf(view))
 
   const irA = (id) => {
     setView(id)
@@ -161,7 +162,9 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
         </div>
       )}
 
-      <nav className="mobile-tabbar">
+      <nav className="mobile-tabbar" style={{ '--tab-count': TABBAR_PRINCIPAL.length + 1, '--tab-index': indiceTab }}>
+        {/* Indicador de la pestaña activa: se desliza con transform (no re-layout). */}
+        <span className="mobile-tab-indicator" aria-hidden="true" />
         {ITEMS.filter((i) => TABBAR_PRINCIPAL.includes(i.id)).map(({ id, label, Icon }) => (
           <button
             key={id}

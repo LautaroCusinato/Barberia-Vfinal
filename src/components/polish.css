@@ -814,3 +814,82 @@ html.theme-transition *::after {
 
 /* Estadísticas: paneles de la misma fila con igual altura. */
 .stats-two-col { align-items: stretch; }
+
+/* ===== Interacción: presión, entrada de sección y tarjetas ===== */
+
+/* (1) Al presionar: achique con brillo (mismos selectores que el translateY). */
+:where(.btn, .ui-button):active:not(:disabled),
+:where(.btn-icon-plain, .ui-icon-button, .mobile-tab-item, .mobile-mas-item):active:not(:disabled) {
+  transform: scale(.97);
+  filter: brightness(1.15);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
+  transition-duration: var(--motion-press);
+}
+
+/* (8) Cambio de sección: fundido + 8px hacia arriba, 220ms. */
+@keyframes section-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.main > .fade-in { animation: section-enter 220ms var(--ease-standard); }
+
+/* (16) Tarjetas clickeables: se elevan con el mouse; al presionar, leve achique. */
+@media (hover: hover) {
+  .agenda-item--enhanced,
+  .client-mobile-card,
+  .management-clients .management-table tbody tr,
+  .conv-item,
+  .barbero-card {
+    transition: transform var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+  }
+  .agenda-item--enhanced:hover,
+  .client-mobile-card:hover,
+  .conv-item:hover,
+  .barbero-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--accent-soft-2);
+  }
+  .agenda-item--enhanced:active,
+  .client-mobile-card:active,
+  .conv-item:active,
+  .barbero-card:active { transform: scale(.985); }
+  /* La tarjeta con un popover abierto no se mueve (el popover vive adentro). */
+  .agenda-item--enhanced.agenda-item--notes-open,
+  .agenda-item--enhanced.agenda-item--delete-open { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.btn, .ui-button, .btn-icon-plain, .ui-icon-button, .mobile-tab-item, .mobile-mas-item):active:not(:disabled) { transform: none; }
+  .main > .fade-in { animation: none; }
+  .agenda-item--enhanced, .client-mobile-card, .conv-item, .barbero-card { transition: none; }
+  .agenda-item--enhanced:hover, .client-mobile-card:hover, .conv-item:hover, .barbero-card:hover,
+  .agenda-item--enhanced:active, .client-mobile-card:active, .conv-item:active, .barbero-card:active { transform: none; }
+}
+
+/* (9) Barra de pestañas móvil: fondo que se desliza a la pestaña activa. */
+
+.mobile-tab-indicator {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  width: calc(100% / var(--tab-count, 5));
+  height: 52px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  transform: translateX(calc(100% * var(--tab-index, 0)));
+  transition: transform 300ms var(--ease-decelerate);
+  pointer-events: none;
+  z-index: 0;
+}
+.mobile-tab-indicator::before {
+  content: '';
+  display: block;
+  height: 100%;
+  border-radius: 14px;
+  background: var(--accent-soft);
+}
+.mobile-tab-item { position: relative; z-index: 1; }
+.mobile-tab-item.active { background: transparent; }
+.mobile-tab-item svg { transition: transform var(--motion-fast) var(--ease-standard); }
+.mobile-tab-item.active svg { transform: scale(1.08); }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-tab-indicator, .mobile-tab-item svg { transition: none; }
+}
