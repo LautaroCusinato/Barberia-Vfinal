@@ -1491,7 +1491,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
         {view === 'agenda' && (
           <div className="fade-in">
-            <div className="page-header">
+            <div className="page-header agenda-page-header">
               <div>
                 <p className="page-kicker">Calendario operativo</p>
                 <h1 className="page-title">Agenda</h1>
@@ -1499,7 +1499,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
               <div className="page-actions">
                 <span className="page-date">{turnos.length} turnos en total</span>
                 <button
-                  className="btn"
+                  className="btn agenda-export-btn"
+                  aria-label="Exportar turnos"
+                  title="Exportar turnos (CSV)"
                   onClick={() => exportarCSV('turnos.csv', turnos, [
                     { key: 'fecha', label: 'Fecha' },
                     { key: 'hora', label: 'Hora' },
@@ -1508,8 +1510,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                     { key: 'estado', label: 'Estado' },
                   ])}
                 >
-                  <Download size={14} />
-                  Exportar
+                  <Download size={14} aria-hidden="true" />
+                  <span className="btn-label">Exportar</span>
                 </button>
                 <button className="btn btn-primary" onClick={openNewTurno}>
                   <Plus size={15} strokeWidth={2.5} />

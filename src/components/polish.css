@@ -637,3 +637,32 @@ html.theme-transition *::after {
   .messages-grid-full .thread-panel, .messages-grid-full .conv-panel { animation: none !important; }
   html.theme-transition, html.theme-transition * { transition: none !important; }
 }
+
+/* Entradas a prueba de fallos: si el navegador no llega a iniciar la animación
+ * (pestaña en segundo plano, equipos lentos), un fill-mode backwards/both deja
+ * el contenido en su primer fotograma (opacidad 0). Con fill-mode none el
+ * estado base es visible y la animación sólo decora cuando corre. */
+.fade-in,
+.calendar-swap,
+.modal-overlay,
+.ui-overlay,
+.mobile-mas-overlay,
+.modal-box,
+.note-popover,
+.delete-confirm-popover,
+.client-dropdown,
+.barbero-filter-list,
+.error-banner,
+.notice-banner,
+.bot-paused-banner,
+.demo-mode-banner,
+.page-header,
+.settings-notice {
+  animation-fill-mode: none;
+}
+.presencia--saliendo .modal-overlay,
+.presencia--saliendo.mobile-mas-overlay,
+.presencia--saliendo .modal-box,
+.presencia--saliendo .mobile-mas-sheet {
+  animation-fill-mode: forwards;
+}

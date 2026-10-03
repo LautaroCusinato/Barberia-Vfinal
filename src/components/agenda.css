@@ -738,3 +738,33 @@
   .agenda-calendar-shell .week-chip-name,
   .agenda-calendar-shell .week-chip-barber { min-width: 0; }
 }
+
+/* Celular: encabezado de Agenda compacto para que el calendario quede arriba. */
+@media (max-width: 600px) {
+  .agenda-page-header { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; }
+  .agenda-page-header .page-kicker { display: none; }
+  .agenda-page-header .page-title { font-size: 26px; }
+  .agenda-page-header .page-actions { display: flex; flex-wrap: nowrap; gap: 6px; width: auto; }
+  .agenda-page-header .page-actions .page-date { display: none; }
+  .agenda-page-header .page-actions .btn { width: auto; min-height: 42px; padding-inline: 12px; flex: 0 0 auto; }
+  .agenda-page-header .agenda-export-btn { width: 42px; padding: 0; justify-content: center; }
+  .agenda-page-header .agenda-export-btn .btn-label { display: none; }
+
+  .agenda-calendar-shell .calendar-toolbar { gap: 10px; }
+  .agenda-calendar-shell .calendar-heading-kicker { display: none; }
+  .agenda-calendar-shell .calendar-heading-title { font-size: 20px; }
+  .agenda-calendar-shell .calendar-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    width: 100%;
+  }
+  .agenda-calendar-shell .barbero-filter { grid-column: 1; min-width: 0; }
+  .agenda-calendar-shell .view-toggle { grid-column: 2; width: auto; }
+  .agenda-calendar-shell .view-toggle button { padding-inline: 10px; min-height: 40px; }
+  .agenda-calendar-shell .calendar-stepper { grid-column: 1 / -1; display: grid; grid-template-columns: 44px 1fr 44px; gap: 6px; width: 100%; }
+  .agenda-calendar-shell .calendar-arrow-btn { padding: 0; justify-content: center; min-height: 40px; }
+  .agenda-calendar-shell .calendar-arrow-btn span { display: none; }
+  .agenda-calendar-shell .calendar-today-btn { min-height: 40px; }
+  .agenda-calendar-shell .agenda-utility-row { display: none; }
+}
