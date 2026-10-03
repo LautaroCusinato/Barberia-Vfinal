@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
-import { Palette, Plus, Scissors, Settings, Trash2, UserRound, Coffee, Check } from 'lucide-react'
+import { Baby, Brush, Check, Coffee, Droplets, Eye, Layers, Palette, Plus, Scissors, Settings, Sparkles, Tag, Trash2, UserRound, Wind } from 'lucide-react'
 import { generarIdHabilidad, parseHabilidades, serializeHabilidades } from '../lib/text'
 import { EmptyState } from './ui'
 import { initials, textoSobre } from '../lib/avatar'
+import './operations.css'
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -75,19 +76,26 @@ function serializeHorario(dias, desde, hasta, breakDesde, breakHasta) {
 }
 
 
-function getEmoji(nombre) {
-  const emojis = {
-    'corte': '✂️',
-    'barba': '🧔',
-    'color': '🎨',
-    'fade': '💇',
-    'peinado': '✨',
-    'combo': '🔥',
+// Ícono de cada habilidad según palabras clave del nombre del servicio.
+// El orden importa: "Corte + barba" cae en combo antes que en corte.
+const ICONOS_HABILIDAD = [
+  [['combo', 'pack', 'completo', '+'], Layers],
+  [['barba', 'afeitad', 'bigote', 'perfilad', 'navaja'], Brush],
+  [['color', 'tintura', 'tinte', 'mecha', 'decolora', 'platinad', 'reflejo'], Palette],
+  [['niño', 'nino', 'kids', 'infantil'], Baby],
+  [['ceja'], Eye],
+  [['lavado', 'tratamiento', 'hidrata', 'mascarilla', 'keratina', 'alisado'], Droplets],
+  [['peinado', 'brushing', 'styling', 'secado'], Wind],
+  [['diseño', 'diseno', 'dibujo', 'freestyle'], Sparkles],
+  [['corte', 'fade', 'degrad', 'tijera', 'maquina', 'máquina', 'rapado'], Scissors],
+]
+
+function iconoHabilidad(nombre = '') {
+  const texto = String(nombre).toLowerCase()
+  for (const [claves, Icono] of ICONOS_HABILIDAD) {
+    if (claves.some((clave) => texto.includes(clave))) return Icono
   }
-  for (const [key, emoji] of Object.entries(emojis)) {
-    if (nombre.toLowerCase().includes(key)) return emoji
-  }
-  return '📌'
+  return Tag
 }
 
 export default function Operations({
@@ -138,7 +146,8 @@ export default function Operations({
     .filter(s => s.activo !== false)
     .map(s => ({
       id: generarIdHabilidad(s.nombre),
-      label: `${getEmoji(s.nombre)} ${s.nombre}`
+      label: s.nombre,
+      Icono: iconoHabilidad(s.nombre)
     }))
 
   const toggleDia = (barbero, dia) => {
@@ -407,14 +416,14 @@ export default function Operations({
               const habilidades = parseHabilidades(barbero.habilidades)
 
               return (
-                <div className="ops-edit-row ops-edit-row--barbero management-employee-row" key={barbero.id}>
-                  <span className="ops-avatar" style={{ background: barbero.color }}>
+                <div className="ops-edit-row ops-edit-row--barbero management-employee-row ops-barbero-card" key={barbero.id}>
+                  <span className="ops-avatar" style={{ background: barbero.color, color: textoSobre(barbero.color) }} aria-hidden="true">
                     {initials(barbero.nombre)}
                   </span>
 
                   <div className="ops-edit-main">
-                    <div className="ops-edit-grid management-employee-head">
-                      <label>
+                    <div className="ops-barbero-head">
+                      <label className="ops-barbero-name">
                         Nombre *
                         <input
                           className="text-input"
@@ -424,14 +433,13 @@ export default function Operations({
                           placeholder="Ej: Tomás Vega"
                         />
                       </label>
-                      <label>
-                        <span className="ops-color-label">
-                          <Palette size={11} />
-                          Color
+                      <label className="ops-color-swatch" title="Color del barbero" style={{ '--swatch': barbero.color }}>
+                        <span className="ops-color-swatch-dot" aria-hidden="true">
+                          <Palette size={13} style={{ color: textoSobre(barbero.color) }} />
                         </span>
                         <input
-                          className="color-input"
                           type="color"
+                          aria-label="Color del barbero"
                           value={barbero.color}
                           onChange={(e) => mutateBarbero(barbero.id, 'color', e.target.value)}
                           aria-busy={pending[`barbero:${barbero.id}:color`]}
@@ -453,6 +461,7 @@ export default function Operations({
                               <button
                                 key={hab.id}
                                 type="button"
+                                aria-pressed={seleccionada}
                                 className={`habilidad-tag ${seleccionada ? 'active' : ''}`}
                                 style={
                                   seleccionada
@@ -462,6 +471,7 @@ export default function Operations({
                                 onClick={() => toggleHabilidad(barbero, hab.id)}
                                 disabled={pending[`barbero:${barbero.id}:habilidades`]}
                               >
+                                <hab.Icono size={13} strokeWidth={2} className="habilidad-icon" aria-hidden="true" />
                                 {hab.label}
                                 {seleccionada && <Check size={12} className="habilidad-check" />}
                               </button>
@@ -473,11 +483,12 @@ export default function Operations({
 
                     <div className="ops-field-label management-work-days">
                       Días que atiende
-                      <div className="day-toggle-row">
+                      <div className="day-toggle-row ops-day-row">
                         {DIAS.map((dia) => (
                           <button
                             key={dia}
                             type="button"
+                            aria-pressed={horario.dias.has(dia)}
                             className={`day-toggle ${horario.dias.has(dia) ? 'active' : ''}`}
                             style={
                               horario.dias.has(dia)
