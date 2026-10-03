@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { fetchConProgreso } from './progress.js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -13,4 +14,4 @@ const hasRealCredentials =
 
 export const isSupabaseConfigured = Boolean(hasRealCredentials)
 
-export const supabase = isSupabaseConfigured ? createClient(url, key) : null
+export const supabase = isSupabaseConfigured ? createClient(url, key, { global: { fetch: fetchConProgreso } }) : null

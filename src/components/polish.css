@@ -941,3 +941,24 @@ html.theme-transition *::after {
   .save-btn__spinner { animation-duration: 1.6s; }
   .save-btn__check path, .save-btn--done .save-btn__check path { animation: none; stroke-dashoffset: 0; }
 }
+
+/* (13) Barra de progreso superior (sólo si la operación supera 400ms). */
+.top-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: calc(var(--z-tooltip) + 1);
+  height: 3px;
+  background: var(--accent);
+  transform-origin: left center;
+  pointer-events: none;
+}
+.top-progress--avanzando { animation: top-progress-80 1.4s cubic-bezier(.1, .7, .2, 1) forwards; }
+.top-progress--completa { transform: scaleX(1); opacity: 0; transition: opacity 220ms var(--ease-standard) 180ms; animation: top-progress-fin 180ms var(--ease-standard); }
+@keyframes top-progress-80 { from { transform: scaleX(0); } to { transform: scaleX(.8); } }
+@keyframes top-progress-fin { from { transform: scaleX(.8); opacity: 1; } to { transform: scaleX(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .top-progress--avanzando { animation: none; transform: scaleX(.8); }
+  .top-progress--completa { animation: none; transition: none; }
+}

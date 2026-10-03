@@ -8,6 +8,7 @@ import NewTurnoModal from './components/NewTurnoModal'
 import { statusMeta } from './components/StatusSelect'
 import CobroModal from './components/CobroModal'
 import Toaster from './components/Toaster'
+import TopProgress from './components/TopProgress'
 import { useToasts } from './lib/useToasts.js'
 import { logout } from './lib/auth.js'
 import { exportarCSV } from './lib/csv'
@@ -1741,6 +1742,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       />
 
       <Toaster toasts={toasts} onClose={cerrarToast} />
+      <TopProgress />
     </div>
   )
 }
