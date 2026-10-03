@@ -1588,7 +1588,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         )}
 
         {view === 'clientes' && (
-          <div className="fade-in">
+          <div className="fade-in view-fit view-fit--clientes">
             <div className="page-header">
               <div>
                 <p className="page-kicker">Base de datos</p>
@@ -1612,7 +1612,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         )}
 
         {view === 'notas' && (
-          <div className="fade-in">
+          <div className="fade-in view-fit view-fit--notas">
             <div className="page-header">
               <div>
                 <p className="page-kicker">Seguimiento</p>

@@ -735,3 +735,44 @@ html.theme-transition *::after {
     align-content: start;
   }
 }
+
+/* Clientes y Notas en escritorio: la lista scrollea dentro de su panel con el
+ * encabezado fijo; el buscador y el alta quedan siempre a la vista. */
+@media (min-width: 1100px) and (min-height: 620px) {
+  .view-fit--clientes .management-clients,
+  .view-fit--notas .notes-screen {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .view-fit--clientes > .panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .view-fit--clientes .management-clients .table-scroll.clients-desktop-table {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .view-fit--clientes .management-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface-muted);
+  }
+  .view-fit--notas .notes-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    padding-right: 4px;
+  }
+}
+
+@media (min-width: 1100px) and (min-height: 620px) {
+  /* Filas más compactas: entran más clientes sin perder legibilidad. */
+  .view-fit--clientes .management-clients .management-table td { padding-top: 9px; padding-bottom: 9px; }
+  .view-fit--clientes .management-clients .management-table td .btn-icon-plain { min-height: 34px; }
+}

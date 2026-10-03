@@ -134,7 +134,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
   }
 
   return (
-    <div>
+    <div className="notes-screen">
       <div className="panel" style={{ marginBottom: '1.15rem' }}>
         <p className="panel-title">
           <span className="panel-title-icon">
@@ -208,9 +208,11 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
       ) : notasFiltradas.length === 0 ? (
         <EmptyState className="empty-state" icon={<Search size={26} style={{ color: 'var(--border-strong)' }} />} description={`Ninguna nota coincide con "${query}"`} />
       ) : (
-        notasFiltradas.map((n) => (
-          <NoteCard key={n.id} nota={n} onUpdate={onUpdate} onDelete={onDelete} />
-        ))
+        <div className="notes-list">
+          {notasFiltradas.map((n) => (
+            <NoteCard key={n.id} nota={n} onUpdate={onUpdate} onDelete={onDelete} />
+          ))}
+        </div>
       )}
     </div>
   )
