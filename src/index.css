@@ -90,6 +90,8 @@
   --ease-standard: cubic-bezier(0.2, 0.7, 0.3, 1);
   --motion-fast: 160ms;
   --motion-base: 240ms;
+  --motion-press: 80ms;
+  --ease-decelerate: cubic-bezier(0.2, 0.8, 0.2, 1);
   --motion-slow: 1400ms;
   --overlay: rgba(19, 25, 22, 0.48);
   --safe-bottom: env(safe-area-inset-bottom, 0px);

@@ -6,8 +6,8 @@
 :root {
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent);
   --surface-hover: color-mix(in srgb, var(--surface-muted) 72%, var(--surface));
-  --motion-enter: 180ms;
-  --motion-exit: 140ms;
+  --motion-enter: var(--motion-base, 240ms);
+  --motion-exit: var(--motion-fast, 160ms);
 }
 
 @keyframes polish-enter {
