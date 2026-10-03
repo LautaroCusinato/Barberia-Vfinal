@@ -289,7 +289,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange, demoMode 
   const publicUrl = useMemo(() => form.slug ? `${window.location.origin}/reservar/${form.slug}` : '', [form.slug])
 
   if (loading) return <SettingsLoadingState />
-  if (!isSupabaseConfigured && !demoMode) return <div className="panel empty-state">Configurá Supabase para editar el negocio.</div>
+  if (!isSupabaseConfigured && !demoMode) return <div className="panel empty-state">La configuración del negocio no está disponible en este momento. Probá de nuevo en unos minutos.</div>
 
   return <div className="management-screen management-settings settings-page fade-in">
     <div className="page-header"><div><p className="page-kicker">Negocio y marca</p><h1 className="page-title">Configuración del negocio</h1><p className="page-date">{demoMode ? 'Probá branding y preferencias sin modificar ningún negocio real.' : 'Los cambios se validan y afectan sólo a este negocio.'}</p></div><span className="billing-security"><ShieldCheck size={14} /> {demoMode ? 'Sesión aislada' : 'Acceso protegido'}</span></div>
@@ -299,7 +299,7 @@ export default function TenantSettings({ barberiaId, onBrandingChange, demoMode 
       <section className="panel settings-card"><h2 className="panel-title">Identidad y contacto</h2><div className="settings-fields">
         <label>Nombre comercial<input className="text-input" required value={form.nombre} onChange={(e) => update('nombre', e.target.value)} /></label>
         <label>Descripción<textarea className="text-input" rows="3" value={form.descripcion || ''} onChange={(e) => update('descripcion', e.target.value)} /></label>
-        <label>Slug público<input className="text-input" required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(e) => update('slug', e.target.value.toLowerCase())} /><small>Reservas: {publicUrl || '—'}</small></label>
+        <label>Dirección de tu página de reservas<input className="text-input" required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(e) => update('slug', e.target.value.toLowerCase())} /><small>Reservas: {publicUrl || '—'}</small></label>
         <div className="settings-two"><label>Email<input className="text-input" type="email" value={form.email || ''} onChange={(e) => update('email', e.target.value)} /></label><label>Teléfono<input className="text-input" inputMode="tel" value={form.telefono || ''} onChange={(e) => update('telefono', e.target.value)} /></label></div>
         <div className="settings-two"><label>WhatsApp<input className="text-input" inputMode="tel" value={form.whatsapp || ''} onChange={(e) => update('whatsapp', e.target.value)} /></label><label>Dirección<input className="text-input" value={form.direccion || ''} onChange={(e) => update('direccion', e.target.value)} /></label></div>
       </div></section>

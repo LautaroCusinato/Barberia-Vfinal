@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Palette, Plus, Scissors, Settings, Trash2, UserRound, Coffee, Check } from 'lucide-react'
 import { generarIdHabilidad, parseHabilidades, serializeHabilidades } from '../lib/text'
 import { EmptyState } from './ui'
-import { textoSobre } from '../lib/avatar'
+import { initials, textoSobre } from '../lib/avatar'
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -409,7 +409,7 @@ export default function Operations({
               return (
                 <div className="ops-edit-row ops-edit-row--barbero management-employee-row" key={barbero.id}>
                   <span className="ops-avatar" style={{ background: barbero.color }}>
-                    {barbero.nombre.slice(0, 2).toUpperCase()}
+                    {initials(barbero.nombre)}
                   </span>
 
                   <div className="ops-edit-main">

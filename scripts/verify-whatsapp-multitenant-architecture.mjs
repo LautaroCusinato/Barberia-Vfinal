@@ -74,7 +74,8 @@ for (const source of [panel, settings, sidebar]) {
 }
 for (const state of ['NOT_CONFIGURED', 'CREATING_INSTANCE', 'QR_READY', 'CONNECTING', 'CONNECTED', 'DISCONNECTED', 'ERROR']) assert.match(panel, new RegExp(state))
 assert.match(panel, /WHATSAPP_PROVISION_FUNCTION/)
-assert.match(panel, /No.*credenciales|credenciales.*navegador/i)
+// El panel nunca recibe credenciales de Evolution: sólo invoca la función server-side.
+assert.doesNotMatch(panel, /apikey|EVOLUTION_API_KEY|service_role/i)
 assert.doesNotMatch(panel, /Evolution|n8n|webhook/i)
 assert.match(settings, /WhatsAppConnectionPanel/)
 assert.match(app, /functions\.invoke\(WHATSAPP_PROVISION_FUNCTION/)

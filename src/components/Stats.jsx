@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { BarChart3, TrendingUp, Users2, CalendarX2, Wallet, Banknote, CreditCard, Landmark, Search, UserX, X } from 'lucide-react'
+import { CalendarCheck, CalendarDays, CheckCircle2, Coins, Percent, Receipt, Users2, Wallet, Banknote, CreditCard, Landmark, Search, UserX, X } from 'lucide-react'
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
 import { normalizar } from '../lib/text'
 
@@ -136,8 +136,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <p className="stat-label">Turnos registrados</p>
             <p className="stat-value">{totalTurnos}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
-            <BarChart3 size={17} />
+          <div className="stat-icon">
+            <CalendarDays size={17} />
           </div>
         </div>
         <div className="stat-card">
@@ -145,8 +145,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <p className="stat-label">Tasa de asistencia</p>
             <p className="stat-value">{tasaAsistencia === null ? '—' : `${tasaAsistencia}%`}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--blue-soft)', color: 'var(--blue-text)' }}>
-            <TrendingUp size={17} />
+          <div className="stat-icon">
+            <Percent size={17} />
           </div>
         </div>
         <div className="stat-card">
@@ -154,7 +154,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <p className="stat-label">Clientes totales</p>
             <p className="stat-value">{pacientes.length}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--violet-soft)', color: 'var(--violet-text)' }}>
+          <div className="stat-icon">
             <Users2 size={17} />
           </div>
         </div>
@@ -163,8 +163,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <p className="stat-label">Turnos confirmados</p>
             <p className="stat-value">{confirmadosTotal}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}>
-            <CalendarX2 size={17} />
+          <div className="stat-icon">
+            <CalendarCheck size={17} />
           </div>
         </div>
       </div>
@@ -175,7 +175,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <p className="stat-label">Ingresos totales</p>
             <p className="stat-value">{money(ingresosTotales)}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--blue-soft)', color: 'var(--blue-text)' }}>
+          <div className="stat-icon">
             <Wallet size={17} />
           </div>
         </div>
@@ -184,8 +184,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <p className="stat-label">Ticket promedio</p>
             <p className="stat-value">{money(ticketPromedio)}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--violet-soft)', color: 'var(--violet-text)' }}>
-            <TrendingUp size={17} />
+          <div className="stat-icon">
+            <Receipt size={17} />
           </div>
         </div>
         <div className="stat-card">
@@ -193,8 +193,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <p className="stat-label">Turnos atendidos</p>
             <p className="stat-value">{atendidos.length}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
-            <BarChart3 size={17} />
+          <div className="stat-icon">
+            <CheckCircle2 size={17} />
           </div>
         </div>
         <div className="stat-card">
@@ -202,7 +202,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <p className="stat-label">Ausencias</p>
             <p className="stat-value">{resueltos.length - asistieron}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
+          <div className="stat-icon">
             <UserX size={17} />
           </div>
         </div>
@@ -309,7 +309,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
                 <p className="stat-label">{meta.label}</p>
                 <p className="stat-value">{money(totalesPorMetodoHoy[key])}</p>
               </div>
-              <div className="stat-icon" style={{ background: meta.bg, color: meta.color }}>
+              <div className="stat-icon">
                 <meta.Icon size={17} />
               </div>
             </div>
@@ -319,8 +319,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
               <p className="stat-label">Total en caja hoy</p>
               <p className="stat-value">{money(totalCajaHoy)}</p>
             </div>
-            <div className="stat-icon" style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
-              <Wallet size={17} />
+            <div className="stat-icon">
+              <Coins size={17} />
             </div>
           </div>
         </div>

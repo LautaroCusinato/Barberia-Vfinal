@@ -5606,3 +5606,7 @@ input.client-search-input {
   opacity: .85;
   cursor: pointer;
 }
+
+/* Íconos de tarjetas: un solo tono de marca; rojo sólo para alertas reales. */
+.stat-icon { background: var(--accent-soft); color: var(--accent-strong); }
+.stat-icon.stat-icon--alert { background: var(--rose-soft); color: var(--rose-text); }

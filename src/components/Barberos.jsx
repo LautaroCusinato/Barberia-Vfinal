@@ -6,6 +6,7 @@ import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
 import { EmptyState } from './ui'
 import { capitalizar } from '../lib/text'
+import { initials } from '../lib/avatar'
 
 const money = (n) =>
   (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
@@ -89,7 +90,7 @@ export default function Barberos({
             <p className="stat-label">Barberos activos</p>
             <p className="stat-value">{barberos.filter((b) => b.activo).length}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--violet-soft)', color: 'var(--violet-text)' }}>
+          <div className="stat-icon">
             <Users2 size={17} />
           </div>
         </div>
@@ -98,7 +99,7 @@ export default function Barberos({
             <p className="stat-label">Turnos hoy (equipo)</p>
             <p className="stat-value">{equipo.turnosHoy}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
+          <div className="stat-icon">
             <CalendarCheck size={17} />
           </div>
         </div>
@@ -107,7 +108,7 @@ export default function Barberos({
             <p className="stat-label">Ingresos de hoy (equipo)</p>
             <p className="stat-value">{money(equipo.ingresosHoy)}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--blue-soft)', color: 'var(--blue-text)' }}>
+          <div className="stat-icon">
             <Wallet size={17} />
           </div>
         </div>
@@ -116,7 +117,7 @@ export default function Barberos({
             <p className="stat-label">Confirmados de hoy</p>
             <p className="stat-value">{equipo.confirmadosHoy}</p>
           </div>
-          <div className="stat-icon" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}>
+          <div className="stat-icon">
             <Clock size={17} />
           </div>
         </div>
@@ -134,7 +135,7 @@ export default function Barberos({
             >
               <div className="barbero-card-top">
                 <span className="ops-avatar" style={{ background: s.barbero.color || 'var(--accent)' }}>
-                  {s.barbero.nombre.slice(0, 2).toUpperCase()}
+                  {initials(s.barbero.nombre)}
                 </span>
                 <div className="barbero-card-name">
                   <p>{s.barbero.nombre}</p>
@@ -175,7 +176,7 @@ export default function Barberos({
           <div className="equipo-detalle-header">
             <span className="equipo-detalle-titulo">
               <span className="ops-avatar" style={{ background: seleccionado.barbero.color }}>
-                {seleccionado.barbero.nombre.slice(0, 2).toUpperCase()}
+                {initials(seleccionado.barbero.nombre)}
               </span>
               Agenda de {seleccionado.barbero.nombre}
             </span>

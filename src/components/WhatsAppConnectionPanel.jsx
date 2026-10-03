@@ -91,7 +91,7 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
 
   return <section className="panel whatsapp-connection-card" aria-labelledby="whatsapp-connection-title">
     <div className="panel-header-inline whatsapp-connection-header">
-      <div><p className="panel-kicker">Canal de atención</p><h2 id="whatsapp-connection-title" className="panel-title"><MessageCircle size={17} /> {title}</h2><p className="panel-subtitle">La conexión se administra por negocio y nunca expone credenciales en el navegador.</p></div>
+      <div><p className="panel-kicker">Canal de atención</p><h2 id="whatsapp-connection-title" className="panel-title"><MessageCircle size={17} /> {title}</h2><p className="panel-subtitle">Conectá el WhatsApp del negocio para responder y confirmar turnos automáticamente.</p></div>
       <span className={`status-pill whatsapp-connection-pill whatsapp-connection-pill--${copy.tone}`}><span aria-hidden="true" /> {demoMode ? 'En validación' : copy.label}</span>
     </div>
 

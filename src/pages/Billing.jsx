@@ -222,7 +222,7 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
 
   const startCheckout = async (planCode) => {
     if (manualBilling) {
-      setNotice('La continuidad se coordina manualmente por WhatsApp. No se inició ningún checkout.')
+      setNotice('Para continuar, coordinamos el pago por WhatsApp. No se realizó ningún cobro.')
       return
     }
     if (demoMode) {
@@ -240,14 +240,14 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
     try {
       const data = await billingApi('checkout', { method: 'POST', body: { plan_codigo: planCode, proveedor_codigo: provider } })
       if (data?.checkout_url) {
-        setNotice('Checkout creado. Se abrirá el proveedor en una pestaña nueva.')
+        setNotice('Listo. Vamos a abrir Mercado Pago en una pestaña nueva para completar el pago.')
         window.open(data.checkout_url, '_blank', 'noopener,noreferrer')
-      } else setNotice(data?.message || 'El checkout quedó preparado; falta configuración sandbox.')
+      } else setNotice(data?.message || 'El pago quedó preparado, pero el modo de prueba no está configurado.')
     } catch (apiError) {
       const failure = classifyBillingFailure(apiError)
       setError(failure.kind === 'subscription_missing'
-        ? 'La cuenta todavía no tiene una suscripción habilitada para iniciar el checkout.'
-        : 'No se pudo iniciar el checkout. No se generó ningún cobro.')
+        ? 'Tu cuenta todavía no tiene un plan habilitado para pagar.'
+        : 'No pudimos iniciar el pago. No se realizó ningún cobro.')
     }
     setSaving(false)
   }
@@ -263,8 +263,8 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
     try {
       const data = await billingApi('subscription', { method: 'POST', headers: { 'Idempotency-Key': productionAttemptKey.current }, body: { plan_codigo: planCode, card_token_id: cardTokenId } })
       setNotice(environment === 'sandbox'
-        ? 'Tarjeta TEST recibida. La suscripción sandbox queda pendiente de verificación del webhook.'
-        : (data?.status === 'verifying' ? 'Tarjeta recibida. La activación queda pendiente de verificación del webhook.' : 'Solicitud recibida. La activación se confirmará por webhook.'))
+        ? 'Tarjeta de prueba recibida. La suscripción se activa cuando Mercado Pago confirme el pago.'
+        : (data?.status === 'verifying' ? 'Tarjeta recibida. Tu plan se activa en cuanto Mercado Pago confirme el pago.' : 'Solicitud recibida. Tu plan se activa en cuanto Mercado Pago confirme el pago.'))
     } catch (apiError) {
       const failure = classifyBillingFailure(apiError)
       setError(failure.kind === 'subscription_missing' ? 'La cuenta todavía no tiene una suscripción habilitada.' : 'No se pudo procesar la tarjeta. No se activó ningún plan.')
@@ -274,16 +274,16 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
     }
   }
 
-  if (!isSupabaseConfigured && !demoMode) return <div className="panel billing-empty"><CreditCard size={18} /><p>Conectá Supabase para consultar el estado de facturación.</p></div>
+  if (!isSupabaseConfigured && !demoMode) return <div className="panel billing-empty"><CreditCard size={18} /><p>La facturación no está disponible en este momento. Probá de nuevo en unos minutos.</p></div>
   if (loading) return <BillingLoadingState />
 
   return (
     <div className="fade-in billing-page">
       <div className="page-header">
         <div>
-          <p className="page-kicker">Cuenta SaaS</p>
+          <p className="page-kicker">Tu plan</p>
           <h1 className="page-title">Facturación</h1>
-          <p className="page-date">Tu plan, prueba gratuita y pagos, sin exponer credenciales.</p>
+          <p className="page-date">Tu plan, la prueba gratuita y tus pagos.</p>
         </div>
         <div className="billing-security"><ShieldCheck size={15} /> Procesamiento seguro</div>
       </div>
@@ -314,20 +314,20 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
           <span className="status-pill">Sin cobros automáticos</span>
           {trialContinuationHref && !trialExpired && <a className="btn btn-primary billing-continuation-cta" href={trialContinuationHref} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Hablar con el equipo</a>}
         </div> : <div className="panel billing-provider-card">
-          <p className="panel-kicker">Proveedor para el checkout</p>
+          <p className="panel-kicker">Medio de pago</p>
           <h2>Elegí cómo pagar</h2>
-          <p className="panel-subtitle">El checkout se solicita al backend configurado para tu cuenta. El navegador nunca maneja credenciales.</p>
+          <p className="panel-subtitle">El pago se procesa de forma segura a través de Mercado Pago.</p>
           {displayProviders.length > 0 && <div className="billing-provider-options">
             {displayProviders.map((item) => <label className={`billing-provider-option ${provider === item.codigo ? 'selected' : ''}`} key={item.codigo}><input type="radio" name="billing-provider" value={item.codigo} checked={provider === item.codigo} onChange={(event) => setProvider(event.target.value)} /><span><strong>{PROVIDER_LABELS[item.codigo] || item.nombre}</strong><small>{item.activo ? 'Configurado' : 'Pagos todavía no habilitados'}</small></span></label>)}
           </div>}
-          {selectedProvider && !selectedProvider.activo && !sandboxCheckoutReady && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><CreditCard size={17} /></div><div><strong>{PROVIDER_LABELS[selectedProvider.codigo] || selectedProvider.nombre} todavía no está disponible</strong><p>La cuenta puede consultar sus planes, pero el checkout permanece bloqueado hasta completar la configuración del proveedor.</p><span className="status-pill">Sin cobros habilitados</span></div></div>}
-          {sandboxCheckoutReady && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Prueba sandbox disponible para tenant técnico. Usá únicamente comprador y tarjeta TEST; no genera cobros reales.</div>}
-          {!selectedProvider && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><ShieldCheck size={17} /></div><div><strong>Proveedor pendiente de configuración</strong><p>Cuando se habilite un medio de pago, aparecerá acá sin modificar tu plan actual.</p><span className="status-pill">Configuración pendiente</span></div></div>}
+          {selectedProvider && !selectedProvider.activo && !sandboxCheckoutReady && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><CreditCard size={17} /></div><div><strong>{PROVIDER_LABELS[selectedProvider.codigo] || selectedProvider.nombre} todavía no está disponible</strong><p>Podés ver los planes; los pagos online se habilitan en breve.</p><span className="status-pill">Sin cobros habilitados</span></div></div>}
+          {sandboxCheckoutReady && <div className="billing-notice" role="status"><ShieldCheck size={16} /> Modo de prueba: usá sólo tarjetas de prueba; no se realizan cobros reales.</div>}
+          {!selectedProvider && <div className="billing-provider-empty" role="status"><div className="billing-provider-empty-icon"><ShieldCheck size={17} /></div><div><strong>Pagos online próximamente</strong><p>Cuando se habilite un medio de pago, aparecerá acá sin modificar tu plan actual.</p><span className="status-pill">Configuración pendiente</span></div></div>}
         </div>}
       </section>
 
       <section className="panel billing-plans-panel">
-        <div className="panel-header"><div><h2 className="panel-title">Plan Austral</h2><p className="panel-subtitle">La propuesta comercial vigente para tu cuenta.</p><p className="billing-currency-note">La continuidad se coordina manualmente por WhatsApp; no se inicia ningún checkout desde esta pantalla.</p></div></div>
+        <div className="panel-header"><div><h2 className="panel-title">Plan Austral</h2><p className="panel-subtitle">La propuesta comercial vigente para tu cuenta.</p><p className="billing-currency-note">Para continuar después de la prueba, coordinamos el pago por WhatsApp.</p></div></div>
         <div className="billing-plans-grid">{catalog.map((item) => {
           const externalPrice = findExternalPrice(item)
           const providerUnavailable = !selectedProvider?.activo && !sandboxCheckoutReady && !productionCheckoutReady
@@ -352,8 +352,8 @@ export default function Billing({ barberiaId: _barberiaId, demoMode = false }) {
       </section>
 
       <section className="billing-history-grid">
-        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Pagos</h2><p className="panel-subtitle">Confirmados por el proveedor mediante webhook verificado.</p></div></div>{portal?.payments?.length ? <div className="billing-history-list">{portal.payments.map((payment) => <div className="billing-history-row" key={payment.id}><span>{PROVIDER_LABELS[payment.provider] || payment.provider}</span><strong>{formatMoney(payment.amount, payment.currency)}</strong><span className="status-pill">{providerStatusLabel(payment.status)}</span><small>{formatDate(payment.paid_at)}</small></div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay pagos registrados." />}</div>
-        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Comprobantes</h2><p className="panel-subtitle">Los enlaces provienen del proveedor; nunca guardamos tarjetas.</p></div></div>{portal?.invoices?.length ? <div className="billing-history-list">{portal.invoices.map((invoice) => <div className="billing-history-row" key={invoice.id}><span>{invoice.provider}</span><strong>{formatMoney(invoice.amount, invoice.currency)}</strong><span className="status-pill">{providerStatusLabel(invoice.status)}</span>{invoice.invoice_url ? <a href={invoice.invoice_url} target="_blank" rel="noreferrer" aria-label="Abrir comprobante"><ExternalLink size={15} /></a> : <small>{formatDate(invoice.issued_at)}</small>}</div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay comprobantes." />}</div>
+        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Pagos</h2><p className="panel-subtitle">Pagos confirmados por Mercado Pago.</p></div></div>{portal?.payments?.length ? <div className="billing-history-list">{portal.payments.map((payment) => <div className="billing-history-row" key={payment.id}><span>{PROVIDER_LABELS[payment.provider] || payment.provider}</span><strong>{formatMoney(payment.amount, payment.currency)}</strong><span className="status-pill">{providerStatusLabel(payment.status)}</span><small>{formatDate(payment.paid_at)}</small></div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay pagos registrados." />}</div>
+        <div className="panel"><div className="panel-header"><div><h2 className="panel-title">Comprobantes</h2><p className="panel-subtitle">Los comprobantes los emite Mercado Pago; nunca guardamos datos de tarjetas.</p></div></div>{portal?.invoices?.length ? <div className="billing-history-list">{portal.invoices.map((invoice) => <div className="billing-history-row" key={invoice.id}><span>{invoice.provider}</span><strong>{formatMoney(invoice.amount, invoice.currency)}</strong><span className="status-pill">{providerStatusLabel(invoice.status)}</span>{invoice.invoice_url ? <a href={invoice.invoice_url} target="_blank" rel="noreferrer" aria-label="Abrir comprobante"><ExternalLink size={15} /></a> : <small>{formatDate(invoice.issued_at)}</small>}</div>)}</div> : <EmptyState className="empty-state" description="Todavía no hay comprobantes." />}</div>
       </section>
     </div>
   )

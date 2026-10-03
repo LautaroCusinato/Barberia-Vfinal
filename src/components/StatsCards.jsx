@@ -18,10 +18,10 @@ export default function StatsCards({ turnos, conversaciones, todayKey }) {
   )
 
   const stats = [
-    { label: 'Turnos hoy', value: hoy, Icon: CalendarCheck, bg: 'var(--accent-soft)', color: 'var(--accent-strong)' },
-    { label: 'Por atender hoy', value: porAtender, Icon: Clock, bg: 'var(--amber-soft)', color: 'var(--amber-text)' },
-    { label: 'Mensajes sin leer', value: noLeidos, Icon: MessageSquare, bg: 'var(--rose-soft)', color: 'var(--rose-text)' },
-    { label: 'Respuestas del bot (hoy)', value: agendadosPorBot, Icon: Bot, bg: 'var(--surface-muted)', color: 'var(--ink-soft)' },
+    { label: 'Turnos hoy', value: hoy, Icon: CalendarCheck },
+    { label: 'Por atender hoy', value: porAtender, Icon: Clock },
+    { label: 'Mensajes sin leer', value: noLeidos, Icon: MessageSquare, alerta: noLeidos > 0 },
+    { label: 'Respuestas del bot (hoy)', value: agendadosPorBot, Icon: Bot },
   ]
 
   return (
@@ -32,7 +32,7 @@ export default function StatsCards({ turnos, conversaciones, todayKey }) {
             <p className="stat-label">{s.label}</p>
             <p className="stat-value">{s.value}</p>
           </div>
-          <div className="stat-icon" style={{ background: s.bg, color: s.color }}>
+          <div className={`stat-icon${s.alerta ? ' stat-icon--alert' : ''}`}>
             <s.Icon size={17} strokeWidth={2} />
           </div>
         </div>
