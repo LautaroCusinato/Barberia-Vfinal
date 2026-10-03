@@ -5620,3 +5620,8 @@ input.client-search-input {
 .sidebar-status-badge--ok { color: var(--green-text); background: var(--green-soft); border-color: color-mix(in srgb, var(--green-text) 25%, var(--border)); }
 .sidebar-status-badge--pendiente { color: var(--amber-text); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber-text) 25%, var(--border)); }
 .sidebar-status-badge--alerta { color: var(--rose-text); background: var(--rose-soft); border-color: color-mix(in srgb, var(--rose-text) 25%, var(--border)); }
+
+.resumen-agenda-list { display: grid; gap: 10px; }
+.resumen-ver-todos { justify-self: center; margin-top: 4px; }
+/* Sin altura máxima ni recorte: la lista ya está limitada a TURNOS_RESUMEN turnos. */
+.resumen-agenda-panel { max-height: none; overflow: visible; }
