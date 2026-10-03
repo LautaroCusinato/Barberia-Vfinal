@@ -423,3 +423,24 @@ export function slotsOcupados(duracionMin = 30, stepMin = 30) {
   const duracion = Number(duracionMin) || stepMin
   return Math.max(1, Math.ceil((duracion - 5) / stepMin))
 }
+
+const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+// "Lun, Mar, Mié, Jue, Vie y Sáb 09:00-18:00 break 13:00-14:00" →
+// "Lun a Sáb · 09:00–18:00 (pausa 13:00–14:00)". Si no se puede interpretar,
+// devuelve el texto original.
+export function resumirHorario(horario = '') {
+  const franjas = parseHorarioTexto(horario)
+  if (!franjas || !franjas.length) return horario
+  const orden = [1, 2, 3, 4, 5, 6, 0]
+  const dias = orden.filter((d) => franjas.some((f) => f.day_of_week === d))
+  const grupos = []
+  for (const d of dias) {
+    const ultimo = grupos[grupos.length - 1]
+    if (ultimo && orden.indexOf(d) === orden.indexOf(ultimo[ultimo.length - 1]) + 1) ultimo.push(d)
+    else grupos.push([d])
+  }
+  const texto = grupos.map((g) => (g.length >= 3 ? `${DIAS_CORTOS[g[0]]} a ${DIAS_CORTOS[g[g.length - 1]]}` : g.map((d) => DIAS_CORTOS[d]).join(', '))).join(', ')
+  const rangos = [...String(horario).matchAll(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/g)].map(([, a, b]) => `${a.padStart(5, '0')}–${b.padStart(5, '0')}`)
+  return `${texto} · ${rangos[0] || ''}${rangos[1] ? ` (pausa ${rangos[1]})` : ''}`
+}

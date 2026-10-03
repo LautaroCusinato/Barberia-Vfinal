@@ -7,6 +7,7 @@ import {
   PREFIJO_AR,
   TELEFONO_NACIONAL_DIGITOS,
   formatPrecio,
+  resumirHorario,
   digitosNacionales,
   soloDigitos,
   normalizar,
@@ -333,117 +334,7 @@ function NewTurnoModal({
         <form onSubmit={submit} className="new-turno-form">
           <div className="modal-scroll-body">
           <section className="modal-section">
-            <p className="modal-section-title">Fecha y profesional</p>
-            <div className="modal-row">
-              <div className="modal-field">
-                <label className={labelBase}>Fecha *</label>
-                <input
-                  className={inputBase}
-                  type="date"
-                  value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
-                />
-              </div>
-              <div className="modal-field">
-                <label className={labelBase}>Barbero *</label>
-                <select className={inputBase} value={barberoId} onChange={(e) => setBarberoId(e.target.value)}>
-                  {barberosDisponibles.map((b) => (
-                    <option key={b.id} value={b.id}>{b.nombre}</option>
-                  ))}
-                </select>
-                {barberosDisponibles.length === 0 && (
-                  <p className="schedule-empty" style={{ marginTop: 6 }}>
-                    Ningún profesional realiza este servicio o tiene disponibilidad para la fecha elegida.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="modal-field">
-              <label className={labelBase}>
-                Horario disponible
-                {barberoSeleccionado && (
-                  <span className="barbero-schedule-hint">
-                    {barberoSeleccionado.horario}
-                  </span>
-                )}
-              </label>
-              {slotsDelBarbero.slots.length === 0 ? (
-                <p className="schedule-empty">
-                  <MapPin size={13} /> {barberoSeleccionado?.nombre || 'Este barbero'} no trabaja los {diaSemanaLargo(fecha) || 'este día'}.
-                </p>
-              ) : (
-                <div className="slot-grid">
-                  {slotsDelBarbero.slots.map((slot) => {
-                    const ocupado = slotOcupado(slot)
-                    const seleccionado = hora === slot
-                    const clase = [
-                      'slot-chip',
-                      ocupado && 'slot-busy',
-                      seleccionado && 'slot-active',
-                    ].filter(Boolean).join(' ')
-                    return (
-                      <button
-                        type="button"
-                        key={slot}
-                        className={clase}
-                        onClick={() => !ocupado && setHora(slot)}
-                        disabled={ocupado}
-                        title={ocupado ? 'Ocupado' : `Elegir ${slot}`}
-                      >
-                        {slot}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-              {hora && (
-                <p className="slot-summary">
-                  <Clock size={12} />
-                  <span>
-                    {hora} – {(() => {
-                      const finMin = toMinutes(hora) + duracion
-                      const hh = String(Math.floor(finMin / 60)).padStart(2, '0')
-                      const mm = String(finMin % 60).padStart(2, '0')
-                      return `${hh}:${mm}`
-                    })()} ({duracion} min)
-                  </span>
-                </p>
-              )}
-            </div>
-          </section>
-
-          <section className="modal-section">
-            <p className="modal-section-title">Servicio</p>
-            <div className="modal-field">
-              <label className={labelBase}>Servicio *</label>
-              <div className="service-grid">
-                {servicios.filter((s) => s.activo !== false).map((s) => {
-                  const seleccionado = String(s.id) === String(servicioId)
-                  return (
-                    <button
-                      type="button"
-                      key={s.id}
-                      className={`service-chip ${seleccionado ? 'service-active' : ''}`}
-                      onClick={() => setServicioId(String(s.id))}
-                    >
-                      <span className="service-chip-top">
-                        <span className="service-name">{s.nombre}</span>
-                        {seleccionado && <CheckCircle2 size={15} strokeWidth={2.6} />}
-                      </span>
-                      <span className="service-meta">
-                        <span>{s.duracion} min</span>
-                        <strong>{formatPrecio(s.precio)}</strong>
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </section>
-
-          <section className="modal-section">
-            <p className="modal-section-title">Cliente</p>
+            <p className="modal-section-title">1. Cliente</p>
             <div className="modal-field" ref={pickerRef}>
             <label className={labelBase}>Cliente *</label>
 
@@ -554,6 +445,116 @@ function NewTurnoModal({
                 )}
               </>
             )}
+            </div>
+          </section>
+
+          <section className="modal-section">
+            <p className="modal-section-title">2. Servicio</p>
+            <div className="modal-field">
+              <label className={labelBase}>Servicio *</label>
+              <div className="service-grid">
+                {servicios.filter((s) => s.activo !== false).map((s) => {
+                  const seleccionado = String(s.id) === String(servicioId)
+                  return (
+                    <button
+                      type="button"
+                      key={s.id}
+                      className={`service-chip ${seleccionado ? 'service-active' : ''}`}
+                      onClick={() => setServicioId(String(s.id))}
+                    >
+                      <span className="service-chip-top">
+                        <span className="service-name">{s.nombre}</span>
+                        {seleccionado && <CheckCircle2 size={15} strokeWidth={2.6} />}
+                      </span>
+                      <span className="service-meta">
+                        <span>{s.duracion} min</span>
+                        <strong>{formatPrecio(s.precio)}</strong>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </section>
+
+          <section className="modal-section">
+            <p className="modal-section-title">3. Profesional, fecha y horario</p>
+            <div className="modal-row">
+              <div className="modal-field">
+                <label className={labelBase}>Fecha *</label>
+                <input
+                  className={inputBase}
+                  type="date"
+                  value={fecha}
+                  onChange={(e) => setFecha(e.target.value)}
+                />
+              </div>
+              <div className="modal-field">
+                <label className={labelBase}>Barbero *</label>
+                <select className={inputBase} value={barberoId} onChange={(e) => setBarberoId(e.target.value)}>
+                  {barberosDisponibles.map((b) => (
+                    <option key={b.id} value={b.id}>{b.nombre}</option>
+                  ))}
+                </select>
+                {barberosDisponibles.length === 0 && (
+                  <p className="schedule-empty" style={{ marginTop: 6 }}>
+                    Ningún profesional realiza este servicio o tiene disponibilidad para la fecha elegida.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-field">
+              <label className={labelBase}>
+                Horario disponible
+                {barberoSeleccionado && (
+                  <span className="barbero-schedule-hint">
+                    {resumirHorario(barberoSeleccionado.horario)}
+                  </span>
+                )}
+              </label>
+              {slotsDelBarbero.slots.length === 0 ? (
+                <p className="schedule-empty">
+                  <MapPin size={13} /> {barberoSeleccionado?.nombre || 'Este barbero'} no trabaja los {diaSemanaLargo(fecha) || 'este día'}.
+                </p>
+              ) : (
+                <div className="slot-grid">
+                  {slotsDelBarbero.slots.map((slot) => {
+                    const ocupado = slotOcupado(slot)
+                    const seleccionado = hora === slot
+                    const clase = [
+                      'slot-chip',
+                      ocupado && 'slot-busy',
+                      seleccionado && 'slot-active',
+                    ].filter(Boolean).join(' ')
+                    return (
+                      <button
+                        type="button"
+                        key={slot}
+                        className={clase}
+                        onClick={() => !ocupado && setHora(slot)}
+                        disabled={ocupado}
+                        title={ocupado ? 'Ocupado' : `Elegir ${slot}`}
+                      >
+                        {slot}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {hora && (
+                <p className="slot-summary">
+                  <Clock size={12} />
+                  <span>
+                    {hora} – {(() => {
+                      const finMin = toMinutes(hora) + duracion
+                      const hh = String(Math.floor(finMin / 60)).padStart(2, '0')
+                      const mm = String(finMin % 60).padStart(2, '0')
+                      return `${hh}:${mm}`
+                    })()} ({duracion} min)
+                  </span>
+                </p>
+              )}
             </div>
           </section>
 
