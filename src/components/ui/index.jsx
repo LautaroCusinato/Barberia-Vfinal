@@ -1,6 +1,7 @@
-import { cloneElement, forwardRef, useEffect, useId, useRef, useState } from 'react'
+import { cloneElement, forwardRef, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Eye, EyeOff, LoaderCircle, X } from 'lucide-react'
 import ExistingPhoneField from '../PhoneField'
+import { tomarOrigenModal } from '../../lib/modalOrigin.js'
 import './ui.css'
 
 const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
@@ -67,6 +68,18 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
   // a enfocar el primer botón y cortaría lo que la persona está escribiendo.
   const onEscapeRef = useRef(onEscape)
   useEffect(() => { onEscapeRef.current = onEscape }, [onEscape])
+
+  // En escritorio, el modal crece desde el botón que lo abrió.
+  useLayoutEffect(() => {
+    if (!open) return
+    const el = containerRef.current
+    if (!el || !(el.classList.contains('modal-box') || el.classList.contains('ui-modal'))) return
+    const origen = tomarOrigenModal()
+    if (!origen || !window.matchMedia?.('(min-width: 861px)').matches) return
+    const r = el.getBoundingClientRect()
+    el.style.setProperty('--modal-origin', `${Math.round(origen.x - r.left)}px ${Math.round(origen.y - r.top)}px`)
+    el.classList.add('modal-grow')
+  }, [open])
 
   useEffect(() => {
     if (!open) return undefined

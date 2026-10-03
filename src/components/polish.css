@@ -962,3 +962,17 @@ html.theme-transition *::after {
   .top-progress--avanzando { animation: none; transform: scaleX(.8); }
   .top-progress--completa { animation: none; transition: none; }
 }
+
+/* (10) En escritorio el modal crece desde el botón que lo abrió (y al cerrar
+ * vuelve hacia él). En celular sigue subiendo desde abajo. */
+@keyframes modal-grow { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+@media (min-width: 861px) {
+  .modal-box.modal-grow,
+  .ui-modal.modal-grow {
+    transform-origin: var(--modal-origin, 50% 50%);
+    animation: modal-grow 260ms var(--ease-standard);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-box.modal-grow, .ui-modal.modal-grow { animation: none; }
+}
