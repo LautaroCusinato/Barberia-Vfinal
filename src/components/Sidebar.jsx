@@ -116,7 +116,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
           {/* Preferencias y cuenta en una fila: apilados ocupaban ~150px y en
               notebooks de 800px de alto escondían Operación y Configuración. */}
           <div className="sidebar-footer-actions" role="group" aria-label="Cuenta y preferencias">
-            <button className="sidebar-footer-action" type="button" aria-pressed={isDark} onClick={onToggleTheme} aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'} title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}>
+            <button className="sidebar-footer-action" type="button" aria-pressed={isDark} onClick={onToggleTheme} aria-label={`Modo ${isDark ? 'oscuro' : 'claro'}`} title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}>
               {isDark ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}
               <span>{isDark ? 'Oscuro' : 'Claro'}</span>
             </button>
