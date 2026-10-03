@@ -908,6 +908,28 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const deleteTurno = (turnoId) => eliminarConDeshacer(turnos, setTurnos, turnoId, 'turnos', 'Turno eliminado', 'No se pudo eliminar el turno')
 
+  // Arrastrar en la agenda: aplica la nueva fecha/hora al instante, la guarda
+  // y ofrece "Deshacer" (que vuelve a la posición anterior sin otro aviso).
+  const reprogramarTurno = async (turnoId, destino) => {
+    const anterior = turnos.find((t) => t.id === turnoId)
+    if (!anterior) return false
+    setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, ...destino } : t)))
+    if (!isSupabaseConfigured) return true
+    const { error } = await supabase.from('turnos').update(destino).eq('id', turnoId)
+    if (!error) return true
+    setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, fecha: anterior.fecha, hora: anterior.hora } : t)))
+    const mensaje = mensajeErrorTurno(error)
+    if (mensaje) mostrarValidacion(mensaje)
+    else reportError('No se pudo mover el turno', error)
+    return false
+  }
+  const moverTurno = async (turno, { fecha, hora }) => {
+    const origen = { fecha: turno.fecha, hora: turno.hora }
+    const movido = await reprogramarTurno(turno.id, { fecha, hora })
+    if (movido) mostrarToast({ mensaje: `Turno movido a ${hora}`, duracion: 5000, onUndo: () => { reprogramarTurno(turno.id, origen) } })
+    return movido
+  }
+
   const saveTurno = async ({ paciente, telefono, clienteId, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }, existingId) => {
     const servicio = servicios.find((item) => String(item.id) === String(servicio_id))
     const barbero = barberos.find((item) => String(item.id) === String(barbero_id))
@@ -1578,6 +1600,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                 onChangeEstado={pedirEstadoOCobro}
                 onDeleteTurno={deleteTurno}
                 onEditTurno={openEditTurno}
+                onMoverTurno={moverTurno}
                 notas={notas}
                 onAddNota={addNota}
                 onNewTurno={openNewTurnoConFecha}

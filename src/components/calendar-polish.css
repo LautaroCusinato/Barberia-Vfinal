@@ -358,3 +358,7 @@
     animation: none;
   }
 }
+
+/* Arrastrar un turno no debe seleccionar texto de la página. */
+.agenda-calendar-shell .week-chip--draggable { -webkit-user-select: none; user-select: none; }
+body:has(.week-drag-label) { -webkit-user-select: none; user-select: none; }
