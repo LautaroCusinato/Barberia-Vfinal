@@ -726,3 +726,15 @@
     order: -1;
   }
 }
+
+/* Escritorio: los 7 días entran sin scroll horizontal (antes la grilla pedía
+ * 1080px mínimos y a 1366px había que desplazarse para ver el domingo). */
+@media (min-width: 1024px) {
+  .agenda-calendar-shell .week-grid {
+    grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+    min-width: 0;
+  }
+  .agenda-calendar-shell .week-scroll { overflow-x: hidden; }
+  .agenda-calendar-shell .week-chip-name,
+  .agenda-calendar-shell .week-chip-barber { min-width: 0; }
+}
