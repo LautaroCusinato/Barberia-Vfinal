@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import './components/agenda.css'
 import './components/management.css'
 import { format } from 'date-fns'
@@ -10,6 +10,7 @@ import CobroModal from './components/CobroModal'
 import Toaster from './components/Toaster'
 import TopProgress from './components/TopProgress'
 import { useToasts } from './lib/useToasts.js'
+import { cascadaInicial } from './lib/cascade.js'
 import { logout } from './lib/auth.js'
 import { exportarCSV } from './lib/csv'
 import Sidebar from './components/Sidebar'
@@ -353,6 +354,13 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     // En escritorio el área principal es el contenedor que scrollea.
     if (mainRef.current) mainRef.current.scrollTop = 0
   }, [view])
+
+  // La primera vez que se abre cada pantalla, sus primeras filas entran en cascada.
+  const vistasAbiertasRef = useRef(new Set())
+  useLayoutEffect(() => {
+    if (loading || vistasAbiertasRef.current.has(view) || !mainRef.current) return
+    if (cascadaInicial(mainRef.current)) vistasAbiertasRef.current.add(view)
+  }, [view, loading])
 
   useEffect(() => {
     if (!routeFocusPendingRef.current) return undefined
