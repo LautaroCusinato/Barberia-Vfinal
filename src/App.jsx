@@ -45,7 +45,6 @@ import { enqueueLatest } from './lib/latestIntentQueue.js'
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
 const WHATSAPP_PANEL_SEND_FUNCTION = 'whatsapp-panel-send'
-const TURNOS_RESUMEN = 6
 
 // Traduce los rechazos de la base (exclusión, triggers de agenda) a un
 // mensaje accionable. Devuelve null si el error no es de reglas de agenda.
@@ -347,6 +346,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     if (vistaAnteriorRef.current === view) return
     vistaAnteriorRef.current = view
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    // En escritorio el área principal es el contenedor que scrollea.
+    if (mainRef.current) mainRef.current.scrollTop = 0
   }, [view])
 
   useEffect(() => {
@@ -1430,7 +1431,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         )}
 
         {view === 'resumen' && (
-          <div className="fade-in">
+          <div className="fade-in view-fit view-fit--resumen">
             <div className="page-header">
               <div>
                 <p className="page-kicker">Panel diario</p>
@@ -1462,10 +1463,11 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                         Nuevo
                       </button>
                     </h2>
-                    {/* Sin scroll interno: se ven los primeros turnos y el resto en la Agenda. */}
+                    {/* En escritorio el panel ocupa el alto disponible y la lista scrollea
+                        adentro; la página no se mueve. */}
                     <div className="resumen-agenda-list">
                       <Agenda
-                        turnos={turnosHoy.slice(0, TURNOS_RESUMEN)}
+                        turnos={turnosHoy}
                         onChangeEstado={pedirEstadoOCobro}
                         onDeleteTurno={deleteTurno}
                         onEditTurno={openEditTurno}
@@ -1474,11 +1476,6 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                         barberos={barberos}
                         onNewTurno={openNewTurno}
                       />
-                      {turnosHoy.length > TURNOS_RESUMEN && (
-                        <button type="button" className="btn resumen-ver-todos" onClick={() => navigateFromMenu('agenda')}>
-                          Ver los {turnosHoy.length} turnos de hoy
-                        </button>
-                      )}
                     </div>
                   </div>
                   <div className="panel">
@@ -1499,7 +1496,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         )}
 
         {view === 'agenda' && (
-          <div className="fade-in">
+          <div className="fade-in view-fit view-fit--agenda">
             <div className="page-header agenda-page-header">
               <div>
                 <p className="page-kicker">Calendario operativo</p>
@@ -1570,7 +1567,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         )}
 
         {view === 'mensajes' && (
-          <div className="fade-in">
+          <div className="fade-in view-fit view-fit--mensajes">
             <div className="page-header">
               <div>
                 <p className="page-kicker">WhatsApp</p>

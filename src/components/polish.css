@@ -666,3 +666,72 @@ html.theme-transition *::after {
 .presencia--saliendo .mobile-mas-sheet {
   animation-fill-mode: forwards;
 }
+
+/* ===== Escritorio: vistas de trabajo que entran en el alto de la pantalla =====
+ * Resumen, Agenda y Mensajes ocupan el alto disponible y sus listas scrollean
+ * adentro (antes la página crecía ~470px en Resumen y había que bajar a mano).
+ * Con ventanas muy bajas, el área principal vuelve a scrollear en lugar de
+ * recortar contenido. */
+@media (min-width: 1100px) and (min-height: 620px) {
+  .app-shell { height: 100vh; overflow: hidden; }
+  .app-shell > .main {
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 1.5rem;
+  }
+  .main > .view-fit {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .view-fit > .page-header { flex: 0 0 auto; margin-bottom: 1.1rem; }
+
+  /* Resumen: tarjetas arriba, agenda y conversaciones llenan el resto. */
+  .view-fit--resumen .stats-row { flex: 0 0 auto; margin-bottom: 1.1rem; }
+  .view-fit--resumen .two-col { flex: 1 1 auto; min-height: 320px; align-items: stretch; }
+  .view-fit--resumen .two-col > .panel {
+    min-height: 0;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .view-fit--resumen .two-col > .panel > .panel-title { flex: 0 0 auto; }
+  /* Agenda: el calendario y el detalle del día ocupan el alto restante (antes
+   * medían 600px fijos y la página se pasaba de la ventana). */
+  .view-fit--agenda .agenda-calendar-shell {
+    flex: 1 1 auto;
+    min-height: 460px;
+    height: auto;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .view-fit--agenda .agenda-calendar-shell > * { min-height: 0; height: auto; max-height: none; }
+  /* Reglas viejas fijaban calc(100vh - 168/180px) con !important. */
+  .view-fit--agenda .calendar-wrap-modern > .panel:first-child,
+  .view-fit--agenda .calendar-board > .panel:first-child { height: auto; }
+  .view-fit--agenda .day-side-panel { height: 100% !important; max-height: 100% !important; }
+  .view-fit--agenda .calendar-grid { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(58px, 1fr); overflow-y: auto; }
+  /* Encabezado del calendario más bajo: el día elegido ya figura en el detalle
+     y las referencias sólo aplican a la vista semanal. */
+  .view-fit--agenda .calendar-heading-kicker,
+  .view-fit--agenda .calendar-heading-sub,
+  .view-fit--agenda .calendar-wrap-modern .agenda-utility-row { display: none; }
+  .view-fit--agenda .week-scroll { flex: 1 1 auto; min-height: 0; }
+
+  /* Mensajes: lista y conversación llenan el alto disponible. */
+  .view-fit--mensajes .messages-grid-full { flex: 1 1 auto; min-height: 380px; height: auto; }
+
+  .view-fit--resumen .resumen-agenda-list,
+  .view-fit--resumen .two-col > .panel > .conv-list,
+  .view-fit--resumen .two-col > .panel > .ui-empty-state {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+    align-content: start;
+  }
+}
