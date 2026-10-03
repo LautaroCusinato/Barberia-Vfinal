@@ -8,9 +8,12 @@ import { clearWorkspaceTransition, hasWorkspaceTransition } from './lib/workspac
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import LandingHero from './components/LandingHero.jsx'
 import WorkspacePreparing from './components/WorkspacePreparing.jsx'
+import { DelayedSkeletonScreen, skeletonVariantForLocation } from './components/SkeletonScreens.jsx'
 import { installGlobalObservability, trackClientEvent } from './lib/observability.js'
+import { installRipple } from './lib/ripple.js'
 import './index.css'
 import './components/polish.css'
+import './components/interactions.css'
 
 const App = lazy(() => import('./App.jsx'))
 const DemoWorkspace = lazy(() => import('./pages/DemoWorkspace.jsx'))
@@ -26,6 +29,7 @@ const Landing = lazy(() => import('./pages/Landing.jsx'))
 const AuthConfirm = lazy(() => import('./pages/AuthConfirm.jsx'))
 
 installGlobalObservability()
+installRipple()
 
 // Pantalla chica y centrada para los estados intermedios (cargando la
 // barberia, error, o el selector cuando el usuario pertenece a mas de una).
@@ -96,8 +100,16 @@ function SinBarberia() {
   )
 }
 
+// Fallback de carga: silueta de la pantalla real (aparece recién a los 150ms
+// para no parpadear en cargas rápidas). El contenedor con role="status" se
+// monta enseguida con el texto accesible oculto visualmente.
 function RouteLoading() {
-  return <main className="route-loading" role="status" aria-live="polite"><div className="skeleton" /><span>Cargando pantalla…</span></main>
+  return (
+    <main className="route-loading skeleton-screen" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">Cargando pantalla…</span>
+      <DelayedSkeletonScreen variant={skeletonVariantForLocation()} />
+    </main>
+  )
 }
 
 const CACHE_KEY = 'barberia-activa'

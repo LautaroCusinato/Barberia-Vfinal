@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Check, CheckCircle2, X } from 'lucide-react'
 
 // La barberia solo maneja 3 estados reales de un turno (a diferencia
@@ -29,6 +29,50 @@ export default function StatusSelect({ value, onChange }) {
   const atendido = meta.value === 'atendido'
   const ausente = meta.value === 'no_asistio'
 
+  const groupRef = useRef(null)
+  const pillRef = useRef(null)
+  const buttonRefs = useRef({})
+  const valueRef = useRef(meta.value)
+
+  // Pastilla de fondo que se desliza hasta la opción elegida. La primera vez
+  // se ubica sin transición; después anima al cambiar el valor. Si cambia el
+  // tamaño del grupo (resize, fuentes, layout) se recoloca sin animar.
+  const placePill = (animate) => {
+    const pill = pillRef.current
+    const button = buttonRefs.current[valueRef.current]
+    if (!pill || !button || !button.offsetWidth) return
+    const width = `${button.offsetWidth}px`
+    const height = `${button.offsetHeight}px`
+    const transform = `translate3d(${button.offsetLeft}px, ${button.offsetTop}px, 0)`
+    // Sin cambios de geometría no tocamos nada: así una notificación del
+    // ResizeObserver no corta una transición en curso.
+    if (pill.style.width === width && pill.style.height === height && pill.style.transform === transform) return
+    const instant = !animate || pill.dataset.ready !== 'true'
+    if (instant) pill.style.transition = 'none'
+    pill.style.width = width
+    pill.style.height = height
+    pill.style.transform = transform
+    pill.dataset.ready = 'true'
+    if (instant) {
+      void pill.offsetWidth // aplica la posición sin transición antes de restaurarla
+      pill.style.transition = ''
+    }
+  }
+
+  useLayoutEffect(() => {
+    valueRef.current = meta.value
+    placePill(true)
+  })
+
+  useLayoutEffect(() => {
+    const group = groupRef.current
+    if (!group || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(() => placePill(false))
+    observer.observe(group)
+    Object.values(buttonRefs.current).forEach((button) => { if (button) observer.observe(button) })
+    return () => observer.disconnect()
+  }, []) // placePill lee todo desde refs: el observer se crea una sola vez.
+
   const change = async (nextValue) => {
     if (pending || nextValue === meta.value) return
     setPending(true)
@@ -44,8 +88,10 @@ export default function StatusSelect({ value, onChange }) {
   }
 
   return (
-    <div className="turno-status-actions" onClick={(e) => e.stopPropagation()} aria-busy={pending}>
+    <div ref={groupRef} className="turno-status-actions turno-status-actions--pill" onClick={(e) => e.stopPropagation()} aria-busy={pending}>
+      <span ref={pillRef} className={`turno-status-pill turno-status-pill--${meta.value}`} aria-hidden="true" />
       <button
+        ref={(el) => { buttonRefs.current.confirmado = el }}
         type="button"
         className={`turno-status-btn confirmed ${confirmado ? 'active' : ''}`}
         onClick={() => change('confirmado')}
@@ -57,6 +103,7 @@ export default function StatusSelect({ value, onChange }) {
         <span>Confirmado</span>
       </button>
       <button
+        ref={(el) => { buttonRefs.current.atendido = el }}
         type="button"
         className={`turno-status-btn success ${atendido ? 'active' : ''}`}
         onClick={() => change('atendido')}
@@ -68,6 +115,7 @@ export default function StatusSelect({ value, onChange }) {
         <span>Atendido</span>
       </button>
       <button
+        ref={(el) => { buttonRefs.current.no_asistio = el }}
         type="button"
         className={`turno-status-btn danger ${ausente ? 'active' : ''}`}
         onClick={() => change('no_asistio')}

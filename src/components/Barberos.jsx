@@ -4,6 +4,7 @@ import { es } from 'date-fns/locale'
 import { CalendarCheck, Wallet, Clock, ChevronRight, Users2, X } from 'lucide-react'
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
+import AnimatedNumber from './AnimatedNumber'
 import { EmptyState } from './ui'
 import { capitalizar, formatPrecio } from '../lib/text'
 import { initials } from '../lib/avatar'
@@ -91,7 +92,7 @@ export default function Barberos({
         <div className="stat-card">
           <div>
             <p className="stat-label">Barberos activos</p>
-            <p className="stat-value">{barberos.filter((b) => b.activo).length}</p>
+            <p className="stat-value"><AnimatedNumber value={barberos.filter((b) => b.activo).length} /></p>
           </div>
           <div className="stat-icon">
             <Users2 size={17} />
@@ -100,7 +101,7 @@ export default function Barberos({
         <div className="stat-card">
           <div>
             <p className="stat-label">Turnos hoy (equipo)</p>
-            <p className="stat-value">{equipo.turnosHoy}</p>
+            <p className="stat-value"><AnimatedNumber value={equipo.turnosHoy} /></p>
           </div>
           <div className="stat-icon">
             <CalendarCheck size={17} />
@@ -109,7 +110,7 @@ export default function Barberos({
         <div className="stat-card">
           <div>
             <p className="stat-label">Ingresos de hoy (equipo)</p>
-            <p className="stat-value">{money(equipo.ingresosHoy)}</p>
+            <p className="stat-value"><AnimatedNumber value={money(equipo.ingresosHoy)} /></p>
           </div>
           <div className="stat-icon">
             <Wallet size={17} />
@@ -118,7 +119,7 @@ export default function Barberos({
         <div className="stat-card">
           <div>
             <p className="stat-label">Confirmados de hoy</p>
-            <p className="stat-value">{equipo.confirmadosHoy}</p>
+            <p className="stat-value"><AnimatedNumber value={equipo.confirmadosHoy} /></p>
           </div>
           <div className="stat-icon">
             <Clock size={17} />

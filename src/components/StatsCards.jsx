@@ -1,5 +1,6 @@
 import { CalendarCheck, Clock, MessageSquare, Bot } from 'lucide-react'
 import { statusMeta } from './StatusSelect'
+import AnimatedNumber from './AnimatedNumber'
 
 export default function StatsCards({ turnos, conversaciones, todayKey }) {
   const hoy = turnos.length
@@ -30,7 +31,7 @@ export default function StatsCards({ turnos, conversaciones, todayKey }) {
         <div className="stat-card fade-in" key={s.label} style={{ animationDelay: `${i * 40}ms` }}>
           <div>
             <p className="stat-label">{s.label}</p>
-            <p className="stat-value">{s.value}</p>
+            <p className="stat-value"><AnimatedNumber value={s.value} /></p>
           </div>
           <div className={`stat-icon${s.alerta ? ' stat-icon--alert' : ''}`}>
             <s.Icon size={17} strokeWidth={2} />

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { CalendarCheck, CalendarDays, CheckCircle2, Coins, Percent, Receipt, Users2, Wallet, Banknote, CreditCard, Landmark, Search, UserX, X } from 'lucide-react'
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
+import AnimatedNumber from './AnimatedNumber'
 import { capitalizar, formatPrecio, normalizar } from '../lib/text'
 
 const DEFAULT_TZ = 'America/Argentina/Buenos_Aires'
@@ -133,7 +134,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         <div className="stat-card">
           <div>
             <p className="stat-label">Turnos registrados</p>
-            <p className="stat-value">{totalTurnos}</p>
+            <p className="stat-value"><AnimatedNumber value={totalTurnos} /></p>
           </div>
           <div className="stat-icon">
             <CalendarDays size={17} />
@@ -142,7 +143,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         <div className="stat-card">
           <div>
             <p className="stat-label">Tasa de asistencia</p>
-            <p className="stat-value">{tasaAsistencia === null ? '—' : `${tasaAsistencia}%`}</p>
+            <p className="stat-value"><AnimatedNumber value={tasaAsistencia === null ? '—' : `${tasaAsistencia}%`} /></p>
           </div>
           <div className="stat-icon">
             <Percent size={17} />
@@ -151,7 +152,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         <div className="stat-card">
           <div>
             <p className="stat-label">Clientes totales</p>
-            <p className="stat-value">{pacientes.length}</p>
+            <p className="stat-value"><AnimatedNumber value={pacientes.length} /></p>
           </div>
           <div className="stat-icon">
             <Users2 size={17} />
@@ -160,7 +161,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         <div className="stat-card">
           <div>
             <p className="stat-label">Turnos confirmados</p>
-            <p className="stat-value">{confirmadosTotal}</p>
+            <p className="stat-value"><AnimatedNumber value={confirmadosTotal} /></p>
           </div>
           <div className="stat-icon">
             <CalendarCheck size={17} />
@@ -172,7 +173,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         <div className="stat-card">
           <div>
             <p className="stat-label">Ingresos totales</p>
-            <p className="stat-value">{money(ingresosTotales)}</p>
+            <p className="stat-value"><AnimatedNumber value={money(ingresosTotales)} /></p>
           </div>
           <div className="stat-icon">
             <Wallet size={17} />
@@ -181,7 +182,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         <div className="stat-card">
           <div>
             <p className="stat-label">Ticket promedio</p>
-            <p className="stat-value">{money(ticketPromedio)}</p>
+            <p className="stat-value"><AnimatedNumber value={money(ticketPromedio)} /></p>
           </div>
           <div className="stat-icon">
             <Receipt size={17} />
@@ -190,7 +191,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         <div className="stat-card">
           <div>
             <p className="stat-label">Turnos atendidos</p>
-            <p className="stat-value">{atendidos.length}</p>
+            <p className="stat-value"><AnimatedNumber value={atendidos.length} /></p>
           </div>
           <div className="stat-icon">
             <CheckCircle2 size={17} />
@@ -199,7 +200,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         <div className="stat-card">
           <div>
             <p className="stat-label">Ausencias</p>
-            <p className="stat-value">{resueltos.length - asistieron}</p>
+            <p className="stat-value"><AnimatedNumber value={resueltos.length - asistieron} /></p>
           </div>
           <div className="stat-icon">
             <UserX size={17} />
@@ -306,7 +307,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <div className="stat-card" key={key}>
               <div>
                 <p className="stat-label">{meta.label}</p>
-                <p className="stat-value">{money(totalesPorMetodoHoy[key])}</p>
+                <p className="stat-value"><AnimatedNumber value={money(totalesPorMetodoHoy[key])} /></p>
               </div>
               <div className="stat-icon">
                 <meta.Icon size={17} />
@@ -316,7 +317,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
           <div className="stat-card">
             <div>
               <p className="stat-label">Total en caja hoy</p>
-              <p className="stat-value">{money(totalCajaHoy)}</p>
+              <p className="stat-value"><AnimatedNumber value={money(totalCajaHoy)} /></p>
             </div>
             <div className="stat-icon">
               <Coins size={17} />
