@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, CheckCircle2, LoaderCircle, Mail, ShieldCheck } from 'lucide-react'
+import { ArrowRight, CheckCircle2, LoaderCircle, ShieldAlert } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { authErrorKind, sanitizeAuthError } from '../lib/authErrors'
 import { buildAuthRedirect, safeAuthNext } from '../lib/authRedirect'
+import { AuthAlert, AuthField, AuthPage } from './AuthLayout.jsx'
 
 function clearAuthParams() {
   try {
@@ -28,11 +29,12 @@ function getCallbackData() {
 }
 
 function statusCopy(status, recovery) {
-  if (status === 'success' && recovery) return { title: 'Enlace verificado', copy: 'Tu sesión de recuperación está lista para elegir una contraseña nueva.', action: 'Elegir contraseña' }
+  if ((status === 'success' || status === 'already') && recovery) return { title: 'Enlace verificado', copy: 'Tu sesión de recuperación está lista para elegir una contraseña nueva.', action: 'Elegir contraseña' }
   if (status === 'success') return { title: 'Email confirmado correctamente', copy: 'Tu cuenta ya está lista.', action: 'Continuar' }
   if (status === 'already') return { title: 'Tu email ya estaba confirmado', copy: 'Podés ingresar y continuar con tu cuenta.', action: 'Ingresar' }
-  if (status === 'invalid') return { title: 'Este enlace ya no es válido', copy: 'Podés solicitar un nuevo email de confirmación para continuar.', action: 'Enviar un nuevo enlace' }
-  return { title: 'Confirmación de email', copy: 'Estamos verificando tu enlace de forma segura.', action: '' }
+  if (status === 'invalid' && recovery) return { title: 'Este enlace ya no es válido', copy: 'Los enlaces de recuperación vencen o se usan una sola vez. Pedí uno nuevo desde "Recuperar contraseña".', action: '' }
+  if (status === 'invalid') return { title: 'Este enlace ya no es válido', copy: 'Puede haber vencido o ya haberse usado. Pedí un nuevo email de confirmación para continuar.', action: 'Enviar un nuevo enlace' }
+  return { title: 'Verificando tu enlace…', copy: 'Esto tarda solo unos segundos.', action: '' }
 }
 
 export default function AuthConfirm() {
@@ -61,6 +63,9 @@ export default function AuthConfirm() {
     let active = true
     const callback = getCallbackData()
     setNext(callback.next)
+    // El email de recuperación vuelve con next=/recuperar: si el enlace falla,
+    // ofrecemos pedir otro de recuperación y no un reenvío de registro.
+    if (callback.type === 'recovery' || callback.next === '/recuperar') setRecovery(true)
 
     async function complete() {
       if (callback.queryError) {
@@ -120,11 +125,16 @@ export default function AuthConfirm() {
     if (!email.trim() || resendState === 'loading' || resendCooldown > 0) return
     setResendState('loading')
     setResendError('')
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: buildAuthRedirect('/auth/confirm?next=/onboarding') },
-    })
+    let error
+    try {
+      ;({ error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim().toLowerCase(),
+        options: { emailRedirectTo: buildAuthRedirect('/auth/confirm?next=/onboarding') },
+      }))
+    } catch (requestError) {
+      error = requestError || new Error('network')
+    }
     if (error) {
       setResendState('error')
       setResendError(sanitizeAuthError(error, 'No pudimos enviar un nuevo enlace.'))
@@ -135,24 +145,27 @@ export default function AuthConfirm() {
     setResendCooldown(30)
   }
 
+  const iconTone = status === 'success' || status === 'already' ? 'is-success' : status === 'invalid' ? 'is-danger' : ''
+
   return (
-    <div className="auth-shell">
-      <div className="auth-card fade-in" role="status" aria-live="polite">
-        <div className="auth-success-icon">{status === 'loading' ? <LoaderCircle className="spin" size={23} /> : status === 'success' || status === 'already' ? <CheckCircle2 size={23} /> : <ShieldCheck size={23} />}</div>
-        <p className="auth-kicker">Austral Automatizaciones</p>
-        <h1 className="auth-title">{copy.title}</h1>
-        <p className="auth-copy">{copy.copy}</p>
-        {status === 'invalid' && (
-          <form className="auth-form" onSubmit={resend}>
-            <div className="modal-field"><label className="modal-label" htmlFor="confirm-email"><Mail size={13} /> Email</label><input id="confirm-email" className="text-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></div>
-            {resendError && <p className="login-error" role="alert">{resendError}</p>}
-            {resendState === 'sent' && <p className="auth-message"><CheckCircle2 size={15} /> Te enviamos un nuevo enlace. Revisá tu email.</p>}
-            <button className="btn btn-primary auth-full-button" type="submit" disabled={resendState === 'loading' || resendCooldown > 0}>{resendState === 'loading' ? 'Enviando…' : resendCooldown > 0 ? `Podés reenviar en ${resendCooldown}s` : 'Enviar un nuevo enlace'} <ArrowRight size={15} /></button>
-          </form>
-        )}
-        {status === 'success' || status === 'already' ? <button className="btn btn-primary auth-full-button" type="button" onClick={continueTo}>{copy.action} <ArrowRight size={15} /></button> : null}
-        {status === 'invalid' && <button className="auth-link auth-center-link" type="button" onClick={() => window.location.assign('/ingresar')}>Volver a ingresar</button>}
-      </div>
-    </div>
+    <AuthPage cardProps={{ 'aria-live': 'polite', 'aria-busy': status === 'loading' }}>
+      <div className={`auth-icon-badge ${iconTone}`}>{status === 'loading' ? <LoaderCircle className="spin" size={23} aria-hidden="true" /> : status === 'success' || status === 'already' ? <CheckCircle2 size={23} aria-hidden="true" /> : <ShieldAlert size={23} aria-hidden="true" />}</div>
+      <p className="auth-kicker">{recovery ? 'Recuperar contraseña' : 'Confirmación de email'}</p>
+      <h1 className="auth-title">{copy.title}</h1>
+      <p className="auth-copy">{copy.copy}</p>
+      {status === 'invalid' && recovery && <div className="auth-actions"><a className="btn btn-primary auth-full-button" href="/recuperar">Pedir un enlace nuevo <ArrowRight size={15} aria-hidden="true" /></a></div>}
+      {status === 'invalid' && !recovery && (
+        <form className="auth-form" onSubmit={resend} noValidate>
+          <AuthField label="Email" id="confirm-email" hint="Usá el mismo email con el que creaste la cuenta.">
+            {(field) => <input {...field} className="text-input" type="email" inputMode="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" autoCapitalize="none" spellCheck={false} required placeholder="nombre@email.com" />}
+          </AuthField>
+          <AuthAlert>{resendError}</AuthAlert>
+          {resendState === 'sent' && <AuthAlert tone="success"><CheckCircle2 size={15} aria-hidden="true" /> Te enviamos un nuevo enlace. Revisá tu email.</AuthAlert>}
+          <button className="btn btn-primary auth-full-button" type="submit" disabled={!email.trim() || resendState === 'loading' || resendCooldown > 0} aria-busy={resendState === 'loading'}>{resendState === 'loading' ? 'Enviando…' : resendCooldown > 0 ? `Podés reenviar en ${resendCooldown} s` : <>Enviar un nuevo enlace <ArrowRight size={15} aria-hidden="true" /></>}</button>
+        </form>
+      )}
+      {status === 'success' || status === 'already' ? <div className="auth-actions"><button className="btn btn-primary auth-full-button" type="button" onClick={continueTo}>{copy.action} <ArrowRight size={15} aria-hidden="true" /></button></div> : null}
+      {status === 'invalid' && <a className="auth-link auth-center-link" href="/ingresar">Volver a ingresar</a>}
+    </AuthPage>
   )
 }

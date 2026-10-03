@@ -1,13 +1,32 @@
 import { useState } from 'react'
-import { ArrowRight, CheckCircle2, KeyRound, Mail, Scissors, UserRound } from 'lucide-react'
+import { ArrowRight, CheckCircle2, LoaderCircle, MailCheck } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { sanitizeAuthError } from '../lib/authErrors'
-import { buildAuthRedirect } from '../lib/authRedirect'
-import { DEFAULT_BUSINESS_NAME, PRODUCT_NAME } from '../lib/tenant'
+import { buildAuthRedirect, safeAuthNext } from '../lib/authRedirect'
+import { COMMERCIAL_TRIAL_DAYS } from '../lib/commercialCatalog'
 import { PasswordField } from '../components/ui'
+import { AuthAlert, AuthField, AuthPage } from './AuthLayout.jsx'
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function go(path) {
   window.location.assign(path)
+}
+
+// Una invitación de equipo puede mandar a registrarse con ?redirect=/invitacion/…
+// para volver a aceptarla después de confirmar el email.
+function signupNext() {
+  return safeAuthNext(new URLSearchParams(window.location.search).get('redirect'), '/onboarding')
+}
+
+function validate({ name, email, password, confirmation }) {
+  const errors = {}
+  const cleanName = name.trim()
+  if (cleanName.length < 2 || cleanName.length > 80) errors.name = 'Escribí tu nombre (entre 2 y 80 caracteres).'
+  if (!EMAIL_PATTERN.test(email.trim())) errors.email = 'Ingresá un email válido, por ejemplo nombre@gmail.com.'
+  if (password.length < 8) errors.password = 'La contraseña debe tener al menos 8 caracteres.'
+  if (!errors.password && password !== confirmation) errors.confirmation = 'Las contraseñas no coinciden.'
+  return errors
 }
 
 export default function Signup() {
@@ -15,98 +34,97 @@ export default function Signup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
+  const [errors, setErrors] = useState({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [created, setCreated] = useState(false)
+  const [created, setCreated] = useState('')
+  const next = signupNext()
+  const loginHref = next === '/onboarding' ? '/ingresar' : `/ingresar?redirect=${encodeURIComponent(next)}`
+
+  const clearFieldError = (key) => setErrors((current) => (current[key] ? { ...current, [key]: '' } : current))
 
   const submit = async (event) => {
     event.preventDefault()
+    if (loading) return
     setError('')
-    const cleanName = name.trim()
+    const nextErrors = validate({ name, email, password, confirmation })
+    if (Object.values(nextErrors).some(Boolean)) {
+      setErrors(nextErrors)
+      const firstInvalid = ['name', 'email', 'password', 'confirmation'].find((key) => nextErrors[key])
+      document.getElementById(`signup-${firstInvalid === 'confirmation' ? 'confirm' : firstInvalid}`)?.focus()
+      return
+    }
+    setErrors({})
+    if (!isSupabaseConfigured) { setError('El registro no está disponible en este momento. Intentá más tarde.'); return }
+
     const cleanEmail = email.trim().toLowerCase()
-    if (cleanName.length < 2 || cleanName.length > 80) return setError('Escribí tu nombre (entre 2 y 80 caracteres).')
-    if (password.length < 8) return setError('La contraseña debe tener al menos 8 caracteres.')
-    if (password !== confirmation) return setError('Las contraseñas no coinciden.')
-    if (!isSupabaseConfigured) return setError('El registro no está disponible porque falta configurar Supabase.')
-
     setLoading(true)
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password,
-      options: {
-        data: { full_name: cleanName },
-        emailRedirectTo: buildAuthRedirect('/auth/confirm?next=/onboarding'),
-      },
-    })
-    setLoading(false)
-
-    if (signUpError) {
-      if (signUpError.message?.toLowerCase().includes('already')) setError('Ese email ya está registrado. Probá iniciar sesión o recuperar la contraseña.')
-      else setError(sanitizeAuthError(signUpError, 'No pudimos crear tu cuenta.'))
-      return
+    try {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          data: { full_name: name.trim() },
+          emailRedirectTo: buildAuthRedirect(next === '/onboarding' ? '/auth/confirm?next=/onboarding' : `/auth/confirm?next=${encodeURIComponent(next)}`),
+        },
+      })
+      if (signUpError) {
+        if (signUpError.message?.toLowerCase().includes('already')) setError('Ese email ya está registrado. Probá iniciar sesión o recuperar la contraseña.')
+        else setError(sanitizeAuthError(signUpError, 'No pudimos crear tu cuenta. Intentá nuevamente.'))
+        return
+      }
+      if (data.session) { go(next); return }
+      setCreated(cleanEmail)
+    } catch {
+      setError('No pudimos conectarnos. Revisá tu conexión e intentá nuevamente.')
+    } finally {
+      setLoading(false)
     }
-    if (data.session) {
-      go('/onboarding')
-      return
-    }
-    setCreated(true)
   }
 
   if (created) {
     return (
-      <main className="auth-shell">
-        <div className="auth-card fade-in auth-success-card">
-          <div className="auth-success-icon"><CheckCircle2 size={24} /></div>
-          <p className="auth-kicker">Cuenta creada</p>
-          <h1 className="auth-title">Revisá tu email</h1>
-          <p className="auth-copy">Te enviamos un enlace de verificación. Cuando lo confirmes, vas a poder crear tu negocio y empezar tu prueba gratuita de 15 días.</p>
-          <button className="btn btn-primary auth-full-button" onClick={() => go('/ingresar')}>
-            Ir a iniciar sesión <ArrowRight size={15} />
-          </button>
+      <AuthPage cardClassName="auth-center">
+        <div className="auth-icon-badge is-success"><MailCheck size={24} aria-hidden="true" /></div>
+        <p className="auth-kicker">Cuenta creada</p>
+        <h1 className="auth-title">Revisá tu email</h1>
+        <p className="auth-copy">Te enviamos un enlace de verificación a <strong>{created}</strong>. Cuando lo confirmes, vas a poder crear tu negocio y empezar tu prueba gratuita de {COMMERCIAL_TRIAL_DAYS} días.</p>
+        <p className="auth-field-hint">¿No llegó? Revisá la carpeta de spam o promociones.</p>
+        <div className="auth-actions">
+          <button type="button" className="btn btn-primary auth-full-button" onClick={() => go(loginHref)}>Ir a iniciar sesión <ArrowRight size={15} aria-hidden="true" /></button>
         </div>
-      </main>
+      </AuthPage>
     )
   }
 
-  return (
-    <main className="auth-shell">
-      <div className="auth-card fade-in">
-        <div className="auth-brand">
-          <div className="brand-mark"><Scissors size={19} strokeWidth={2.4} /></div>
-          <div>
-            <div className="brand-name">{PRODUCT_NAME}</div>
-            <div className="brand-sub">para {DEFAULT_BUSINESS_NAME}</div>
-          </div>
-        </div>
-        <p className="auth-kicker">Empezá gratis</p>
-        <h1 className="auth-title">Creá tu cuenta</h1>
-        <p className="auth-copy">Configurá tu negocio en pocos minutos. No te pedimos datos del negocio hasta el siguiente paso.</p>
+  const passwordsMatch = confirmation.length >= 8 && password === confirmation
 
-        <form onSubmit={submit} className="auth-form">
-          <div className="modal-field">
-            <label className="modal-label" htmlFor="signup-name"><UserRound size={13} /> Nombre</label>
-            <input id="signup-name" className="text-input" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" autoFocus required maxLength={80} />
-          </div>
-          <div className="modal-field">
-            <label className="modal-label" htmlFor="signup-email"><Mail size={13} /> Email</label>
-            <input id="signup-email" className="text-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
-          </div>
-          <div className="modal-field">
-            <label className="modal-label" htmlFor="signup-password"><KeyRound size={13} /> Contraseña</label>
-            <PasswordField id="signup-password" className="text-input" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
-            <span className="field-hint">Mínimo 8 caracteres.</span>
-          </div>
-          <div className="modal-field">
-            <label className="modal-label" htmlFor="signup-confirm"><KeyRound size={13} /> Repetir contraseña</label>
-            <PasswordField id="signup-confirm" className="text-input" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" minLength={8} required />
-          </div>
-          {error && <p className="login-error" role="alert">{error}</p>}
-          <button type="submit" className="btn btn-primary auth-full-button" disabled={loading}>
-            {loading ? 'Creando cuenta…' : 'Crear cuenta'} <ArrowRight size={15} />
-          </button>
-        </form>
-        <p className="auth-footer-copy">¿Ya tenés una cuenta? <button className="auth-link" onClick={() => go('/ingresar')}>Iniciar sesión</button></p>
-      </div>
-    </main>
+  return (
+    <AuthPage headerAction={<a className="auth-header-link" href={loginHref}>Ingresar</a>}>
+      <p className="auth-kicker">Empezá gratis</p>
+      <h1 className="auth-title">Creá tu cuenta</h1>
+      <p className="auth-copy">{COMMERCIAL_TRIAL_DAYS} días de prueba, sin tarjeta. Los datos del negocio los cargás en el siguiente paso.</p>
+
+      <form onSubmit={submit} className="auth-form" noValidate>
+        <AuthField label="Nombre" id="signup-name" error={errors.name}>
+          {(field) => <input {...field} className="text-input" value={name} onChange={(event) => { setName(event.target.value); clearFieldError('name') }} autoComplete="name" autoCapitalize="words" autoFocus required maxLength={80} placeholder="Tu nombre y apellido" />}
+        </AuthField>
+        <AuthField label="Email" id="signup-email" error={errors.email}>
+          {(field) => <input {...field} className="text-input" type="email" inputMode="email" value={email} onChange={(event) => { setEmail(event.target.value); clearFieldError('email') }} autoComplete="email" autoCapitalize="none" spellCheck={false} required placeholder="nombre@email.com" />}
+        </AuthField>
+        <AuthField label="Contraseña" id="signup-password" hint="Mínimo 8 caracteres." error={errors.password}>
+          {(field) => <PasswordField {...field} className="text-input" value={password} onChange={(event) => { setPassword(event.target.value); clearFieldError('password'); clearFieldError('confirmation') }} autoComplete="new-password" minLength={8} required />}
+        </AuthField>
+        <AuthField label="Repetir contraseña" id="signup-confirm" error={errors.confirmation}>
+          {(field) => <PasswordField {...field} className="text-input" value={confirmation} onChange={(event) => { setConfirmation(event.target.value); clearFieldError('confirmation') }} autoComplete="new-password" minLength={8} required />}
+        </AuthField>
+        {passwordsMatch && !errors.confirmation && <span className="auth-field-ok" aria-live="polite"><CheckCircle2 size={14} aria-hidden="true" /> Las contraseñas coinciden.</span>}
+        <AuthAlert>{error}</AuthAlert>
+        <button type="submit" className="btn btn-primary auth-full-button" disabled={loading} aria-busy={loading}>
+          {loading ? <><LoaderCircle className="spin" size={15} aria-hidden="true" /> Creando cuenta…</> : <>Crear cuenta <ArrowRight size={15} aria-hidden="true" /></>}
+        </button>
+      </form>
+      <p className="auth-footer-copy">¿Ya tenés una cuenta? <a className="auth-link" href={loginHref}>Iniciar sesión</a></p>
+    </AuthPage>
   )
 }
