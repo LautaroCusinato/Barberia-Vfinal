@@ -893,3 +893,51 @@ html.theme-transition *::after {
 @media (prefers-reduced-motion: reduce) {
   .mobile-tab-indicator, .mobile-tab-item svg { transition: none; }
 }
+
+/* (2) Botón de guardado: cargando → listo, sin cambiar de ancho. */
+.save-btn { display: inline-grid; place-items: center; }
+.save-btn__state {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+.save-btn--idle > .save-btn__state:nth-child(1),
+.save-btn--loading > .save-btn__state:nth-child(2),
+.save-btn--done > .save-btn__state:nth-child(3) { opacity: 1; }
+.save-btn:disabled.save-btn--loading,
+.save-btn:disabled.save-btn--done { opacity: 1; cursor: default; }
+.save-btn--done,
+.save-btn--done:disabled {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+  transition: background-color var(--motion-base) var(--ease-standard), border-color var(--motion-base) var(--ease-standard);
+}
+.save-btn__spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: save-spin 700ms linear infinite;
+}
+.save-btn__check path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+}
+.save-btn--done .save-btn__check path { animation: save-check 320ms var(--ease-decelerate) 60ms forwards; }
+@keyframes save-spin { to { transform: rotate(360deg); } }
+@keyframes save-check { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .save-btn__state, .save-btn--done { transition: none; }
+  .save-btn__spinner { animation-duration: 1.6s; }
+  .save-btn__check path, .save-btn--done .save-btn__check path { animation: none; stroke-dashoffset: 0; }
+}

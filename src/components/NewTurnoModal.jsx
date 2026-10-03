@@ -39,6 +39,27 @@ function diaSemanaLargo(fecha) {
   }
 }
 
+// Botón de guardado con tres estados que comparten celda: el ancho lo fija la
+// etiqueta más larga, así no salta al pasar de uno a otro.
+function SaveButton({ fase, disabled, labels }) {
+  const [idle, loading, done] = labels
+  return (
+    <button
+      type="submit"
+      className={`btn btn-primary save-btn save-btn--${fase}`}
+      disabled={disabled || fase !== 'idle'}
+      aria-busy={fase === 'loading'}
+    >
+      <span className="save-btn__state" aria-hidden={fase !== 'idle'}>{idle}</span>
+      <span className="save-btn__state" aria-hidden={fase !== 'loading'}><span className="save-btn__spinner" aria-hidden="true" />{loading}</span>
+      <span className="save-btn__state" aria-hidden={fase !== 'done'}>
+        <svg className="save-btn__check" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>
+        {done}
+      </span>
+    </button>
+  )
+}
+
 function NewTurnoModal({
   open,
   onClose,
@@ -71,6 +92,8 @@ function NewTurnoModal({
   const [nuevoTelefono, setNuevoTelefono] = useState('')
 
   const [saving, setSaving] = useState(false)
+  // Tras guardar, el botón muestra "Agendado" un instante antes de cerrar.
+  const [guardado, setGuardado] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const savingRef = useRef(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -142,6 +165,7 @@ function NewTurnoModal({
       setNuevoTelefono(PREFIJO_AR)
     }
     setSaving(false)
+    setGuardado(false)
     savingRef.current = false
     setSubmitError('')
     setPickerOpen(false)
@@ -286,7 +310,7 @@ function NewTurnoModal({
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!valido || saving) return
+    if (!valido || saving || guardado) return
     setSaving(true)
     savingRef.current = true
     setSubmitError('')
@@ -304,7 +328,11 @@ function NewTurnoModal({
         precio,
         duracion,
       }, turnoExistente?.id)
-      if (saved !== false) onClose()
+      if (saved !== false) {
+        setGuardado(true)
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+        onClose()
+      }
       else setSubmitError('No se pudo guardar el turno. Revisá el aviso y reintentá sin perder los datos.')
     } catch {
       setSubmitError('No se pudo guardar el turno. Revisá tu conexión e intentá de nuevo.')
@@ -319,8 +347,8 @@ function NewTurnoModal({
   const labelBase = 'modal-label'
 
   return (
-    <div className="modal-overlay" role="presentation" onMouseDown={(e) => { if (!saving && e.target === e.currentTarget) onClose() }}>
-      <FocusTrap open onEscape={() => { if (!saving) onClose() }} className="modal-box new-turno-box new-turno-box-fixed" role="dialog" aria-modal="true" aria-labelledby="new-turno-title">
+    <div className="modal-overlay" role="presentation" onMouseDown={(e) => { if (!saving && !guardado && e.target === e.currentTarget) onClose() }}>
+      <FocusTrap open onEscape={() => { if (!saving && !guardado) onClose() }} className="modal-box new-turno-box new-turno-box-fixed" role="dialog" aria-modal="true" aria-labelledby="new-turno-title">
         <div className="modal-header">
           <span className="panel-title-icon" id="new-turno-title">
             <CalendarPlus size={17} style={{ color: 'var(--accent)' }} />
@@ -606,13 +634,11 @@ function NewTurnoModal({
           {/* ====== Acciones ====== */}
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose} disabled={saving}>Cancelar</button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={!valido || !clienteValido || saving}
-            >
-              {saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Agendar turno'}
-            </button>
+            <SaveButton
+              fase={guardado ? 'done' : saving ? 'loading' : 'idle'}
+              disabled={!valido || !clienteValido}
+              labels={esEdicion ? ['Guardar cambios', 'Guardando…', 'Guardado'] : ['Agendar turno', 'Agendando…', 'Agendado']}
+            />
           </div>
         </form>
       </FocusTrap>

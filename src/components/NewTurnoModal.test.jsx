@@ -104,7 +104,7 @@ describe('NewTurnoModal', () => {
       precio: 8000,
       duracion: 30,
     }, undefined)
-    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 3000 })
   })
 
   it('crea un cliente nuevo y exige un teléfono de 10 dígitos', async () => {
