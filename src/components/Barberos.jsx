@@ -29,7 +29,10 @@ export default function Barberos({
   onEditTurno,
   onAddNota,
 }) {
+  // null = automático: en escritorio se abre la agenda del primer barbero para
+  // no dejar media pantalla vacía; 'ninguno' = la persona la cerró.
   const [selectedId, setSelectedId] = useState(null)
+  const [esEscritorio] = useState(() => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1100px)').matches)
 
   const stats = useMemo(() => {
     return barberos.map((b) => {
@@ -69,7 +72,8 @@ export default function Barberos({
     [stats]
   )
 
-  const seleccionado = stats.find((s) => String(s.barbero.id) === String(selectedId))
+  const idEfectivo = selectedId === null && esEscritorio ? stats[0]?.barbero.id : selectedId
+  const seleccionado = stats.find((s) => String(s.barbero.id) === String(idEfectivo))
 
   const agendaAgrupada = useMemo(() => {
     if (!seleccionado) return []
@@ -124,13 +128,13 @@ export default function Barberos({
 
       <div className="barberos-grid">
         {stats.map((s) => {
-          const activo = String(selectedId) === String(s.barbero.id)
+          const activo = String(idEfectivo) === String(s.barbero.id)
           return (
             <button
               key={s.barbero.id}
               className={`barbero-card ${activo ? 'active' : ''}`}
               style={{ '--barbero-color': s.barbero.color || 'var(--accent)' }}
-              onClick={() => setSelectedId(activo ? null : s.barbero.id)}
+              onClick={() => setSelectedId(activo ? 'ninguno' : s.barbero.id)}
             >
               <div className="barbero-card-top">
                 <span className="ops-avatar" style={{ background: s.barbero.color || 'var(--accent)' }}>
@@ -179,7 +183,7 @@ export default function Barberos({
               </span>
               Agenda de {seleccionado.barbero.nombre}
             </span>
-            <button className="link-btn" onClick={() => setSelectedId(null)}>
+            <button className="link-btn" onClick={() => setSelectedId('ninguno')}>
               <X size={13} strokeWidth={2.5} />
               Cerrar
             </button>

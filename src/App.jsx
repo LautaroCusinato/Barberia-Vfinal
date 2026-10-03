@@ -1543,7 +1543,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         )}
 
         {view === 'equipo' && (
-          <div className="fade-in">
+          <div className="fade-in view-fit view-fit--equipo">
             <div className="page-header">
               <div>
                 <p className="page-kicker">Carga por profesional</p>

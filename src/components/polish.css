@@ -776,3 +776,38 @@ html.theme-transition *::after {
   .view-fit--clientes .management-clients .management-table td { padding-top: 9px; padding-bottom: 9px; }
   .view-fit--clientes .management-clients .management-table td .btn-icon-plain { min-height: 34px; }
 }
+
+/* Equipo en escritorio: tarjetas de barberos apiladas a la izquierda y la
+ * agenda del barbero elegido a la derecha, ocupando todo el alto disponible. */
+@media (min-width: 1100px) and (min-height: 620px) {
+  .view-fit--equipo .equipo-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 1rem;
+  }
+  .view-fit--equipo .equipo-container > .stats-row { grid-column: 1 / -1; margin-bottom: 0; }
+  .view-fit--equipo .barberos-grid {
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px 4px 2px 2px;
+  }
+  .view-fit--equipo .barberos-grid > * { flex: 0 0 auto; }
+  .view-fit--equipo .equipo-detalle {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 0;
+    margin-top: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .view-fit--equipo .equipo-detalle-lista { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+}
