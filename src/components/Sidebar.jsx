@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { LayoutDashboard, Calendar, MessageCircle, Users, StickyNote, Sun, Moon, Bot, LogOut, BarChart3, Scissors, BriefcaseBusiness, Users2, MoreHorizontal, X, ShieldCheck, CreditCard, Settings2 } from 'lucide-react'
 import { FocusTrap } from './ui'
 import { getWhatsAppDisplayState } from '../utils/whatsappDisplay'
+import { usePresencia } from '../lib/presencia'
 
 const ITEMS = [
   { id: 'resumen', label: 'Resumen', Icon: LayoutDashboard },
@@ -50,6 +51,7 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
     whatsappDisplay.automationLabel ? 'whatsapp-automation-status' : null,
   ].filter(Boolean)
   const [mostrarMas, setMostrarMas] = useState(false)
+  const hojaMas = usePresencia(mostrarMas)
   const enSeccionMas = TABBAR_MAS.some((i) => i.id === view)
 
   const irA = (id) => {
@@ -132,8 +134,8 @@ export default function Sidebar({ view, setView, clinicName, unreadCount, theme,
         </div>
       </aside>
 
-      {mostrarMas && (
-        <div className="mobile-mas-overlay" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setMostrarMas(false) }}>
+      {hojaMas.valor && (
+        <div className={`mobile-mas-overlay${hojaMas.saliendo ? ' presencia--saliendo' : ''}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setMostrarMas(false) }}>
           <FocusTrap onEscape={() => setMostrarMas(false)} className="mobile-mas-sheet" role="dialog" aria-modal="true" aria-label="Más secciones">
             <div className="mobile-mas-header">
               <h2>Más secciones</h2>

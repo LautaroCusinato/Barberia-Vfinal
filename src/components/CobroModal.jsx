@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Banknote, CreditCard, Landmark, Check } from 'lucide-react'
+import { conPresencia } from '../lib/presencia'
 
 const METODOS = [
   { value: 'efectivo', label: 'Efectivo', Icon: Banknote },
@@ -7,7 +8,7 @@ const METODOS = [
   { value: 'transferencia', label: 'Transferencia', Icon: Landmark },
 ]
 
-export default function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
+function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
   const [monto, setMonto] = useState('')
   const [metodo, setMetodo] = useState('efectivo')
   const [saving, setSaving] = useState(false)
@@ -111,3 +112,6 @@ export default function CobroModal({ turno, servicios = [], onClose, onConfirm }
     </div>
   )
 }
+
+// Animación de salida sin cambiar la lógica del modal.
+export default conPresencia(CobroModal, 'turno')

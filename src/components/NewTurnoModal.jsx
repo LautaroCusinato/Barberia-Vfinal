@@ -17,6 +17,7 @@ import {
   generarSlotsDisponibles,
   turnosSeSuperponen,
 } from '../lib/text'
+import { conPresencia } from '../lib/presencia'
 
 const ESTADOS_MODAL = ['confirmado', 'atendido']
 const DEFAULT_DURACION = 30
@@ -37,7 +38,7 @@ function diaSemanaLargo(fecha) {
   }
 }
 
-export default function NewTurnoModal({
+function NewTurnoModal({
   open,
   onClose,
   onSubmit,
@@ -81,6 +82,11 @@ export default function NewTurnoModal({
   // editar). Antes se reiniciaba con cada recarga de clientes/barberos/
   // servicios —realtime o el polling de respaldo— y se perdía lo tipeado.
   const inicializadoParaRef = useRef(null)
+  // Mientras el estado no refleje los valores recién inicializados, los demás
+  // efectos ven el estado anterior: la autoselección de barbero pisaba el del
+  // turno editado y luego se borraba la hora (al montar el modal abierto y con
+  // los efectos dobles de StrictMode). Guardamos el servicio/fecha esperados.
+  const inicialPendienteRef = useRef(null)
   useEffect(() => {
     if (!open) {
       inicializadoParaRef.current = null
@@ -90,6 +96,10 @@ export default function NewTurnoModal({
     const clave = turnoExistente?.id ?? `nuevo:${defaultDate}`
     if (inicializadoParaRef.current === clave) return
     inicializadoParaRef.current = clave
+    inicialPendienteRef.current = {
+      servicioId: String(turnoExistente?.servicio_id || servicios[0]?.id || ''),
+      fecha: turnoExistente ? (turnoExistente.fecha || defaultDate) : defaultDate,
+    }
 
     if (turnoExistente) {
       setFecha(turnoExistente.fecha || defaultDate)
@@ -154,6 +164,12 @@ export default function NewTurnoModal({
   // automáticamente al primero que sí puede.
   useEffect(() => {
     if (!open) return
+    const pendiente = inicialPendienteRef.current
+    if (pendiente) {
+      // Los valores iniciales mandan: esperamos a que lleguen y no autoseleccionamos.
+      if (String(servicioId) === pendiente.servicioId && fecha === pendiente.fecha) inicialPendienteRef.current = null
+      return
+    }
     const sigueSiendoValido = barberosDisponibles.some((b) => String(b.id) === String(barberoId))
     if (!sigueSiendoValido) {
       setBarberoId(String(barberosDisponibles[0]?.id || ''))
@@ -601,3 +617,6 @@ export default function NewTurnoModal({
     </div>
   )
 }
+
+// Animación de salida sin cambiar la lógica del modal.
+export default conPresencia(NewTurnoModal, 'open')

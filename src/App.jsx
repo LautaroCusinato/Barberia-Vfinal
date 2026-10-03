@@ -329,6 +329,15 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     setView(v)
   }
 
+  // Cada vista arranca desde arriba: antes, al cambiar de pestaña en el
+  // celular, la vista nueva aparecía desplazada donde había quedado la anterior.
+  const vistaAnteriorRef = useRef(view)
+  useEffect(() => {
+    if (vistaAnteriorRef.current === view) return
+    vistaAnteriorRef.current = view
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [view])
+
   useEffect(() => {
     if (!routeFocusPendingRef.current) return undefined
     routeFocusPendingRef.current = false

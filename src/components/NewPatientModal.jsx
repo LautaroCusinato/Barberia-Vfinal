@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { X, UserPlus } from 'lucide-react'
 import { PREFIJO_AR, TELEFONO_NACIONAL_DIGITOS, digitosNacionales, soloDigitos } from '../lib/text'
 import PhoneField from './PhoneField'
+import { conPresencia } from '../lib/presencia'
 
-export default function NewPatientModal({ open, onClose, onSubmit }) {
+function NewPatientModal({ open, onClose, onSubmit }) {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState(PREFIJO_AR)
   const [email, setEmail] = useState('')
@@ -124,3 +125,6 @@ export default function NewPatientModal({ open, onClose, onSubmit }) {
     </div>
   )
 }
+
+// Animación de salida sin cambiar la lógica del modal.
+export default conPresencia(NewPatientModal, 'open')

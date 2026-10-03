@@ -2,8 +2,9 @@ import { X, Phone, CalendarDays, StickyNote } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { statusMeta } from './StatusSelect'
 import { formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
+import { conPresencia } from '../lib/presencia'
 
-export default function PatientDetailModal({ paciente, turnos, notas, onClose }) {
+function PatientDetailModal({ paciente, turnos, notas, onClose }) {
   if (!paciente) return null
 
   const esDelPaciente = (item) =>
@@ -82,3 +83,6 @@ export default function PatientDetailModal({ paciente, turnos, notas, onClose })
     </div>
   )
 }
+
+// Animación de salida sin cambiar la lógica del modal.
+export default conPresencia(PatientDetailModal, 'paciente')

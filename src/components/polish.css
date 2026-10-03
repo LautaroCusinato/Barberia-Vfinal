@@ -531,3 +531,43 @@
     animation: none;
   }
 }
+
+/* ===== Transiciones de superposiciones (modales, hojas, menú Más) =====
+ * Entrada: el fondo aparece y el panel sube levemente. Salida: el wrapper de
+ * presencia (src/lib/presencia.jsx) mantiene el modal montado 160ms con la
+ * clase .presencia--saliendo para animar el cierre. */
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes overlay-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes panel-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px) scale(.985); } }
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes sheet-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
+
+.modal-overlay,
+.ui-overlay,
+.mobile-mas-overlay {
+  animation: overlay-in var(--motion-enter) var(--ease-standard) both;
+}
+
+.presencia--saliendo .modal-overlay,
+.presencia--saliendo.mobile-mas-overlay,
+.presencia--saliendo .ui-overlay {
+  animation: overlay-out var(--motion-exit) var(--ease-standard) forwards;
+  pointer-events: none;
+}
+
+.presencia--saliendo .modal-box,
+.presencia--saliendo .ui-modal {
+  animation: panel-out var(--motion-exit) var(--ease-standard) forwards;
+}
+
+@media (max-width: 900px) {
+  .mobile-mas-sheet { animation: sheet-in 220ms cubic-bezier(.2, .8, .2, 1) both; }
+  .presencia--saliendo .mobile-mas-sheet { animation: sheet-out var(--motion-exit) var(--ease-standard) forwards; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay, .ui-overlay, .mobile-mas-overlay, .mobile-mas-sheet,
+  .presencia--saliendo .modal-overlay, .presencia--saliendo .modal-box, .presencia--saliendo .mobile-mas-sheet {
+    animation: none !important;
+  }
+}

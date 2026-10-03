@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { X, UserPen } from 'lucide-react'
 import { PREFIJO_AR, TELEFONO_NACIONAL_DIGITOS, digitosNacionales, soloDigitos, extraerNumeroLocal, formatTelefonoAR } from '../lib/text'
 import PhoneField from './PhoneField'
+import { conPresencia } from '../lib/presencia'
 
-export default function EditPatientModal({ paciente, onClose, onSubmit }) {
+function EditPatientModal({ paciente, onClose, onSubmit }) {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState(PREFIJO_AR)
   const [ultimaVisita, setUltimaVisita] = useState('')
@@ -98,3 +99,6 @@ export default function EditPatientModal({ paciente, onClose, onSubmit }) {
     </div>
   )
 }
+
+// Animación de salida sin cambiar la lógica del modal.
+export default conPresencia(EditPatientModal, 'paciente')
