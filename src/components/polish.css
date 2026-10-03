@@ -811,3 +811,6 @@ html.theme-transition *::after {
   }
   .view-fit--equipo .equipo-detalle-lista { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 }
+
+/* Estadísticas: paneles de la misma fila con igual altura. */
+.stats-two-col { align-items: stretch; }

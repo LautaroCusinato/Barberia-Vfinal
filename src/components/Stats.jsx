@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { CalendarCheck, CalendarDays, CheckCircle2, Coins, Percent, Receipt, Users2, Wallet, Banknote, CreditCard, Landmark, Search, UserX, X } from 'lucide-react'
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
-import { formatPrecio, normalizar } from '../lib/text'
+import { capitalizar, formatPrecio, normalizar } from '../lib/text'
 
 const DEFAULT_TZ = 'America/Argentina/Buenos_Aires'
 
@@ -207,7 +207,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         </div>
       </div>
 
-      <div className="two-col">
+      <div className="two-col stats-two-col">
         <div className="panel">
           <p className="panel-title">
             <span className="panel-title-icon">Turnos por estado</span>
@@ -242,7 +242,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
               {motivos.map((m) => (
                 <div key={m.label}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
-                    <span style={{ textTransform: 'capitalize' }}>{m.label}</span>
+                    <span>{capitalizar(m.label)}</span>
                     <span style={{ color: 'var(--ink-faint)' }}>{m.count}</span>
                   </div>
                   <div className="stat-bar">
