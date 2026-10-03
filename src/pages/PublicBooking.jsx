@@ -3,7 +3,7 @@ import { CalendarDays, CalendarPlus, CheckCircle2, Clock3, MapPin, MessageCircle
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import PhoneField from '../components/PhoneField'
 import { Badge, Button, Card, EmptyState, FormField, IconButton, Input, LiveRegion, Skeleton, Spinner } from '../components/ui'
-import { PREFIJO_AR, capitalizar, soloDigitos, telefonoNacionalValido } from '../lib/text'
+import { PREFIJO_AR, capitalizar, soloDigitos, telefonoNacionalValido, formatPrecio } from '../lib/text'
 import { buildWhatsAppHref } from '../lib/commercialCatalog'
 import './PublicBooking.css'
 
@@ -22,7 +22,7 @@ const addDays = (key, days) => {
 }
 const formatTime = (time) => String(time || '').slice(0, 5)
 const normalizeCurrency = (currency) => /^[A-Z]{3}$/.test(String(currency || '').toUpperCase()) ? String(currency).toUpperCase() : 'ARS'
-const formatMoney = (amount, currency) => `${normalizeCurrency(currency)} ${Number(amount || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+const formatMoney = (amount, currency) => formatPrecio(amount, normalizeCurrency(currency))
 const formatDateLabel = (date) => date ? capitalizar(new Date(`${date}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })) : 'Elegí una fecha'
 const formatTimezone = (timezone) => timezone === 'America/Argentina/Buenos_Aires' ? 'Argentina · Buenos Aires' : timezone || 'zona horaria del negocio'
 const isValidEmail = (email) => !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)

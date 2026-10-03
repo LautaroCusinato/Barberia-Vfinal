@@ -6,6 +6,7 @@ import { getBillingReturnState } from '../lib/billingReturnState.js'
 import { COMMERCIAL_BILLING_MODE, COMMERCIAL_CATALOG, COMMERCIAL_TRIAL_DAYS, catalogPlan, getTrialContinuationWhatsAppHref } from '../lib/commercialCatalog.js'
 import { trialHasExpired, trialRemainingDays } from '../lib/trial.js'
 import { EmptyState, Skeleton } from '../components/ui'
+import { formatPrecio } from '../lib/text'
 
 const MercadoPagoCardTokenForm = lazy(() => import('../components/billing/MercadoPagoCardTokenForm.jsx'))
 
@@ -62,7 +63,7 @@ function formatDate(value) {
 function formatMoney(value, currency) {
   if (value == null) return '—'
   try {
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: currency || 'USD' }).format(Number(value))
+    return formatPrecio(value, currency || 'ARS')
   } catch {
     return `${value} ${currency || ''}`.trim()
   }

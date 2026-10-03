@@ -5625,3 +5625,17 @@ input.client-search-input {
 .resumen-ver-todos { justify-self: center; margin-top: 4px; }
 /* Sin altura máxima ni recorte: la lista ya está limitada a TURNOS_RESUMEN turnos. */
 .resumen-agenda-panel { max-height: none; overflow: visible; }
+
+/* Números: misma tipografía que el resto de la interfaz y cifras tabulares
+ * (Equipo y Facturación usaban la serif de títulos para los valores). */
+.stat-value,
+.barbero-metric-value,
+.billing-price,
+.billing-plan-price,
+.platform-stats .stat-card strong,
+.crm-pipeline-metrics strong {
+  font-family: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}

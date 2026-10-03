@@ -5,11 +5,10 @@ import { CalendarCheck, Wallet, Clock, ChevronRight, Users2, X } from 'lucide-re
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
 import { EmptyState } from './ui'
-import { capitalizar } from '../lib/text'
+import { capitalizar, formatPrecio } from '../lib/text'
 import { initials } from '../lib/avatar'
 
-const money = (n) =>
-  (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+const money = (n) => formatPrecio(n)
 
 function fechaLegible(fecha, todayKey) {
   if (fecha === todayKey) return 'Hoy'

@@ -1,12 +1,11 @@
 import { useCallback, useMemo, useState } from 'react'
 import { CalendarCheck, CalendarDays, CheckCircle2, Coins, Percent, Receipt, Users2, Wallet, Banknote, CreditCard, Landmark, Search, UserX, X } from 'lucide-react'
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
-import { normalizar } from '../lib/text'
+import { formatPrecio, normalizar } from '../lib/text'
 
 const DEFAULT_TZ = 'America/Argentina/Buenos_Aires'
 
-const money = (n) =>
-  (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+const money = (n) => formatPrecio(n)
 
 const METODO_META = {
   efectivo: { label: 'Efectivo', Icon: Banknote, bg: 'var(--green-soft)', color: 'var(--green-text)' },

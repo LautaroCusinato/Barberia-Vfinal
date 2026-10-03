@@ -69,7 +69,7 @@ test.describe('experiencia de producto demo', () => {
   test.describe.configure({ timeout: 60_000 })
   test('DEMO-01 landing → probar demo', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('link', { name: /ver cómo funciona/i }).click()
+    await page.getByRole('link', { name: /ver la demo|ver cómo funciona/i }).first().click()
     await expect(page).toHaveURL(/\/demo$/)
     // The demo shell is a lazy route. Use the same readiness window as the
     // shared openDemo helper so a cold CI chunk load is not mistaken for a
@@ -95,9 +95,10 @@ test.describe('experiencia de producto demo', () => {
 
   test('DEMO-04 Agenda tiene datos relativos a hoy', async ({ page }) => {
     await openDemo(page, 'Agenda')
-    await expect(page.getByText(/turnos en total/i)).toBeVisible()
     const desktopCalendar = page.locator('.calendar-grid')
     if (await desktopCalendar.isVisible().catch(() => false)) {
+      // En celular el total se oculta para compactar el encabezado.
+      await expect(page.getByText(/turnos en total/i)).toBeVisible()
       await expect(page.getByRole('gridcell').filter({ hasText: /^\d+$/ }).first()).toBeVisible()
     } else {
       await expect(page.locator('.calendar-mobile-days .calendar-mobile-day').first()).toBeVisible()

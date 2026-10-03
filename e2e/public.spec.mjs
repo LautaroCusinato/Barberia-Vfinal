@@ -115,9 +115,9 @@ test.describe('superficies públicas sin efectos externos', () => {
 
   test('reserva pública guiada cubre selección, validación, dark mode y confirmación mock', async ({ page }) => {
     const createCalls = await openMockBooking(page)
-    await expect(page.getByRole('button', { name: /barba.*ARS 10\.000/i })).toHaveAttribute('aria-pressed', 'false')
-    await page.getByRole('button', { name: /barba.*ARS 10\.000/i }).click()
-    await expect(page.getByRole('button', { name: /barba.*ARS 10\.000/i })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: /barba.*\$\s?10\.000/i })).toHaveAttribute('aria-pressed', 'false')
+    await page.getByRole('button', { name: /barba.*\$\s?10\.000/i }).click()
+    await expect(page.getByRole('button', { name: /barba.*\$\s?10\.000/i })).toHaveAttribute('aria-pressed', 'true')
     await page.getByRole('button', { name: /marta demo/i }).click()
     await page.getByRole('button', { name: '10:00' }).click()
     await page.getByLabel('Nombre y apellido').fill('Cliente Demo')
