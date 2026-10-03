@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   startOfMonth,
   endOfMonth,
@@ -15,8 +15,9 @@ import {
   parseISO,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, ChevronDown, Check, CalendarX, LayoutGrid, List, Plus, Users, Clock3, Coffee, Ban, UserRound } from 'lucide-react'
-import { capitalizar, slotsOcupados, parseHorarioBarbero } from '../lib/text'
+import { capitalizar, slotsOcupados, parseHorarioBarbero, barberoDisponible, turnosSeSuperponen } from '../lib/text'
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
 import { EmptyState } from './ui'
@@ -84,7 +85,316 @@ function formatCurrentTime(date) {
   }).format(date)
 }
 
-export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, onNewTurno, barberos = [], bloqueos = [] }) {
+function minutosAHora(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+}
+
+function prefiereMenosMovimiento() {
+  return typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+}
+
+// Un turno "no_asistio" (o el estado heredado "cancelado") libera el horario:
+// no bloquea a otros y tampoco se puede arrastrar.
+const ESTADOS_LIBERADOS = new Set(['no_asistio', 'cancelado'])
+const SLOT_MIN = 30
+const SNAP_MIN = 15
+const UMBRAL_MOUSE_PX = 4
+const UMBRAL_TOUCH_PX = 8
+const LONG_PRESS_MS = 300
+const BORDE_AUTOSCROLL_PX = 44
+
+// Geometría de la grilla semanal relativa a su esquina: filas de 30 min (alto
+// variable según cuántos turnos haya) y columnas de cada día.
+function medirGrilla(grid) {
+  const g = grid.getBoundingClientRect()
+  const rows = [...grid.querySelectorAll('.week-time-label[data-slot]')].map((el) => {
+    const r = el.getBoundingClientRect()
+    return { min: toMinutes(el.dataset.slot), top: r.top - g.top, height: r.height }
+  })
+  const cols = [...grid.querySelectorAll('.week-day-header[data-fecha]')].map((el) => {
+    const r = el.getBoundingClientRect()
+    return { fecha: el.dataset.fecha, left: r.left - g.left, width: r.width }
+  })
+  return { rows, cols }
+}
+
+function yDeMinutos(rows, min) {
+  if (!rows.length) return null
+  const first = rows[0]
+  const last = rows[rows.length - 1]
+  if (min < first.min) return null
+  if (min >= last.min + SLOT_MIN) return last.top + last.height
+  const row = rows.find((r) => min >= r.min && min < r.min + SLOT_MIN)
+  return row ? row.top + ((min - row.min) / SLOT_MIN) * row.height : null
+}
+
+function minutosDeY(rows, y) {
+  const first = rows[0]
+  const last = rows[rows.length - 1]
+  let row = rows.find((r) => y >= r.top && y < r.top + r.height)
+  if (!row) row = y < first.top ? first : last
+  const frac = Math.min(1, Math.max(0, (y - row.top) / row.height))
+  const snapped = Math.round((row.min + frac * SLOT_MIN) / SNAP_MIN) * SNAP_MIN
+  return Math.min(Math.max(snapped, first.min), last.min + SLOT_MIN - SNAP_MIN)
+}
+
+function colDeX(cols, x) {
+  if (!cols.length) return null
+  return cols.find((c) => x >= c.left && x < c.left + c.width)
+    || (x < cols[0].left ? cols[0] : cols[cols.length - 1])
+}
+
+// Arrastre de turnos en la vista semanal con pointer events. Vive fuera del
+// render: la sesión y los handlers se guardan en refs y solo se actualiza el
+// estado cuando cambia el destino (fecha/hora), no en cada pixel.
+function crearArrastre(setVista) {
+  // Estado mutable propio del controlador (no participa del render).
+  const latestRef = { current: { habilitado: false, validar: () => ({ estado: 'invalid' }), alSoltar: () => {} } }
+  const sesionRef = { current: null }
+  const labelRef = { current: null }
+  const clickBloqueadoRef = { current: false }
+  const bloquearClick = (ms) => {
+    clickBloqueadoRef.current = true
+    if (ms != null) window.setTimeout(() => { clickBloqueadoRef.current = false }, ms)
+  }
+
+  const onTouchMove = (e) => {
+    // Con el arrastre activo el dedo mueve el turno, no la página.
+    if (sesionRef.current?.active && e.cancelable) e.preventDefault()
+  }
+  const onContextMenu = (e) => {
+    if (sesionRef.current) e.preventDefault()
+  }
+
+  const colocarFlotantes = (s) => {
+    const dx = s.lastX - s.startX
+    const dy = s.lastY - s.startY
+    if (s.ghost) s.ghost.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
+    const label = labelRef.current
+    if (label) {
+      const x = Math.min(Math.max(8, s.lastX + 14), window.innerWidth - 180)
+      const y = Math.max(8, s.lastY - (s.pointerType === 'touch' ? 72 : 44))
+      label.style.transform = `translate3d(${x}px, ${y}px, 0)`
+    }
+  }
+
+  const calcularDestino = (s) => {
+    const { rows, cols } = s.metricas
+    if (!rows.length || !cols.length) return
+    const g = s.grid.getBoundingClientRect()
+    const col = colDeX(cols, s.lastX - g.left)
+    const min = minutosDeY(rows, s.lastY - s.offsetY - g.top + 1)
+    const hora = minutosAHora(min)
+    if (s.target && s.target.fecha === col.fecha && s.target.hora === hora) return
+    const resultado = latestRef.current.validar(s.turno, col.fecha, hora)
+    s.target = { fecha: col.fecha, hora, ...resultado }
+    const top = yDeMinutos(rows, min)
+    const bottom = yDeMinutos(rows, min + (Number(s.turno.duracion) || 30)) ?? top
+    setVista({
+      id: s.turno.id,
+      fecha: col.fecha,
+      hora,
+      estado: resultado.estado,
+      motivo: resultado.motivo || '',
+      preview: { left: col.left, top, width: col.width, height: Math.max(18, bottom - top) },
+    })
+  }
+
+  const tick = () => {
+    const s = sesionRef.current
+    if (!s?.active) return
+    const sc = s.scroller
+    if (sc && sc.scrollHeight > sc.clientHeight) {
+      const r = sc.getBoundingClientRect()
+      let delta = 0
+      if (s.lastY < r.top + BORDE_AUTOSCROLL_PX) delta = -Math.ceil((r.top + BORDE_AUTOSCROLL_PX - s.lastY) / 4)
+      else if (s.lastY > r.bottom - BORDE_AUTOSCROLL_PX) delta = Math.ceil((s.lastY - (r.bottom - BORDE_AUTOSCROLL_PX)) / 4)
+      if (delta) {
+        sc.scrollTop += delta
+        calcularDestino(s)
+      }
+    }
+    s.raf = window.requestAnimationFrame(tick)
+  }
+
+  const activar = (s) => {
+    s.active = true
+    window.clearTimeout(s.timer)
+    s.metricas = medirGrilla(s.grid)
+    const ghost = s.el.cloneNode(true)
+    ghost.classList.add('week-chip-ghost')
+    ghost.removeAttribute('title')
+    ghost.setAttribute('aria-hidden', 'true')
+    ghost.tabIndex = -1
+    // Con !important inline: la hoja global fuerza position/z-index/transition en .week-chip.
+    const fijar = {
+      position: 'fixed',
+      left: `${s.rect.left}px`,
+      top: `${s.rect.top}px`,
+      width: `${s.rect.width}px`,
+      height: `${s.rect.height}px`,
+      'min-height': '0',
+      'max-width': 'none',
+      flex: 'none',
+      margin: '0',
+      'z-index': '1000',
+      'pointer-events': 'none',
+      transition: 'none',
+    }
+    for (const [prop, valor] of Object.entries(fijar)) ghost.style.setProperty(prop, valor, 'important')
+    document.body.appendChild(ghost)
+    s.ghost = ghost
+    try { s.el.setPointerCapture(s.pointerId) } catch { /* el puntero ya no existe */ }
+    colocarFlotantes(s)
+    calcularDestino(s)
+    s.raf = window.requestAnimationFrame(tick)
+  }
+
+  const terminar = (soltar, { escape = false } = {}) => {
+    const s = sesionRef.current
+    if (!s) return
+    sesionRef.current = null
+    window.clearTimeout(s.timer)
+    if (s.raf) window.cancelAnimationFrame(s.raf)
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onCancel)
+    window.removeEventListener('keydown', onKey, true)
+    document.removeEventListener('touchmove', onTouchMove)
+    document.removeEventListener('contextmenu', onContextMenu)
+    s.ghost?.remove()
+    try { s.el.releasePointerCapture(s.pointerId) } catch { /* ya liberado */ }
+    if (s.active) {
+      if (escape) {
+        // El botón sigue presionado: el click que llega al soltarlo no debe abrir la edición.
+        bloquearClick(null)
+        window.addEventListener('pointerup', () => bloquearClick(400), { once: true, capture: true })
+      } else {
+        bloquearClick(400)
+      }
+    }
+    setVista(null)
+    if (soltar && s.active && s.target?.estado === 'ok') {
+      latestRef.current.alSoltar(s.turno, { fecha: s.target.fecha, hora: s.target.hora })
+    }
+  }
+
+  function onMove(e) {
+    const s = sesionRef.current
+    if (!s || e.pointerId !== s.pointerId) return
+    s.lastX = e.clientX
+    s.lastY = e.clientY
+    if (!s.active) {
+      const dist = Math.hypot(s.lastX - s.startX, s.lastY - s.startY)
+      if (s.pointerType === 'touch') {
+        // Se movió antes del long-press: es un scroll, no un arrastre.
+        if (dist > UMBRAL_TOUCH_PX) terminar(false)
+        return
+      }
+      if (dist < UMBRAL_MOUSE_PX) return
+      activar(s)
+      return
+    }
+    e.preventDefault()
+    colocarFlotantes(s)
+    calcularDestino(s)
+  }
+
+  function onUp(e) {
+    const s = sesionRef.current
+    if (!s || e.pointerId !== s.pointerId) return
+    terminar(true)
+  }
+
+  function onCancel(e) {
+    const s = sesionRef.current
+    if (!s || e.pointerId !== s.pointerId) return
+    terminar(false)
+  }
+
+  function onKey(e) {
+    if (e.key !== 'Escape' || !sesionRef.current) return
+    e.preventDefault()
+    e.stopPropagation()
+    terminar(false, { escape: true })
+  }
+
+  const onPointerDown = (e, turno) => {
+    if (!latestRef.current.habilitado || ESTADOS_LIBERADOS.has(turno.estado)) return
+    if (sesionRef.current) return
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    const el = e.currentTarget
+    const grid = el.closest('.week-grid')
+    if (!grid) return
+    const rect = el.getBoundingClientRect()
+    const s = {
+      pointerId: e.pointerId,
+      pointerType: e.pointerType,
+      turno,
+      el,
+      grid,
+      scroller: grid.closest('.week-scroll'),
+      rect,
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      offsetY: e.clientY - rect.top,
+      active: false,
+      timer: null,
+      raf: null,
+      target: null,
+      ghost: null,
+    }
+    sesionRef.current = s
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('keydown', onKey, true)
+    document.addEventListener('touchmove', onTouchMove, { passive: false })
+    document.addEventListener('contextmenu', onContextMenu)
+    if (e.pointerType === 'touch') {
+      s.timer = window.setTimeout(() => {
+        if (sesionRef.current === s && !s.active) activar(s)
+      }, LONG_PRESS_MS)
+    } else {
+      try { el.setPointerCapture(e.pointerId) } catch { /* sin captura igual funciona con listeners en window */ }
+    }
+  }
+
+  const consumirClick = () => {
+    if (!clickBloqueadoRef.current) return false
+    clickBloqueadoRef.current = false
+    return true
+  }
+
+  return {
+    onPointerDown,
+    consumirClick,
+    cancelar: () => terminar(false),
+    configurar: (opciones) => { latestRef.current = opciones },
+    setLabel: (el) => { labelRef.current = el },
+  }
+}
+
+function useArrastreSemana({ habilitado, validar, alSoltar }) {
+  const [vista, setVista] = useState(null)
+  const [arrastre] = useState(() => crearArrastre(setVista))
+
+  useLayoutEffect(() => {
+    arrastre.configurar({ habilitado, validar, alSoltar })
+  })
+
+  useEffect(() => {
+    if (!habilitado) arrastre.cancelar()
+  }, [habilitado, arrastre])
+
+  useEffect(() => () => arrastre.cancelar(), [arrastre])
+
+  return [vista, arrastre]
+}
+
+export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, onNewTurno, onMoverTurno, barberos = [], bloqueos = [] }) {
   const initial = parseISO(todayKey)
   const [month, setMonth] = useState(initial)
   const [selected, setSelected] = useState(initial)
@@ -94,10 +404,78 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   const [now, setNow] = useState(() => new Date())
   const barberoMenuRef = useRef(null)
 
+  // Reloj alineado al minuto: la línea "Ahora" avanza justo cuando cambia la hora visible.
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30_000)
-    return () => window.clearInterval(timer)
+    let interval = null
+    const tick = () => setNow(new Date())
+    const timeout = window.setTimeout(() => {
+      tick()
+      interval = window.setInterval(tick, 60_000)
+    }, 60_000 - (Date.now() % 60_000) + 50)
+    return () => {
+      window.clearTimeout(timeout)
+      if (interval) window.clearInterval(interval)
+    }
   }, [])
+
+  // Movimientos de turnos aplicados en pantalla mientras se confirman (y
+  // después, hasta que la lista recibida ya refleje el cambio).
+  const [movidos, setMovidos] = useState({})
+  useEffect(() => {
+    setMovidos((prev) => {
+      const ids = Object.keys(prev)
+      if (!ids.length) return prev
+      const next = { ...prev }
+      for (const id of ids) {
+        const actual = turnos.find((t) => String(t.id) === id)
+        if (!actual || (actual.fecha === prev[id].fecha && actual.hora === prev[id].hora)) delete next[id]
+      }
+      return Object.keys(next).length === ids.length ? prev : next
+    })
+  }, [turnos])
+
+  const turnosVista = useMemo(() => {
+    if (!Object.keys(movidos).length) return turnos
+    return turnos.map((t) => (movidos[String(t.id)] ? { ...t, ...movidos[String(t.id)] } : t))
+  }, [turnos, movidos])
+
+  const validarMovimiento = useCallback((turno, fecha, hora) => {
+    if (fecha === turno.fecha && hora === turno.hora) return { estado: 'same', motivo: 'Mismo horario' }
+    const duracion = Number(turno.duracion) || 30
+    const ahoraMin = toMinutes(formatCurrentTime(new Date()))
+    if (fecha < todayKey || (fecha === todayKey && toMinutes(hora) < ahoraMin)) return { estado: 'invalid', motivo: 'Horario pasado' }
+    const barbero = barberos.find((b) => String(b.id) === String(turno.barbero_id))
+    if (!barbero) return { estado: 'invalid', motivo: 'Sin barbero asignado' }
+    if (!barberoDisponible(barbero, fecha, hora, duracion, [])) return { estado: 'invalid', motivo: 'Fuera de horario' }
+    if (!barberoDisponible(barbero, fecha, hora, duracion, bloqueos)) return { estado: 'invalid', motivo: 'Horario bloqueado' }
+    const choque = turnosVista.find((o) => (
+      o.id !== turno.id
+      && String(o.barbero_id) === String(turno.barbero_id)
+      && o.fecha === fecha
+      && !ESTADOS_LIBERADOS.has(o.estado)
+      && turnosSeSuperponen(hora, duracion, o.hora, Number(o.duracion) || 30)
+    ))
+    if (choque) return { estado: 'invalid', motivo: `Se superpone con ${choque.paciente || 'otro turno'}` }
+    return { estado: 'ok', motivo: '' }
+  }, [todayKey, barberos, bloqueos, turnosVista])
+
+  const moverTurno = useCallback((turno, destino) => {
+    if (!onMoverTurno) return
+    const id = String(turno.id)
+    const revertir = () => setMovidos((prev) => {
+      if (!prev[id]) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    setMovidos((prev) => ({ ...prev, [id]: destino }))
+    Promise.resolve()
+      .then(() => onMoverTurno(turno, destino))
+      .then((ok) => { if (ok !== true) revertir() }, revertir)
+  }, [onMoverTurno])
+
+  const [dragVista, arrastre] = useArrastreSemana({ habilitado: typeof onMoverTurno === 'function', validar: validarMovimiento, alSoltar: moverTurno })
+  const { onPointerDown: onChipPointerDown, consumirClick, setLabel: setDragLabel } = arrastre
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -108,9 +486,9 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   }, [barberoMenuOpen])
 
   const turnosFiltrados = useMemo(() => {
-    if (!barberoFiltro) return turnos
-    return turnos.filter((t) => String(t.barbero_id) === barberoFiltro)
-  }, [turnos, barberoFiltro])
+    if (!barberoFiltro) return turnosVista
+    return turnosVista.filter((t) => String(t.barbero_id) === barberoFiltro)
+  }, [turnosVista, barberoFiltro])
 
   const byDate = useMemo(() => {
     const map = {}
@@ -161,6 +539,79 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   }
   const hasBreaks = barberos.some((barbero) => Object.values(parseHorarioBarbero(barbero.horario) || {}).some((blocks) => blocks.some((block) => block.break)))
   const currentTimeLabel = formatCurrentTime(now)
+  const nowMin = toMinutes(currentTimeLabel)
+  const weekKey = format(weekDays[0], 'yyyy-MM-dd')
+
+  // ===== LÍNEA "AHORA" EN LA GRILLA SEMANAL =====
+  const weekGridRef = useRef(null)
+  const weekScrollRef = useRef(null)
+  const autoScrollHechoRef = useRef(false)
+  const [nowPos, setNowPos] = useState(null)
+
+  useLayoutEffect(() => {
+    const grid = weekGridRef.current
+    if (viewMode !== 'semana' || !grid) {
+      setNowPos(null)
+      return undefined
+    }
+    const medir = () => {
+      const { rows, cols } = medirGrilla(grid)
+      const hoy = cols.find((c) => c.fecha === todayKey)
+      const enRango = rows.length > 0 && nowMin >= rows[0].min && nowMin < rows[rows.length - 1].min + SLOT_MIN
+      const top = enRango ? yDeMinutos(rows, nowMin) : null
+      if (!hoy || top == null) {
+        setNowPos(null)
+        return
+      }
+      const first = cols[0]
+      const last = cols[cols.length - 1]
+      const next = {
+        top: Math.round(top),
+        left: Math.round(first.left),
+        width: Math.round(last.left + last.width - first.left),
+        todayLeft: Math.round(hoy.left - first.left),
+        todayWidth: Math.round(hoy.width),
+      }
+      setNowPos((prev) => (prev && Object.keys(next).every((k) => prev[k] === next[k]) ? prev : next))
+    }
+    medir()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(medir)
+    observer.observe(grid)
+    return () => observer.disconnect()
+  }, [viewMode, nowMin, todayKey, weekKey, turnosFiltrados, slots])
+
+  // La primera vez que se abre la semana, la hora actual queda arriba a la vista.
+  useEffect(() => {
+    if (viewMode !== 'semana' || autoScrollHechoRef.current) return
+    const scroller = weekScrollRef.current
+    const grid = weekGridRef.current
+    if (!scroller || !grid) return
+    autoScrollHechoRef.current = true
+    const scrollVertical = scroller.scrollHeight > scroller.clientHeight + 1
+    const scrollHorizontal = scroller.scrollWidth > scroller.clientWidth + 1
+    if (!scrollVertical && !scrollHorizontal) return
+    const { rows, cols } = medirGrilla(grid)
+    if (!rows.length) return
+    const g = grid.getBoundingClientRect()
+    const s = scroller.getBoundingClientRect()
+    const destino = {}
+    if (scrollVertical) {
+      const top = yDeMinutos(rows, Math.max(Math.floor(nowMin / 60) * 60, rows[0].min))
+      const header = grid.querySelector('.week-day-header')?.offsetHeight || 54
+      if (top != null) destino.top = Math.max(0, g.top - s.top + scroller.scrollTop + top - header - 6)
+    }
+    // Celular: la grilla es más ancha que la pantalla; se trae el día de hoy a la vista.
+    const hoy = cols.find((c) => c.fecha === todayKey)
+    if (scrollHorizontal && hoy) {
+      const labels = grid.querySelector('.week-time-label')?.offsetWidth || 56
+      const izquierda = g.left - s.left + scroller.scrollLeft + hoy.left - labels
+      const visible = hoy.left + g.left - s.left >= labels && hoy.left + hoy.width + g.left - s.left <= scroller.clientWidth
+      if (!visible) destino.left = Math.max(0, izquierda)
+    }
+    if (destino.top == null && destino.left == null) return
+    scroller.scrollTo({ ...destino, behavior: prefiereMenosMovimiento() ? 'auto' : 'smooth' })
+  }, [viewMode, nowMin, todayKey])
 
   const turnosDelDia = (byDate[selectedKey] || [])
     .slice()
@@ -406,8 +857,8 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
             </div>
           </>
         ) : (
-          <div className="week-scroll">
-            <div className="week-grid calendar-swap" key={`week-${format(weekDays[0], 'yyyy-MM-dd')}`} data-dir={navDir} style={{ gridTemplateRows: `54px repeat(${slots.length}, minmax(56px, auto))` }}>
+          <div className="week-scroll" ref={weekScrollRef}>
+            <div ref={weekGridRef} className={`week-grid calendar-swap ${dragVista ? 'is-dragging' : ''}`} key={`week-${weekKey}`} data-dir={navDir} style={{ gridTemplateRows: `54px repeat(${slots.length}, minmax(56px, auto))` }}>
               <div className="week-cell week-corner" />
               {weekDays.map((day) => {
                 const key = format(day, 'yyyy-MM-dd')
@@ -417,6 +868,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                 return (
                   <div
                     key={key}
+                    data-fecha={key}
                     className={`week-cell week-day-header ${key === todayKey ? 'today' : ''} ${noAtiende ? 'week-day-off' : ''} ${bloqueado ? 'week-day-blocked' : ''}`}
                     onClick={() => setSelected(day)}
                     title={bloqueado ? 'Día bloqueado' : noAtiende ? `${barberoUnico.nombre} no atiende este día` : undefined}
@@ -432,7 +884,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
 
               {slots.map((slot) => (
                 <div key={`row-${slot}`} style={{ display: 'contents' }}>
-                  <div className="week-cell week-time-label">{slot}</div>
+                  <div className="week-cell week-time-label" data-slot={slot}>{slot}</div>
                   {weekDays.map((day) => {
                     const key = format(day, 'yyyy-MM-dd')
                     const eventos = byDate[key] || []
@@ -519,10 +971,12 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                               )
                             }
 
+                            const arrastrable = Boolean(onMoverTurno) && !ESTADOS_LIBERADOS.has(t.estado)
                             return (
                               <button
                                 key={t.id}
-                                className={`week-chip ${span > 1 ? 'week-chip--largo' : ''}`}
+                                type="button"
+                                className={`week-chip ${span > 1 ? 'week-chip--largo' : ''} ${arrastrable ? 'week-chip--draggable' : ''} ${dragVista?.id === t.id ? 'is-drag-source' : ''}`}
                                 style={{
                                   background: meta.bg,
                                   color: meta.color,
@@ -536,8 +990,8 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                                   textOverflow: 'ellipsis',
                                   whiteSpace: 'nowrap',
                                   border: '1px solid rgba(0,0,0,0.08)',
-                                  transition: 'all 0.15s ease',
-                                  cursor: 'pointer',
+                                  transition: 'opacity var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard)',
+                                  cursor: arrastrable ? 'grab' : 'pointer',
                                   display: 'flex',
                                   flexDirection: 'column',
                                   justifyContent: 'center',
@@ -546,7 +1000,12 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                                   zIndex: 5,
                                   boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                                 }}
-                                onClick={(e) => { e.stopPropagation(); onEditTurno(t) }}
+                                onPointerDown={arrastrable ? (e) => onChipPointerDown(e, t) : undefined}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (consumirClick()) return
+                                  onEditTurno(t)
+                                }}
                                 title={`${t.hora}–${horaFin(t.hora, t.duracion)} · ${t.paciente} (${t.motivo}) · ${t.duracion || 30} min${t.origen === 'whatsapp' ? ' · vía WhatsApp' : ''}`}
                               >
                                 {t.origen === 'whatsapp' && (
@@ -585,8 +1044,48 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                   })}
                 </div>
               ))}
+              {/* Superposiciones al final para no alterar el :nth-child de las celdas. */}
+              {nowPos && (
+                <div
+                  className="week-now-line"
+                  aria-hidden="true"
+                  style={{ transform: `translate3d(${nowPos.left}px, ${nowPos.top}px, 0)`, width: `${nowPos.width}px` }}
+                >
+                  <span className="week-now-line-today" style={{ transform: `translateX(${nowPos.todayLeft}px)`, width: `${nowPos.todayWidth}px` }}>
+                    <span className="week-now-dot" />
+                  </span>
+                </div>
+              )}
+              {dragVista?.preview && dragVista.preview.top != null && (
+                <div
+                  className={`week-drop-preview is-${dragVista.estado}`}
+                  aria-hidden="true"
+                  style={{
+                    transform: `translate3d(${dragVista.preview.left + 3}px, ${dragVista.preview.top}px, 0)`,
+                    width: `${Math.max(0, dragVista.preview.width - 6)}px`,
+                    height: `${dragVista.preview.height}px`,
+                  }}
+                />
+              )}
             </div>
           </div>
+        )}
+        {onMoverTurno && typeof document !== 'undefined' && createPortal(
+          <div
+            ref={setDragLabel}
+            className={`week-drag-label ${dragVista ? `is-visible is-${dragVista.estado}` : ''}`}
+            role="status"
+            aria-live="polite"
+          >
+            {dragVista && (
+              <>
+                <strong>{capitalizar(format(parseISO(dragVista.fecha), 'EEE d', { locale: es }))} · {dragVista.hora}</strong>
+                {dragVista.estado === 'invalid' && <span>{dragVista.motivo}</span>}
+                {dragVista.estado === 'same' && <span>Sin cambios</span>}
+              </>
+            )}
+          </div>,
+          document.body
         )}
       </div>
 
