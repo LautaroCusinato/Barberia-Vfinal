@@ -7,6 +7,8 @@ import { Info, CalendarCheck, MessageCircle, Plus, Bot, Download, AlertTriangle,
 import NewTurnoModal from './components/NewTurnoModal'
 import { statusMeta } from './components/StatusSelect'
 import CobroModal from './components/CobroModal'
+import Toaster from './components/Toaster'
+import { useToasts } from './lib/useToasts.js'
 import { logout } from './lib/auth.js'
 import { exportarCSV } from './lib/csv'
 import Sidebar from './components/Sidebar'
@@ -186,6 +188,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [errorRecuperable, setErrorRecuperable] = useState(false)
   // Avisos informativos: no son errores y no van en rojo.
   const [aviso, setAviso] = useState('')
+  const { toasts, mostrar: mostrarToast, cerrar: cerrarToast } = useToasts()
   const [reloadKey, setReloadKey] = useState(0)
   const barberoWritesRef = useRef({})
   const servicioWritesRef = useRef({})
@@ -761,6 +764,40 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return false
   }
 
+  // Borrado con "Deshacer": saca el elemento al instante y recién lo borra en
+  // la base cuando vence el aviso. Si se deshace (o la base lo rechaza),
+  // vuelve a su posición original.
+  const eliminarConDeshacer = (lista, setLista, id, tabla, mensaje, mensajeError) => {
+    const anterior = lista.find((item) => item.id === id)
+    const indiceAnterior = lista.findIndex((item) => item.id === id)
+    if (!anterior) return true
+    const restaurar = () => setLista((prev) => {
+      if (prev.some((item) => item.id === id)) return prev
+      const restaurados = [...prev]
+      restaurados.splice(Math.max(0, Math.min(indiceAnterior, restaurados.length)), 0, anterior)
+      return restaurados
+    })
+    setLista((prev) => prev.filter((item) => item.id !== id))
+    mostrarToast({
+      mensaje,
+      duracion: 5000,
+      onUndo: restaurar,
+      onExpire: async () => {
+        if (!isSupabaseConfigured) return
+        let error
+        try {
+          ({ error } = await supabase.from(tabla).delete().eq('id', id))
+        } catch (thrown) {
+          error = thrown
+        }
+        if (error) {
+          restaurar()
+          reportError(mensajeError, error)
+        }
+      },
+    })
+    return true
+  }
 
   const addNota = async (nueva) => {
     const conFecha = { ...nueva, fecha: todayKey }
@@ -860,7 +897,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     setCobroTurno(null)
   }
 
-  const deleteTurno = (turnoId) => eliminarOptimista(turnos, setTurnos, turnoId, 'turnos', 'No se pudo eliminar el turno')
+  const deleteTurno = (turnoId) => eliminarConDeshacer(turnos, setTurnos, turnoId, 'turnos', 'Turno eliminado', 'No se pudo eliminar el turno')
 
   const saveTurno = async ({ paciente, telefono, clienteId, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }, existingId) => {
     const servicio = servicios.find((item) => String(item.id) === String(servicio_id))
@@ -1023,7 +1060,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
   }
 
-  const deleteNota = (id) => eliminarOptimista(notas, setNotas, id, 'notas', 'No se pudo eliminar la nota')
+  const deleteNota = (id) => eliminarConDeshacer(notas, setNotas, id, 'notas', 'Nota eliminada', 'No se pudo eliminar la nota')
 
   const sendMensaje = async (paciente, texto, clienteId) => {
     const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: zonaHoraria || TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
@@ -1360,7 +1397,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return true
   }
 
-  const deleteBloqueo = (id) => eliminarOptimista(bloqueos, setBloqueos, id, 'bloqueos_agenda', 'No se pudo eliminar el día libre')
+  const deleteBloqueo = (id) => eliminarConDeshacer(bloqueos, setBloqueos, id, 'bloqueos_agenda', 'Día libre eliminado', 'No se pudo eliminar el día libre')
 
   const turnosHoy = turnos.filter((t) => t.fecha === todayKey).sort((a, b) => a.hora.localeCompare(b.hora))
   const unreadCount = conversaciones.filter((c) => c.noLeido).length
@@ -1702,6 +1739,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         onClose={() => setCobroTurno(null)}
         onConfirm={confirmarCobro}
       />
+
+      <Toaster toasts={toasts} onClose={cerrarToast} />
     </div>
   )
 }

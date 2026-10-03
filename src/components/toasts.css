@@ -1,0 +1,89 @@
+/* (4) Avisos breves: abajo al centro, sobre la barra de pestañas en celular. */
+.toaster {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: var(--z-tooltip);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(440px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 10px 13px 16px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, .22));
+  font-size: 13.5px;
+  font-weight: 600;
+  pointer-events: auto;
+  animation: toast-in 220ms var(--ease-standard);
+}
+.toast.is-leaving { opacity: 0; transform: translateY(6px); transition: opacity var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard); }
+.toast-text { flex: 1; min-width: 0; }
+.toast-undo {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: color-mix(in srgb, var(--accent) 55%, var(--surface));
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.toast-undo:hover { background: color-mix(in srgb, var(--surface) 12%, transparent); }
+.toast-close {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  opacity: .7;
+  cursor: pointer;
+}
+.toast-close:hover { opacity: 1; }
+.toast-timer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: toast-timer var(--toast-duration, 4000ms) linear forwards;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (max-width: 860px) {
+  .toaster { bottom: calc(68px + var(--safe-bottom, 0px) + 12px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast, .toast.is-leaving { animation: none; transition: none; transform: none; }
+  .toast-timer { animation: none; opacity: .5; }
+}
+
+/* (5) Fila que se colapsa al borrar (grid 1fr→0fr + fundido). */
+.collapse-row {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--motion-base) var(--ease-standard), opacity var(--motion-base) var(--ease-standard);
+}
+.collapse-row > .collapse-row__inner { min-height: 0; }
+.collapse-row.is-collapsing { grid-template-rows: 0fr; opacity: 0; pointer-events: none; }
+.collapse-row.is-collapsing > .collapse-row__inner { overflow: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .collapse-row { transition: none; }
+}

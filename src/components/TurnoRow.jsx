@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { StickyNote, Trash2, Check, X, Pencil, MessageCircle, Clock3, Scissors, UserRound, Timer } from 'lucide-react'
+import { StickyNote, Trash2, Pencil, MessageCircle, Clock3, Scissors, UserRound, Timer } from 'lucide-react'
 import StatusSelect, { statusMeta } from './StatusSelect'
 import { formatFechaVisible } from '../lib/text'
+import { despuesDelColapso } from '../lib/collapseDelete'
 
 export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, barberos = [] }) {
   const [notesOpen, setNotesOpen] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [saliendo, setSaliendo] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const wrapRef = useRef(null)
 
@@ -22,12 +22,11 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
     function onClickOutside(e) {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) {
         setNotesOpen(false)
-        setConfirmDelete(false)
       }
     }
-    if (notesOpen || confirmDelete) document.addEventListener('mousedown', onClickOutside)
+    if (notesOpen) document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [notesOpen, confirmDelete])
+  }, [notesOpen])
 
   const guardarNota = async () => {
     if (!draft.trim()) return
@@ -44,24 +43,19 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
     }
   }
 
-  const eliminarTurno = async () => {
-    if (deleting) return
-    setDeleting(true)
-    setErrorMsg('')
-    try {
-      const removed = await onDeleteTurno(turno.id)
-      if (removed !== false) setConfirmDelete(false)
-      else setErrorMsg('No se pudo eliminar el turno. Sigue disponible para reintentar.')
-    } catch {
-      setErrorMsg('No se pudo eliminar el turno. Revisá tu conexión e intentá de nuevo.')
-    } finally {
-      setDeleting(false)
-    }
+  // Sin confirmación: la fila se colapsa y el aviso ofrece "Deshacer".
+  const eliminarTurno = () => {
+    if (saliendo) return
+    setSaliendo(true)
+    setNotesOpen(false)
+    despuesDelColapso(() => onDeleteTurno(turno.id))
   }
 
   return (
+    <div className={`collapse-row${saliendo ? ' is-collapsing' : ''}`}>
+    <div className="collapse-row__inner">
     <article
-      className={`agenda-item agenda-item--enhanced agenda-item--${meta.value}${notesOpen ? ' agenda-item--notes-open' : ''}${confirmDelete ? ' agenda-item--delete-open' : ''}`}
+      className={`agenda-item agenda-item--enhanced agenda-item--${meta.value}${notesOpen ? ' agenda-item--notes-open' : ''}`}
       ref={wrapRef}
       style={{ '--agenda-barber-color': barbero?.color || 'var(--accent)' }}
       aria-label={`${turno.paciente}, ${serviceLabel}, ${barbero?.nombre || 'sin profesional'}, ${durationLabel}, ${meta.label}`}
@@ -93,8 +87,8 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
       <div className="agenda-actions" style={{ flexShrink: 0 }}>
         <button
           className={`btn-icon-plain ${notasPaciente.length > 0 ? 'has-notes' : ''}`}
-          onClick={() => { setErrorMsg(''); setNotesOpen((v) => !v); setConfirmDelete(false) }}
-          disabled={saving || deleting}
+          onClick={() => { setErrorMsg(''); setNotesOpen((v) => !v) }}
+          disabled={saving || saliendo}
           aria-label="Notas del cliente"
           title="Notas del cliente"
         >
@@ -104,36 +98,13 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
 
         <StatusSelect value={turno.estado} onChange={(v) => onChangeEstado(turno.id, v)} />
 
-        <button className="btn-icon-plain" onClick={() => onEditTurno(turno)} disabled={saving || deleting} aria-label="Editar turno" title="Editar turno">
+        <button className="btn-icon-plain" onClick={() => onEditTurno(turno)} disabled={saving || saliendo} aria-label="Editar turno" title="Editar turno">
           <Pencil size={14} />
         </button>
 
-        <span className="delete-btn-wrap">
-          <button
-            className={`btn-icon-plain ${confirmDelete ? 'danger-active' : ''}`}
-            onClick={() => { setErrorMsg(''); setConfirmDelete((v) => !v); setNotesOpen(false) }}
-            disabled={saving || deleting}
-            aria-label="Eliminar turno"
-            title="Eliminar turno"
-          >
-            <Trash2 size={15} />
-          </button>
-          {confirmDelete && (
-            <div className="delete-confirm-popover">
-              <p className="delete-confirm-text">¿Eliminar este turno?</p>
-              <div className="delete-confirm-buttons">
-                <button className="btn-icon-plain danger-solid" onClick={eliminarTurno} disabled={deleting} aria-label="Confirmar eliminar turno">
-                  <Check size={13} strokeWidth={2.75} />
-                  <span>{deleting ? 'Eliminando...' : 'Eliminar'}</span>
-                </button>
-                <button className="btn-icon-plain" onClick={() => setConfirmDelete(false)} disabled={deleting} aria-label="Cancelar">
-                  <X size={13} strokeWidth={2.75} />
-                  <span>Cancelar</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </span>
+        <button className="btn-icon-plain" onClick={eliminarTurno} disabled={saving || saliendo} aria-label="Eliminar turno" title="Eliminar turno">
+          <Trash2 size={15} />
+        </button>
       </div>
 
       {notesOpen && (
@@ -171,5 +142,7 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
         </div>
       )}
     </article>
+    </div>
+    </div>
   )
 }

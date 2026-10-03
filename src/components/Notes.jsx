@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NotebookPen, StickyNote, Check, Search, X, Pencil, Trash2 } from 'lucide-react'
 import { formatFechaVisible, normalizar } from '../lib/text'
+import { despuesDelColapso } from '../lib/collapseDelete'
 import { EmptyState } from './ui'
 
 const PACIENTE_GENERAL = 'General'
@@ -9,9 +10,8 @@ const OTRO_PACIENTE = '__otro__'
 function NoteCard({ nota, onUpdate, onDelete }) {
   const [editando, setEditando] = useState(false)
   const [draft, setDraft] = useState(nota.texto)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [deleting, setDeleting] = useState(false) // fila colapsándose
   const [errorMsg, setErrorMsg] = useState('')
 
   const guardar = async () => {
@@ -29,19 +29,11 @@ function NoteCard({ nota, onUpdate, onDelete }) {
     }
   }
 
-  const eliminar = async () => {
+  // Sin confirmación: la tarjeta se colapsa y el aviso ofrece "Deshacer".
+  const eliminar = () => {
     if (deleting) return
     setDeleting(true)
-    setErrorMsg('')
-    try {
-      const removed = await onDelete?.(nota.id)
-      if (removed !== false) setConfirmDelete(false)
-      else setErrorMsg('No se pudo eliminar la nota. Sigue disponible para reintentar.')
-    } catch {
-      setErrorMsg('No se pudo eliminar la nota. Revisá tu conexión e intentá de nuevo.')
-    } finally {
-      setDeleting(false)
-    }
+    despuesDelColapso(() => onDelete?.(nota.id))
   }
 
   const cancelar = () => {
@@ -50,6 +42,8 @@ function NoteCard({ nota, onUpdate, onDelete }) {
   }
 
   return (
+    <div className={`collapse-row${deleting ? ' is-collapsing' : ''}`}>
+    <div className="collapse-row__inner">
     <div className="note-card fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <p className="note-meta">{nota.paciente} · {formatFechaVisible(nota.fecha)}</p>
@@ -58,20 +52,9 @@ function NoteCard({ nota, onUpdate, onDelete }) {
             <button className="btn-icon-plain" onClick={() => { setErrorMsg(''); setEditando(true) }} disabled={deleting} aria-label="Editar nota" title="Editar nota">
               <Pencil size={13} />
             </button>
-            {confirmDelete ? (
-              <span className="confirm-delete">
-                <button className="btn-icon-plain danger-solid" onClick={eliminar} disabled={deleting} aria-label="Confirmar eliminar nota">
-                  <Check size={12} strokeWidth={2.75} />
-                </button>
-                <button className="btn-icon-plain" onClick={() => setConfirmDelete(false)} disabled={deleting} aria-label="Cancelar">
-                  <X size={12} strokeWidth={2.75} />
-                </button>
-              </span>
-            ) : (
-              <button className="btn-icon-plain" onClick={() => { setErrorMsg(''); setConfirmDelete(true) }} disabled={deleting} aria-label="Eliminar nota" title="Eliminar nota">
-                <Trash2 size={13} />
-              </button>
-            )}
+            <button className="btn-icon-plain" onClick={eliminar} disabled={deleting} aria-label="Eliminar nota" title="Eliminar nota">
+              <Trash2 size={13} />
+            </button>
           </div>
         )}
       </div>
@@ -90,6 +73,8 @@ function NoteCard({ nota, onUpdate, onDelete }) {
       ) : (
         <p className="note-text">{nota.texto}</p>
       )}
+    </div>
+    </div>
     </div>
   )
 }

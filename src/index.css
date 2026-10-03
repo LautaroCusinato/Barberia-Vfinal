@@ -715,7 +715,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   position: relative;
 }
 
-.agenda-item + .agenda-item { margin-top: 5px; }
+.agenda-item + .agenda-item,
+.collapse-row + .collapse-row > .collapse-row__inner > .agenda-item { margin-top: 5px; }
 .agenda-item.now { background: var(--accent-soft); }
 .agenda-item:not(.now) { border-color: var(--border); }
 .agenda-item:not(.now):hover { border-color: var(--border-strong); background: var(--surface-muted); }
