@@ -4,6 +4,7 @@ import {
   CONVERSATION_REQUIRED_FIELDS,
   createConversationState,
   deriveMissingFields,
+  isConversationStateForScope,
   isConversationStateFresh,
   mergeConversationTurn,
   nextConversationAction,
@@ -101,7 +102,13 @@ export function advanceConversationTurn({ state = null, scope, eventId, text, me
   const acceptedInput = classifyConversationInput({ messageType, text, fromMe, isGroup, isBroadcast })
   if (!acceptedInput.accepted) return { accepted: false, reason: acceptedInput.reason, state }
 
-  const pendingIntent = forceBookingIntent === true ? 'booking_intent' : state?.pending_intent || null
+  // Una conversación cerrada (propuesta ya confirmada) o vencida no hereda su
+  // intención de reservar al mensaje nuevo.
+  // Sólo se reinicia una conversación del mismo alcance; una ajena se rechaza.
+  const sameScope = Boolean(state && isConversationStateForScope(state, scope))
+  const closedState = Boolean(state && sameScope && state.last_event_id !== textFrom(eventId)
+    && (state.confirmation_state === 'confirmed' || !isConversationStateFresh(state, now)))
+  const pendingIntent = forceBookingIntent === true ? 'booking_intent' : closedState ? null : state?.pending_intent || null
   const extracted = extractConversationTurn({ text, pendingIntent, services, barbers, timezone, now })
   const incomingConfirmation = state?.confirmation_state === 'awaiting_confirmation' && parseExplicitConfirmation(text)
   if (incomingConfirmation) {
@@ -123,7 +130,9 @@ export function advanceConversationTurn({ state = null, scope, eventId, text, me
   // Una conversación vencida no bloquea un mensaje nuevo: se empieza otra con
   // el mismo alcance y se conserva sólo la memoria del saludo con enlace. Un
   // reintento del mismo evento sigue llegando a la deduplicación.
-  if (current && !stateFresh && current.last_event_id !== textFrom(eventId)) current = null
+  // Una propuesta ya confirmada no se reabre: el mensaje siguiente empieza otra
+  // conversación (la reserva sólo puede salir del evento que confirmó).
+  if (closedState) current = null
   if (!current) current = { ...createConversationState({ ...scope, now }), timezone: timezone || null, ...channelFieldsFrom(state) }
   const merged = mergeConversationTurn({ state: current, expectedScope: scope, eventId, extracted: extracted.fields, now })
   if (!merged.accepted) return { accepted: false, reason: merged.reason, duplicate: merged.duplicate, state: merged.state, intent: extracted.intent, extracted }

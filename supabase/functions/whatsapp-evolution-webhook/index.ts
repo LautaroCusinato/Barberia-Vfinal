@@ -420,7 +420,8 @@ async function processInboundMessage({
     // Reintento de Evolution: se vuelve a avisar a n8n; envío, reserva y
     // confirmación son idempotentes por evento/turno.
     const existingState = (existing.metadata as Record<string, any> | null)?.conversation_state
-    try { await forwardQaBookingRoute(connection, instance, inbound.eventId, existingState?.ready_for_booking_mutation === true) } catch { return { body: { error: 'qa_booking_route_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
+    const existingConfirmed = existingState?.ready_for_booking_mutation === true && existingState?.confirmation_state === 'confirmed' && existingState?.last_event_id === inbound.eventId
+    try { await forwardQaBookingRoute(connection, instance, inbound.eventId, existingConfirmed) } catch { return { body: { error: 'qa_booking_route_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
     return { body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, status: 202 }
   }
   const tenantId = Number(connection.barberia_id)
@@ -586,7 +587,9 @@ async function processInboundMessage({
   if (recordError) return { body: { error: 'shadow_record_failed', mutation_blocked: true }, status: 502 }
   const shadowRun = Array.isArray(recorded) ? recorded[0] : recorded
   try { await forwardQa927Event(connection, instance, inbound.eventId) } catch { return { body: { error: 'qa_927_forward_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
-  try { await forwardQaBookingRoute(connection, instance, inbound.eventId, bookingFlow && conversationState.ready_for_booking_mutation === true) } catch { return { body: { error: 'qa_booking_route_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
+  // "Listo para reservar" sólo en el evento que confirmó la propuesta.
+  const confirmedNow = bookingFlow && conversationState.ready_for_booking_mutation === true && conversationState.confirmation_state === 'confirmed' && conversationState.last_event_id === inbound.eventId
+  try { await forwardQaBookingRoute(connection, instance, inbound.eventId, confirmedNow) } catch { return { body: { error: 'qa_booking_route_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
   return {
     body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, shadow_run_id: shadowRun?.shadow_run_id || null, duplicate: false, intent: proposal.intent, proposed_reply: proposal.proposed_reply, provider: proposal.provider, mutation_blocked: true, outbound_send: false, conversation_state: bookingFlow ? conversationState.confirmation_state : null, ready_for_booking_mutation: bookingFlow ? conversationState.ready_for_booking_mutation === true : false },
     status: 200,

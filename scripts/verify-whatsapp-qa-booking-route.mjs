@@ -184,6 +184,14 @@ assert.equal(step.booking.body.idempotent, true)
 assert.equal(step.confirmation.body.duplicate, true)
 assert.equal(sends.length, sentBefore)
 
+// Después de reservar, una consulta nueva recibe respuesta y no se trata como otra confirmación.
+await send('¿Cuánto sale el corte?')
+assert.equal(routeCalls.at(-1).body.ready_for_booking_mutation, false, 'sólo el evento que confirmó dispara la reserva')
+step = await n8nOrchestrate(routeCalls.at(-1).body)
+assert.equal(step.reply.body.sent, true, JSON.stringify(step.reply.body))
+assert.match(sends.at(-1).text, /15\.000/)
+assert.equal(db.tables.turnos.length, 1)
+
 // Fuera de la lista o con la ventana vencida no hay ruta.
 const quietBefore = routeCalls.length
 await send('Hola', 'austral-qa-tenant-819')
@@ -210,7 +218,7 @@ assert.equal(nodes['Ruta QA 36'].parameters.responseMode, 'onReceived')
 assert.doesNotMatch(text, /ssagttjdgtypxjcgdnrw|australProd|miwsp"|eyJ|sb_secret/)
 for (const name of ['Enviar respuesta', 'Guardar reserva', 'Enviar confirmación']) {
   assert.match(nodes[name].parameters.url, /^https:\/\/cmsymmszlzikqpvfqjre\.supabase\.co\/functions\/v1\//)
-  assert.equal(nodes[name].credentials?.httpCustomAuth?.id, 'australQaSupabaseNative')
+  assert.equal(nodes[name].credentials?.httpCustomAuth?.id, 'australQa36FnSecret', 'clave secreta QA que reconocen las funciones')
 }
 assert.match(nodes['Enviar confirmación'].parameters.jsonBody, /booking_confirmation/)
 

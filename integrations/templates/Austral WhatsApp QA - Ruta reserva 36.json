@@ -57,7 +57,7 @@
         "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id }) }}",
         "options": { "timeout": 20000 }
       },
-      "credentials": { "httpCustomAuth": { "id": "australQaSupabaseNative", "name": "Austral QA Supabase Headers" } },
+      "credentials": { "httpCustomAuth": { "id": "australQa36FnSecret", "name": "Austral QA 36 Funciones" } },
       "notes": "Envía la respuesta persistida al Cliente QA configurado en Supabase (WHATSAPP_OUTBOUND_QA_RECIPIENT). Sin reintento automático."
     },
     {
@@ -76,7 +76,7 @@
         "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id }) }}",
         "options": { "timeout": 20000 }
       },
-      "credentials": { "httpCustomAuth": { "id": "australQaSupabaseNative", "name": "Austral QA Supabase Headers" } },
+      "credentials": { "httpCustomAuth": { "id": "australQa36FnSecret", "name": "Austral QA 36 Funciones" } },
       "notes": "Revalida la propuesta confirmada y la disponibilidad, y guarda el turno con crear_reserva_whatsapp (idempotente por conversación/versión)."
     },
     {
@@ -110,7 +110,7 @@
         "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id, kind: 'booking_confirmation' }) }}",
         "options": { "timeout": 20000 }
       },
-      "credentials": { "httpCustomAuth": { "id": "australQaSupabaseNative", "name": "Austral QA Supabase Headers" } },
+      "credentials": { "httpCustomAuth": { "id": "australQa36FnSecret", "name": "Austral QA 36 Funciones" } },
       "notes": "Sólo después de guardar: el texto sale de la fila del turno. Una sola vez por turno."
     }
   ],
