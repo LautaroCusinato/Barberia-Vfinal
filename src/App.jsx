@@ -10,6 +10,7 @@ import CobroModal from './components/CobroModal'
 import Toaster from './components/Toaster'
 import TopProgress from './components/TopProgress'
 import { useToasts } from './lib/useToasts.js'
+import { DURACION_AVISO_MS, MENSAJES_EXITO, conAvisoExito } from './lib/avisosExito.js'
 import { cascadaInicial } from './lib/cascade.js'
 import { logout } from './lib/auth.js'
 import { exportarCSV } from './lib/csv'
@@ -868,7 +869,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   // (o si cancela el modal, el turno se queda como estaba).
   const pedirEstadoOCobro = async (turnoId, nuevoEstado) => {
     if (nuevoEstado !== 'atendido') {
-      return updateTurnoEstado(turnoId, nuevoEstado)
+      return conAvisoExito(() => updateTurnoEstado(turnoId, nuevoEstado), MENSAJES_EXITO.estadoTurno(statusMeta(nuevoEstado).label), mostrarToast)
     }
     const turno = turnos.find((t) => t.id === turnoId)
     if (turno) {
@@ -904,6 +905,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       setPagos((prev) => [{ id: nextLocalId(prev), ...nuevoPago, created_at: new Date().toISOString() }, ...prev])
     }
     setCobroTurno(null)
+    mostrarToast({ mensaje: MENSAJES_EXITO.cobroRegistrado, duracion: DURACION_AVISO_MS })
   }
 
   const deleteTurno = (turnoId) => eliminarConDeshacer(turnos, setTurnos, turnoId, 'turnos', 'Turno eliminado', 'No se pudo eliminar el turno')
@@ -930,7 +932,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return movido
   }
 
-  const saveTurno = async ({ paciente, telefono, clienteId, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }, existingId) => {
+  const guardarTurno = async ({ paciente, telefono, clienteId, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }, existingId) => {
     const servicio = servicios.find((item) => String(item.id) === String(servicio_id))
     const barbero = barberos.find((item) => String(item.id) === String(barbero_id))
     const duracionReal = duracionServicioBarbero(barbero, servicio, duracion)
@@ -1031,12 +1033,18 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return true
   }
 
+  const saveTurno = (datos, existingId) => conAvisoExito(
+    () => guardarTurno(datos, existingId),
+    existingId ? MENSAJES_EXITO.turnoEditado : MENSAJES_EXITO.turnoCreado,
+    mostrarToast,
+  )
+
   const openNewTurno = () => { setDbError(''); setEditingTurno(null); setTurnoFechaPrefijada(null); setNewTurnoOpen(true) }
   const openNewTurnoConFecha = (fecha) => { setDbError(''); setEditingTurno(null); setTurnoFechaPrefijada(fecha); setNewTurnoOpen(true) }
   const openEditTurno = (turno) => { setDbError(''); setEditingTurno(turno); setTurnoFechaPrefijada(null); setNewTurnoOpen(true) }
   const closeTurnoModal = () => { setNewTurnoOpen(false); setEditingTurno(null); setTurnoFechaPrefijada(null) }
 
-  const addPaciente = async (datos) => {
+  const guardarPacienteNuevo = async (datos) => {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.from('clientes').insert({ ...datos, barberia_id: barberiaId }).select()
       if (error) {
@@ -1051,7 +1059,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return true
   }
 
-  const updatePaciente = async (id, cambios) => {
+  const guardarCambiosPaciente = async (id, cambios) => {
     const anterior = pacientes.find((p) => p.id === id)
     setPacientes((prev) => prev.map((p) => (p.id === id ? { ...p, ...cambios } : p)))
     if (!isSupabaseConfigured) return true
@@ -1069,6 +1077,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       return false
     }
   }
+
+  const addPaciente = (datos) => conAvisoExito(() => guardarPacienteNuevo(datos), MENSAJES_EXITO.clienteCreado, mostrarToast)
+  const updatePaciente = (id, cambios) => conAvisoExito(() => guardarCambiosPaciente(id, cambios), MENSAJES_EXITO.clienteEditado, mostrarToast)
 
   const deletePaciente = (id) => eliminarOptimista(pacientes, setPacientes, id, 'clientes', 'No se pudo eliminar el cliente')
 

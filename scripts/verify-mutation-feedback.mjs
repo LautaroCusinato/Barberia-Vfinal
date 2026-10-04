@@ -58,6 +58,17 @@ const requiredContracts = [
   ['src/components/TurnoRow.jsx', /eliminarTurno/, /El borrador quedó preservado/, /disabled=\{saving \|\| saliendo\}/], // borrar con "Deshacer": se bloquea mientras la fila se colapsa
   ['src/components/TenantSettings.jsx', /finally \{\s*setSaving\(false\)/, /setUploading\(false\)/, /memberPending/],
 ]
+
+// Avisos de éxito: salen sólo de App y únicamente cuando la mutación confirma
+// el guardado; los modales no emiten un segundo aviso.
+requiredContracts.push(
+  ['src/lib/avisosExito.js', /resultado === true/, /DURACION_AVISO_MS = 5000/],
+  ['src/App.jsx', /conAvisoExito\(\s*\(\) => guardarTurno/, /conAvisoExito\(\(\) => guardarPacienteNuevo/, /conAvisoExito\(\(\) => guardarCambiosPaciente/, /conAvisoExito\(\(\) => updateTurnoEstado/, /setCobroTurno\(null\)\s*mostrarToast\(\{ mensaje: MENSAJES_EXITO\.cobroRegistrado/],
+)
+for (const modal of ['NewTurnoModal', 'CobroModal', 'NewClientModal', 'EditClientModal']) {
+  const content = fs.readFileSync(new URL(`../src/components/${modal}.jsx`, import.meta.url), 'utf8')
+  assert.doesNotMatch(content, /useToasts|mostrarToast|conAvisoExito/, `${modal} no debe duplicar el aviso de éxito de App`)
+}
 for (const [file, ...patterns] of requiredContracts) {
   const content = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
   for (const pattern of patterns) assert.match(content, pattern, `${file} no cumple ${pattern}`)
