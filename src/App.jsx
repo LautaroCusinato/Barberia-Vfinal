@@ -11,6 +11,7 @@ import Toaster from './components/Toaster'
 import TopProgress from './components/TopProgress'
 import { useToasts } from './lib/useToasts.js'
 import { DURACION_AVISO_MS, MENSAJES_EXITO, conAvisoExito } from './lib/avisosExito.js'
+import { agregarPagoSinDuplicar, nuevaClaveCobro, registrarCobroTurno } from './lib/cobroTurno.js'
 import { cascadaInicial } from './lib/cascade.js'
 import { logout } from './lib/auth.js'
 import { exportarCSV } from './lib/csv'
@@ -172,6 +173,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [bloqueos, setBloqueos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.bloqueos, fallbackValue: [] }))
   const [pagos, setPagos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.pagos, fallbackValue: [] }))
   const [cobroTurno, setCobroTurno] = useState(null)
+  // Una clave por apertura del modal de cobro (reintentos incluidos) y un
+  // candado contra envíos simultáneos.
+  const cobroClaveRef = useRef(null)
+  const cobroEnCursoRef = useRef(false)
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [loadedForTenant, setLoadedForTenant] = useState(null)
   const [selectedConversationId, setSelectedConversationId] = useState(null)
@@ -873,39 +878,54 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
     const turno = turnos.find((t) => t.id === turnoId)
     if (turno) {
+      cobroClaveRef.current = nuevaClaveCobro()
       setCobroTurno(turno)
       return true
     }
     return false
   }
 
+  // Estado "atendido" y pago se guardan juntos en el servidor (RPC). Ante un
+  // error el modal sigue abierto con importe y método, y el reintento reusa
+  // la misma clave: si la respuesta anterior se perdió, no se duplica el pago.
   const confirmarCobro = async ({ monto, metodo }) => {
-    if (!cobroTurno) return
+    if (!cobroTurno || cobroEnCursoRef.current) return
     const turno = cobroTurno
-    // Sin turno atendido no registramos el cobro: evita pagos huérfanos de
-    // turnos que en la base siguen como pendientes.
-    if (!(await updateTurnoEstado(turno.id, 'atendido'))) { setCobroTurno(null); return }
-
-    const servicioDelTurno = servicios.find((s) => String(s.id) === String(turno.servicio_id))
-    const nuevoPago = {
-      barberia_id: barberiaId,
-      turno_id: turno.id,
-      cliente_id: turno.cliente_id ?? null,
-      paciente: turno.paciente,
-      servicio: servicioDelTurno?.nombre || turno.motivo || null,
-      monto,
-      metodo,
+    cobroEnCursoRef.current = true
+    try {
+      if (isSupabaseConfigured) {
+        try {
+          const { pago } = await registrarCobroTurno(supabase, { turnoId: turno.id, monto, metodo, clave: cobroClaveRef.current })
+          setPagos((prev) => agregarPagoSinDuplicar(prev, pago))
+        } catch (error) {
+          reportClientError(error?.causa ?? error, { source: 'workspace', tenant_id: barberiaId, user_message: error?.message })
+          // Otro operador ya lo cobró: el servidor es la fuente de verdad y
+          // Realtime trae su pago; la agenda deja de ofrecerlo como pendiente.
+          if (error?.codigo === 'turno_ya_atendido') {
+            setTurnos((prev) => prev.map((t) => (t.id === turno.id ? { ...t, estado: 'atendido' } : t)))
+          }
+          throw error
+        }
+      } else {
+        // Demo sin backend: mismo resultado, en memoria.
+        const servicioDelTurno = servicios.find((s) => String(s.id) === String(turno.servicio_id))
+        const nuevoPago = {
+          barberia_id: barberiaId,
+          turno_id: turno.id,
+          cliente_id: turno.cliente_id ?? null,
+          paciente: turno.paciente,
+          servicio: servicioDelTurno?.nombre || turno.motivo || null,
+          monto,
+          metodo,
+        }
+        setPagos((prev) => [{ id: nextLocalId(prev), ...nuevoPago, created_at: new Date().toISOString() }, ...prev])
+      }
+      setTurnos((prev) => prev.map((t) => (t.id === turno.id ? { ...t, estado: 'atendido' } : t)))
+      setCobroTurno(null)
+      mostrarToast({ mensaje: MENSAJES_EXITO.cobroRegistrado, duracion: DURACION_AVISO_MS })
+    } finally {
+      cobroEnCursoRef.current = false
     }
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('pagos').insert(nuevoPago).select()
-      if (error) { reportError('El turno quedó marcado como atendido, pero no se pudo registrar el cobro', error); setCobroTurno(null); return }
-      if (data?.[0]) setPagos((prev) => [data[0], ...prev])
-    } else {
-      setPagos((prev) => [{ id: nextLocalId(prev), ...nuevoPago, created_at: new Date().toISOString() }, ...prev])
-    }
-    setCobroTurno(null)
-    mostrarToast({ mensaje: MENSAJES_EXITO.cobroRegistrado, duracion: DURACION_AVISO_MS })
   }
 
   const deleteTurno = (turnoId) => eliminarConDeshacer(turnos, setTurnos, turnoId, 'turnos', 'Turno eliminado', 'No se pudo eliminar el turno')

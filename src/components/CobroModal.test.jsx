@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import CobroModal from './CobroModal'
+import { CobroError } from '../lib/cobroTurno.js'
 
 const servicios = [
   { id: 1, nombre: 'Corte', precio: 8500 },
@@ -126,5 +127,24 @@ describe('CobroModal', () => {
     await user.click(screen.getByRole('button', { name: 'Confirmar cobro' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo registrar el cobro')
     expect(screen.getByRole('button', { name: 'Confirmar cobro' })).toBeEnabled()
+  })
+
+  it('ante un rechazo del servidor muestra su motivo y conserva importe y método para reintentar', async () => {
+    const user = userEvent.setup()
+    const rechazo = new CobroError('Este turno ya figura como atendido. Actualizá la agenda antes de cobrarlo de nuevo.', { codigo: 'turno_ya_atendido' })
+    const onConfirm = vi.fn().mockRejectedValueOnce(rechazo).mockResolvedValueOnce(undefined)
+    const { monto, confirmar } = renderModal({ onConfirm })
+    await user.clear(monto())
+    await user.type(monto(), '4321')
+    await user.click(screen.getByRole('button', { name: /Mercado Pago/ }))
+    await user.click(confirmar())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('ya figura como atendido')
+    expect(monto()).toHaveValue(4321)
+    expect(screen.getByRole('button', { name: /Mercado Pago/ })).toHaveClass('active')
+
+    await user.click(confirmar())
+    expect(onConfirm).toHaveBeenNthCalledWith(2, { monto: 4321, metodo: 'mercadopago' })
+    await vi.waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 })

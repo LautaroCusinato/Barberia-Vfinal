@@ -42,9 +42,10 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
     setErrorMsg('')
     try {
       await onConfirm({ monto: Number(monto), metodo })
-    } catch {
-      // Sin esto el botón quedaba en "Guardando…" para siempre.
-      setErrorMsg('No se pudo registrar el cobro. Revisá tu conexión e intentá de nuevo.')
+    } catch (error) {
+      // Sin esto el botón quedaba en "Guardando…" para siempre. Importe y
+      // método quedan como estaban para reintentar.
+      setErrorMsg(error?.name === 'CobroError' && error.message ? error.message : 'No se pudo registrar el cobro. Revisá tu conexión e intentá de nuevo.')
     } finally {
       setSaving(false)
     }
