@@ -5,6 +5,8 @@
  * in the existing shadow-run metadata after server-side scope validation.
  */
 
+import { isValidCustomerName } from './whatsappCustomer.mjs'
+
 export const CONVERSATION_TTL_MS = 30 * 60 * 1000
 export const CONVERSATION_STATES = Object.freeze([
   'collecting',
@@ -68,6 +70,10 @@ const EMPTY_STATE_FIELDS = Object.freeze({
   proposal_id: null,
   ready_for_booking_mutation: false,
   mutation_allowed: false,
+  // Nombre informado en el chat por un cliente nuevo. Sólo se pide cuando el
+  // teléfono no tiene ficha en el negocio; nunca reemplaza datos existentes.
+  customer_name: null,
+  awaiting_customer_name: false,
 })
 
 const textFrom = (value) => String(value ?? '').trim()
@@ -161,6 +167,12 @@ function normalizeExtracted(extracted = {}) {
     if (lastIntent !== null && !intents.has(lastIntent)) throw new TypeError('last_intent is not supported')
     output.last_intent = lastIntent
   }
+  if (Object.prototype.hasOwnProperty.call(extracted, 'customer_name')) {
+    const name = extracted.customer_name === null || extracted.customer_name === '' ? null : textFrom(extracted.customer_name)
+    if (name !== null && !isValidCustomerName(name)) throw new TypeError('customer_name is not valid')
+    output.customer_name = name
+  }
+  if (Object.prototype.hasOwnProperty.call(extracted, 'awaiting_customer_name')) output.awaiting_customer_name = extracted.awaiting_customer_name === true
   if (Object.prototype.hasOwnProperty.call(extracted, 'availability_slots')) {
     if (!Array.isArray(extracted.availability_slots)) throw new TypeError('availability_slots must be an array')
     output.availability_slots = extracted.availability_slots
@@ -285,7 +297,7 @@ export function mergeConversationTurn({ state, expectedScope, eventId, extracted
     return { accepted: false, duplicate: false, reason: 'invalid_extracted_fields', state }
   }
   const next = { ...cloneState(state), ...fields }
-  const changedBookingField = ['service_id', 'requested_date', 'requested_time', 'daypart', 'barber_id', 'barber_selection_pending'].some((field) => Object.prototype.hasOwnProperty.call(fields, field) && fields[field] !== state[field])
+  const changedBookingField = ['service_id', 'requested_date', 'requested_time', 'daypart', 'barber_id', 'barber_selection_pending', 'customer_name'].some((field) => Object.prototype.hasOwnProperty.call(fields, field) && fields[field] !== state[field])
   const proposalMustReset = changedBookingField || state.confirmation_state === 'awaiting_confirmation'
   const nextVersion = Number(state.version || 1) + 1
   const nowIso = iso(now, 'now')
@@ -373,7 +385,7 @@ export function applyConfirmation({ state, expectedScope, text, eventId, now = n
   return { accepted: true, duplicate: false, reason: null, state: next }
 }
 
-export function nextConversationAction(state, { expectedScope, availabilityStatus = null, requestedSlotAvailable = null, now = new Date() } = {}) {
+export function nextConversationAction(state, { expectedScope, availabilityStatus = null, requestedSlotAvailable = null, customerNameRequired = false, now = new Date() } = {}) {
   if (!matchesExpectedScope(state, expectedScope)) return { action: 'restart_conversation', reason: 'conversation_scope_invalid', mutation_allowed: false }
   if (!isConversationStateFresh(state, now)) return { action: 'restart_conversation', reason: 'conversation_expired', mutation_allowed: false }
   const missing = deriveMissingFields(state)
@@ -381,6 +393,7 @@ export function nextConversationAction(state, { expectedScope, availabilityStatu
   if (missing.includes('service_id')) return { action: 'ask_service', missing_fields: missing, mutation_allowed: false }
   if (missing.includes('requested_date')) return { action: 'ask_date', missing_fields: missing, mutation_allowed: false }
   if (missing.includes('requested_time')) return { action: 'ask_time', missing_fields: missing, mutation_allowed: false }
+  if (customerNameRequired === true && !isValidCustomerName(state.customer_name)) return { action: 'ask_name', missing_fields: ['customer_name'], mutation_allowed: false }
   if (availabilityStatus === 'unavailable' || requestedSlotAvailable === false) return { action: 'offer_alternatives', missing_fields: [], mutation_allowed: false }
   if (availabilityStatus === 'available' && requestedSlotAvailable === true) return { action: 'request_confirmation', missing_fields: [], mutation_allowed: false }
   if (state.confirmation_state === 'confirmed') return { action: 'ready_for_booking_mutation', missing_fields: [], ready_for_booking_mutation: true, mutation_allowed: false }

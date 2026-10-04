@@ -1,3 +1,4 @@
 # La prueba SQL local de la tarea 05 corre en bash: con CRLF (core.autocrlf
 # en Windows) falla al primer salto de línea. Regla específica de ese archivo.
 scripts/sql/cobro-atomico/run.sh text eol=lf
+scripts/sql/whatsapp-cliente-unico/run.sh text eol=lf

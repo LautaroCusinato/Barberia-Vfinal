@@ -1,7 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
 import { requireOperator } from '../_shared/supabase.ts'
 import { isRealPersistedSourceMetadata } from '../_shared/whatsappAgentOutboundPilot.mjs'
+import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
 import { isConversationStateFresh, isConversationStateForScope } from '../_shared/whatsappConversationState.mjs'
+import { canonicalArgentineMobile, resolveBookingCustomer } from '../_shared/whatsappCustomer.mjs'
 import {
   QA_BOOKING_MUTATION_ENVIRONMENT,
   QA_BOOKING_MUTATION_FLAG,
@@ -10,16 +12,15 @@ import {
   QA_BOOKING_MUTATION_TENANT_ID,
   bookingMutationGuard,
   buildBookingClaimEventId,
+  buildBookingConfirmedReply,
   constantTimeEqual,
   isConfirmedBookingState,
   isQaBookingMutationRuntime,
-  normalizePhone,
   selectAuthoritativeSlot,
 } from '../_shared/whatsappBookingMutation.mjs'
 
 const MAX_EVENT_AGE_MS = 30 * 60 * 1000
 const PROTECTED_INSTANCE = 'miwsp'
-const QA_CUSTOMER_FALLBACK_NAME = 'E2E_QA_A_CLIENTE'
 
 function textFrom(value: unknown) { return String(value ?? '').trim() }
 
@@ -48,19 +49,17 @@ function safeErrorCode(error: unknown) {
   return textFrom((error as { code?: string })?.code).replace(/[^a-z0-9_:-]/gi, '').slice(0, 40) || 'booking_mutation_failed'
 }
 
-async function loadCustomer(admin: ReturnType<typeof adminClient>, recipient: string) {
+// Cliente del negocio con el mismo teléfono canónico (misma regla que la
+// reserva web y que la restricción única barberia_id + telefono).
+async function loadExistingCustomer(admin: ReturnType<typeof adminClient>, phone: string) {
   const { data, error } = await admin
     .from('clientes')
-    .select('nombre,telefono,email')
+    .select('nombre,email')
     .eq('barberia_id', QA_BOOKING_MUTATION_TENANT_ID)
-    .order('id')
+    .eq('telefono', phone)
+    .maybeSingle()
   if (error) throw new Error('customer_lookup_failed')
-  const normalized = normalizePhone(recipient)
-  const existing = (data || []).find((candidate: Record<string, unknown>) => normalizePhone(candidate.telefono) === normalized)
-  return {
-    nombre: textFrom(existing?.nombre) || QA_CUSTOMER_FALLBACK_NAME,
-    email: textFrom(existing?.email) || null,
-  }
+  return data || null
 }
 
 Deno.serve(async (request) => {
@@ -96,6 +95,17 @@ Deno.serve(async (request) => {
     if (connectionError) return json({ error: 'connection_lookup_failed', mutation_allowed: false }, 502)
     if (!connection || connection.state !== 'CONNECTED' || connection.instance_name === PROTECTED_INSTANCE) return json({ error: 'qa_connection_not_connected', mutation_allowed: false }, 409)
 
+    // Con la pausa por atención humana activa no se agenda automáticamente.
+    const { data: pauseRows, error: pauseError } = await admin
+      .from('config')
+      .select('barberia_id,clave,valor')
+      .eq('barberia_id', QA_BOOKING_MUTATION_TENANT_ID)
+      .eq('clave', 'bot_activo')
+    if (pauseError) return json({ error: 'manual_pause_lookup_failed', mutation_allowed: false }, 502)
+    let pause
+    try { pause = evaluateBotPause(pauseRows || [], QA_BOOKING_MUTATION_TENANT_ID) } catch { return json({ error: 'manual_pause_lookup_failed', mutation_allowed: false }, 502) }
+    if (!pause.botActive) return json({ error: 'bot_paused', mutation_allowed: false, booking_mutation_executed: false }, 409)
+
     const { data: integration, error: integrationError } = await admin
       .from('saas_integraciones')
       .select('id,barberia_id,proveedor,integration_type,estado')
@@ -121,7 +131,7 @@ Deno.serve(async (request) => {
     const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
     const agent = metadata.agent && typeof metadata.agent === 'object' ? metadata.agent as Record<string, unknown> : null
     const senderHashValue = textFrom(metadata.sender_hash)
-    const recipient = normalizePhone(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
+    const recipient = canonicalArgentineMobile(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
     const recipientHash = textFrom(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
     const senderMatches = Boolean(recipient && recipientHash && constantTimeEqual(senderHashValue, recipientHash))
     const stateScopeValid = state ? isConversationStateForScope(state, {
@@ -142,7 +152,7 @@ Deno.serve(async (request) => {
 
     const { data: business, error: businessError } = await admin
       .from('barberias')
-      .select('id,slug,zona_horaria')
+      .select('id,nombre,slug,zona_horaria')
       .eq('id', QA_BOOKING_MUTATION_TENANT_ID)
       .maybeSingle()
     const { data: service, error: serviceError } = await admin
@@ -210,7 +220,10 @@ Deno.serve(async (request) => {
     })
     if (!guard.allowed) return json({ error: guard.reason, mutation_allowed: false, revalidated: true, booking_mutation_executed: false }, 403)
 
-    const customer = await loadCustomer(admin, recipient)
+    // Cliente existente: conserva su ficha. Cliente nuevo: el nombre confirmado
+    // en la conversación; sin ese nombre no se agenda (no hay nombre de relleno).
+    const customer = resolveBookingCustomer({ existing: await loadExistingCustomer(admin, recipient), conversationName: state.customer_name })
+    if (customer.status === 'name_required') return json({ error: 'customer_name_required', mutation_allowed: false, revalidated: true, booking_mutation_executed: false }, 409)
     const { data: booking, error: bookingError } = await admin.rpc('crear_reserva_whatsapp', {
       p_integration_id: connection.integration_id,
       p_event_id: claimEventId,
@@ -236,6 +249,9 @@ Deno.serve(async (request) => {
       fecha: row.fecha,
       hora: row.hora,
       duracion_min: row.duracion_min,
+      customer_status: customer.status,
+      // Texto para avisar por WhatsApp; existe sólo después de guardar el turno.
+      confirmation_reply: buildBookingConfirmedReply({ businessName: business.nombre, serviceName: service.nombre, fecha: row.fecha, hora: row.hora }),
       revalidated: true,
       mutation_allowed: true,
       booking_mutation_executed: true,

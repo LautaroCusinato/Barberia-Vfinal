@@ -1,7 +1,22 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
-import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate, resolveRequestedServices } from '../_shared/whatsappAgentShadow.mjs'
-import { advanceConversationTurn, buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
+import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate, normalizeCustomerReply, resolveRequestedServices } from '../_shared/whatsappAgentShadow.mjs'
+import { QA_BOOKING_MUTATION_FLAG, QA_BOOKING_MUTATION_TENANT_ID } from '../_shared/whatsappBookingMutation.mjs'
+import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
+import {
+  CHAT_CHOICE_PREFIX,
+  PUBLIC_BOOKING_ENVIRONMENT_ENV,
+  PUBLIC_BOOKING_ORIGIN_ENV,
+  buildChannelOfferReply,
+  buildLinkResendReply,
+  buildPublicBookingLink,
+  buildWebChoiceReply,
+  classifyChannelChoice,
+  isChannelChoicePending,
+  shouldOfferChannels,
+} from '../_shared/whatsappChannelOffer.mjs'
+import { advanceConversationTurn, applyWebChannelTurn, buildChannelProposal, buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
 import { nextConversationAction, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
+import { canonicalArgentineMobile } from '../_shared/whatsappCustomer.mjs'
 import { normalizeMessagesUpsertData } from '../_shared/whatsappEvolutionPayload.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
@@ -75,7 +90,12 @@ function messageData(payload: Record<string, unknown>, { allowEnvelopeIdentity =
   const key = data.key && typeof data.key === 'object' ? data.key as Record<string, unknown> : {}
   const message = data.message && typeof data.message === 'object' ? data.message as Record<string, unknown> : {}
   const eventId = safeString(key.id || data.messageId || (allowEnvelopeIdentity ? payload.message_id || payload.event_id || payload.id : '')).slice(0, 200)
-  const remoteJid = safeString(key.remoteJid || key.participant || data.remoteJid || (allowEnvelopeIdentity ? payload.sender : ''))
+  const rawJid = safeString(key.remoteJid || key.participant || data.remoteJid || (allowEnvelopeIdentity ? payload.sender : ''))
+  // Un contacto con identidad LID sólo se usa con la alternativa de teléfono
+  // que entrega el proveedor (remoteJidAlt), con el mismo formato verificado
+  // que el workflow QA de n8n. Sin ella, se conserva el LID: no es un teléfono.
+  const alternateJid = safeString(key.remoteJidAlt)
+  const remoteJid = /^\d+@lid$/.test(rawJid) && /^\d{5,20}@s\.whatsapp\.net$/.test(alternateJid) ? alternateJid : rawJid
   const fromMe = key.fromMe === true || data.fromMe === true || (allowEnvelopeIdentity && payload.fromMe === true)
   const rawMessageType = safeString(data.messageType || payload.messageType || Object.keys(message)[0]).slice(0, 80).toLowerCase()
   const messageType = rawMessageType === 'conversation' || rawMessageType === 'extendedtextmessage' ? 'text' : rawMessageType || null
@@ -103,7 +123,7 @@ async function senderHash(value: string) {
 
 async function loadTenantContext(admin: ReturnType<typeof adminClient>, tenantId: number) {
   const [business, services, barbers, schedules, blocks] = await Promise.all([
-    admin.from('barberias').select('id,nombre,slug,moneda,zona_horaria').eq('id', tenantId).maybeSingle(),
+    admin.from('barberias').select('id,nombre,slug,moneda,zona_horaria,reservas_publicas').eq('id', tenantId).maybeSingle(),
     admin.from('servicios').select('id,nombre,descripcion,precio,duracion_min,activo').eq('barberia_id', tenantId).eq('activo', true).order('nombre'),
     admin.from('barberos').select('id,nombre,especialidad,horario_texto,activo').eq('barberia_id', tenantId).eq('activo', true).order('nombre'),
     admin.from('horarios_barbero').select('barbero_id,day_of_week,start_time,end_time,activo').eq('barberia_id', tenantId).eq('activo', true),
@@ -280,6 +300,41 @@ async function loadConversationState(admin: ReturnType<typeof adminClient>, conn
   return metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
 }
 
+// Pausa por atención humana del negocio resuelto en el servidor. Un error de
+// lectura corta el procesamiento del mensaje: sin respuesta automática.
+async function loadBotPause(admin: ReturnType<typeof adminClient>, tenantId: number) {
+  const { data, error } = await admin.from('config').select('barberia_id,clave,valor').eq('barberia_id', tenantId).eq('clave', 'bot_activo')
+  if (error) throw new Error('manual_pause_lookup_failed')
+  return evaluateBotPause(data || [], tenantId)
+}
+
+// El nombre se pide sólo si el teléfono verificado por el proveedor no tiene
+// ficha con nombre en este negocio. No se revela nada de la ficha existente.
+async function isCustomerNameRequired(admin: ReturnType<typeof adminClient>, tenantId: number, remoteJid: string) {
+  const phone = canonicalArgentineMobile(remoteJid)
+  if (!phone) return true
+  const { data, error } = await admin.from('clientes').select('nombre').eq('barberia_id', tenantId).eq('telefono', phone).maybeSingle()
+  if (error) throw new Error('customer_lookup_failed')
+  return !safeString(data?.nombre)
+}
+
+// Enlace público del negocio: slug del tenant resuelto + origen explícito del
+// entorno. Si falta algo o el texto no pasa el filtro de respuestas, no hay
+// enlace (no se inventa uno).
+function resolveBookingLink(business: Record<string, unknown>, chatBookingEnabled: boolean) {
+  const link = buildPublicBookingLink({
+    origin: Deno.env.get(PUBLIC_BOOKING_ORIGIN_ENV),
+    declaredEnvironment: Deno.env.get(PUBLIC_BOOKING_ENVIRONMENT_ENV),
+    runtimeEnvironment: 'qa',
+    slug: business.slug,
+    publicBookingEnabled: business.reservas_publicas === true,
+  })
+  if (!link.available) return { ...link, offerReply: null }
+  const offerReply = buildChannelOfferReply({ businessName: safeString(business.nombre), url: link.url, chatBookingEnabled })
+  if (normalizeCustomerReply(offerReply) !== offerReply) return { available: false, reason: 'link_reply_rejected', url: null, offerReply: null }
+  return { ...link, offerReply }
+}
+
 type InboundProcessingResult = { body: Record<string, unknown>; status: number }
 
 /**
@@ -308,70 +363,115 @@ async function processInboundMessage({
   const { data: existing, error: existingError } = await admin.from('saas_automation_shadow_runs').select('id').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle()
   if (existingError) return { body: { error: 'shadow_lookup_failed', mutation_blocked: true }, status: 502 }
   if (existing) return { body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, status: 202 }
+  const tenantId = Number(connection.barberia_id)
+  const pause = await loadBotPause(admin, tenantId)
+  if (!pause.botActive) return { body: { received: true, accepted: false, event: INBOUND_EVENT, tenant_id: connection.barberia_id, reason: 'bot_paused', mutation_blocked: true, outbound_send: false }, status: 202 }
   const context = await loadTenantContext(admin, connection.barberia_id)
   const senderHashValue = await senderHash(inbound.remoteJid)
   const previousConversation = await loadConversationState(admin, connection, instance, senderHashValue)
   const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
-  const conversation = advanceConversationTurn({
-    state: previousConversation,
-    scope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' },
-    eventId: inbound.eventId,
-    text: inbound.text,
-    messageType: inbound.messageType || 'text',
-    fromMe: inbound.fromMe,
-    isGroup: inbound.isGroup,
-    isBroadcast: inbound.isBroadcast,
-    services: context.services,
-    barbers: context.barbers,
-    timezone,
-  })
-  if (!conversation.accepted) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: conversation.reason, duplicate: conversation.duplicate === true, mutation_blocked: true, outbound_send: false }, status: conversation.duplicate ? 202 : 422 }
+  const now = new Date()
+  const scope = { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }
+  // Reservar por chat sólo se ofrece donde el circuito QA puede agendar.
+  const chatBookingEnabled = tenantId === QA_BOOKING_MUTATION_TENANT_ID && safeString(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1'
+  const bookingLink = resolveBookingLink(context.business, chatBookingEnabled)
+  const customerNameRequired = await isCustomerNameRequired(admin, tenantId, inbound.remoteJid)
+  const channelChoice = classifyChannelChoice(inbound.text)
+  const choicePending = isChannelChoicePending(previousConversation, now)
+  // Sin enlace disponible, pedirlo no corta una reserva por chat en curso.
+  const linkUnavailableRequest = channelChoice === 'link_request' && bookingLink.available !== true
+  const webTurn = (channelChoice === 'link_request' && !linkUnavailableRequest) || (choicePending && channelChoice === 'web')
+  const chatChosen = choicePending && channelChoice === 'chat'
 
-  const bookingFlow = conversation.intent === 'booking_intent' || conversation.state?.pending_intent === 'booking_intent'
   let availability = null
-  let conversationState = conversation.state
-  if (bookingFlow && conversation.action?.action === 'check_availability') {
-    try {
-      availability = await loadConversationAvailability(admin, context, conversationState)
-      if (availability.rpc_executed === true) {
-        const availabilityResult = recordAvailabilityResult({
-          state: conversationState,
-          expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' },
-          source: 'authoritative_rpc',
-          available: availability.requested_slot_available === true,
-          snapshotId: `rpc:${inbound.eventId}`,
-          proposalId: `proposal:${conversationState.conversation_id}:${conversationState.version}`,
-          slots: availability.slots,
-        })
-        if (availabilityResult.accepted) conversationState = availabilityResult.state
+  let conversationState: Record<string, any>
+  let conversationAction: string | null = null
+  let bookingFlow = false
+  let proposal: Record<string, any>
+  if (webTurn) {
+    // Pedir o elegir el enlace no agenda nada y corta una reserva por chat en curso.
+    const linkRequested = channelChoice === 'link_request'
+    const web = applyWebChannelTurn({ state: previousConversation, scope, eventId: inbound.eventId, text: inbound.text, messageType: inbound.messageType || 'text', fromMe: inbound.fromMe, isGroup: inbound.isGroup, isBroadcast: inbound.isBroadcast, timezone, linkResent: linkRequested, now })
+    if (!web.accepted) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: web.reason, duplicate: web.duplicate === true, mutation_blocked: true, outbound_send: false }, status: web.duplicate ? 202 : 422 }
+    conversationState = web.state
+    const reply = linkRequested ? buildLinkResendReply({ url: bookingLink.url, linkAvailable: true }) : buildWebChoiceReply()
+    conversationAction = linkRequested ? 'channel_link_resent' : 'channel_web_chosen'
+    proposal = buildChannelProposal({ reply, requestedAction: conversationAction, state: conversationState })
+  } else {
+    const conversation = advanceConversationTurn({
+      state: previousConversation,
+      scope,
+      eventId: inbound.eventId,
+      text: inbound.text,
+      messageType: inbound.messageType || 'text',
+      fromMe: inbound.fromMe,
+      isGroup: inbound.isGroup,
+      isBroadcast: inbound.isBroadcast,
+      services: context.services,
+      barbers: context.barbers,
+      timezone,
+      customerNameRequired,
+      forceBookingIntent: chatChosen && chatBookingEnabled,
+      now,
+    })
+    if (!conversation.accepted) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: conversation.reason, duplicate: conversation.duplicate === true, mutation_blocked: true, outbound_send: false }, status: conversation.duplicate ? 202 : 422 }
+    conversationState = chatChosen ? { ...conversation.state, channel_choice: 'chat' } : conversation.state
+    const offer = chatChosen
+      ? { offer: false }
+      : shouldOfferChannels({ state: previousConversation, intent: conversation.intent, extractedFields: conversation.extracted?.fields, linkAvailable: bookingLink.available === true, now })
+    if (linkUnavailableRequest) {
+      conversationAction = 'channel_link_unavailable'
+      proposal = buildChannelProposal({ reply: buildLinkResendReply({ linkAvailable: false, chatBookingEnabled }), intent: conversation.intent === 'booking_intent' ? 'booking_intent' : 'general_query', requestedAction: conversationAction, state: conversationState })
+    } else if (offer.offer) {
+      conversationState = { ...conversationState, channel_offer_at: now.toISOString(), channel_choice: null }
+      conversationAction = 'channel_offer'
+      proposal = buildChannelProposal({ reply: bookingLink.offerReply, intent: conversation.intent === 'booking_intent' ? 'booking_intent' : 'general_query', requestedAction: conversationAction, state: conversationState })
+    } else {
+      bookingFlow = conversation.intent === 'booking_intent' || conversationState?.pending_intent === 'booking_intent'
+      if (bookingFlow && conversation.action?.action === 'check_availability') {
+        try {
+          availability = await loadConversationAvailability(admin, context, conversationState)
+          if (availability.rpc_executed === true) {
+            const availabilityResult = recordAvailabilityResult({
+              state: conversationState,
+              expectedScope: scope,
+              source: 'authoritative_rpc',
+              available: availability.requested_slot_available === true,
+              snapshotId: `rpc:${inbound.eventId}`,
+              proposalId: `proposal:${conversationState.conversation_id}:${conversationState.version}`,
+              slots: availability.slots,
+            })
+            if (availabilityResult.accepted) conversationState = availabilityResult.state
+          }
+        } catch {
+          availability = { status: 'error', request: { requested_date: conversationState.requested_date, requested_time: conversationState.requested_time, requested_daypart: conversationState.daypart, timezone }, slots: [], rpc_executed: false }
+        }
       }
-    } catch {
-      availability = { status: 'error', request: { requested_date: conversationState.requested_date, requested_time: conversationState.requested_time, requested_daypart: conversationState.daypart, timezone }, slots: [], rpc_executed: false }
+      proposal = bookingFlow
+        ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: scope, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, services: context.services, barbers: context.barbers, businessName: context.business.nombre, replyPrefix: chatChosen && chatBookingEnabled ? CHAT_CHOICE_PREFIX : '' })
+        : await (async () => {
+          const initialIntent = classifyShadowIntent(inbound.text)
+          if (initialIntent === 'availability_query') {
+            try { availability = await loadAvailability(admin, context, inbound.text, initialIntent) } catch { availability = { status: 'error', request: interpretRequestedDate(inbound.text, timezone), slots: [], rpc_executed: false } }
+          } else if (conversationState?.last_intent === 'availability_query' && /\b(mas tarde|mas temprano|otro horario|otro dia)\b/i.test(inbound.text)) {
+            try { availability = await loadRelativeAvailability(admin, context, conversationState, inbound.text) } catch { availability = { status: 'error', request: { date_key: conversationState.requested_date }, slots: [], rpc_executed: false } }
+          }
+          if (availability?.rpc_executed === true) {
+            conversationState = {
+              ...conversationState,
+              availability_slots: availability.slots.map((slot: Record<string, unknown>) => safeString(slot.hora).slice(0, 5)).filter(Boolean).slice(0, 8),
+              availability_reference_time: safeString(availability.slots?.[0]?.hora).slice(0, 5) || conversationState?.availability_reference_time || null,
+            }
+          }
+          return generateShadowProposal({
+            text: inbound.text,
+            context: { ...context, availability, conversation: conversationState },
+            apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
+            model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
+          })
+        })()
     }
   }
-  const proposal = bookingFlow
-    ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, services: context.services, barbers: context.barbers, businessName: context.business.nombre })
-      : await (async () => {
-        const initialIntent = classifyShadowIntent(inbound.text)
-        if (initialIntent === 'availability_query') {
-          try { availability = await loadAvailability(admin, context, inbound.text, initialIntent) } catch { availability = { status: 'error', request: interpretRequestedDate(inbound.text, timezone), slots: [], rpc_executed: false } }
-        } else if (conversationState?.last_intent === 'availability_query' && /\b(mas tarde|mas temprano|otro horario|otro dia)\b/i.test(inbound.text)) {
-          try { availability = await loadRelativeAvailability(admin, context, conversationState, inbound.text) } catch { availability = { status: 'error', request: { date_key: conversationState.requested_date }, slots: [], rpc_executed: false } }
-        }
-        if (availability?.rpc_executed === true) {
-          conversationState = {
-            ...conversationState,
-            availability_slots: availability.slots.map((slot: Record<string, unknown>) => safeString(slot.hora).slice(0, 5)).filter(Boolean).slice(0, 8),
-            availability_reference_time: safeString(availability.slots?.[0]?.hora).slice(0, 5) || conversationState?.availability_reference_time || null,
-          }
-        }
-        return generateShadowProposal({
-          text: inbound.text,
-          context: { ...context, availability, conversation: conversationState },
-          apiKey: safeString(Deno.env.get('DEEPSEEK_API_KEY')),
-          model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
-        })
-      })()
   const { data: recorded, error: recordError } = await admin.rpc('record_whatsapp_shadow_run', {
     p_integration_id: connection.integration_id,
     p_event_id: inbound.eventId,
@@ -414,7 +514,7 @@ async function processInboundMessage({
       },
       proposed_reply: proposal.proposed_reply,
       conversation_state: conversationState,
-      conversation_action: bookingFlow ? (proposal.requested_action || conversation.action?.action || null) : null,
+      conversation_action: conversationAction ?? (bookingFlow ? (proposal.requested_action || null) : null),
       conversation_scope: { tenant_id: connection.barberia_id, integration_id: connection.integration_id, instance, sender_hash: senderHashValue, environment: 'qa' },
       mutation_blocked: true,
       outbound_send: false,

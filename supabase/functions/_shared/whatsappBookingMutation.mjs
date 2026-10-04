@@ -109,6 +109,20 @@ export function bookingMutationGuard({
   return { allowed: true, reason: null }
 }
 
+/**
+ * Aviso para el cliente que sólo se arma con la fila ya guardada por
+ * crear_reserva_whatsapp (fecha/hora devueltas por la RPC, no las propuestas).
+ */
+export function buildBookingConfirmedReply({ businessName, serviceName, fecha, hora } = {}) {
+  const date = textFrom(fecha)
+  const time = textFrom(hora).slice(0, 5)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) return null
+  const dayLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+  const service = textFrom(serviceName).replace(/[\r\n]+/g, ' ').slice(0, 120)
+  const business = textFrom(businessName).replace(/[\r\n]+/g, ' ').slice(0, 120)
+  return `¡Listo! Tu turno${service ? ` de ${service}` : ''} quedó reservado para el ${dayLabel} a las ${time}${business ? ` en ${business}` : ''}.`
+}
+
 export function buildBookingMutationContract({ state = {}, recheck = {}, pilotEnabled = false } = {}) {
   return {
     claim_key: buildBookingClaimEventId(state),

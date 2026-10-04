@@ -18,6 +18,7 @@ import {
   resolveRequestedBarbers,
   resolveRequestedServices,
 } from './whatsappAgentShadow.mjs'
+import { extractCustomerName } from './whatsappCustomer.mjs'
 
 const textFrom = (value) => String(value ?? '').trim()
 
@@ -72,15 +73,35 @@ export function extractConversationTurn({ text, pendingIntent = null, services =
   return { intent, fields, request, serviceResolution, barberResolution }
 }
 
+// Campos que sobreviven al vencimiento de la conversación: recuerdan si ya se
+// ofreció el enlace y qué camino eligió el cliente, para no repetir el saludo.
+const CHANNEL_FIELDS = Object.freeze(['channel_offer_at', 'channel_choice'])
+const BOOKING_DETAIL_FIELDS = Object.freeze(['service_id', 'requested_date', 'requested_time', 'daypart', 'barber_id'])
+
+function channelFieldsFrom(state) {
+  const output = {}
+  for (const field of CHANNEL_FIELDS) if (state && state[field] !== undefined) output[field] = state[field]
+  return output
+}
+
+function hasBookingDetail(fields = {}) {
+  return BOOKING_DETAIL_FIELDS.some((field) => fields[field] !== null && fields[field] !== undefined && fields[field] !== '')
+}
+
 /**
  * Applies one inbound turn to the persisted deterministic state. No network,
  * LLM, Evolution or booking calls occur here.
+ *
+ * `customerNameRequired` lo decide el servidor (el teléfono verificado no
+ * tiene ficha en el negocio): antes de consultar disponibilidad se pide el
+ * nombre. `forceBookingIntent` se usa cuando el cliente eligió reservar por
+ * este chat después del saludo con las dos opciones.
  */
-export function advanceConversationTurn({ state = null, scope, eventId, text, messageType = 'text', fromMe = false, isGroup = false, isBroadcast = false, services = [], barbers = [], timezone, now = new Date() } = {}) {
+export function advanceConversationTurn({ state = null, scope, eventId, text, messageType = 'text', fromMe = false, isGroup = false, isBroadcast = false, services = [], barbers = [], timezone, customerNameRequired = false, forceBookingIntent = false, now = new Date() } = {}) {
   const acceptedInput = classifyConversationInput({ messageType, text, fromMe, isGroup, isBroadcast })
   if (!acceptedInput.accepted) return { accepted: false, reason: acceptedInput.reason, state }
 
-  const pendingIntent = state?.pending_intent || null
+  const pendingIntent = forceBookingIntent === true ? 'booking_intent' : state?.pending_intent || null
   const extracted = extractConversationTurn({ text, pendingIntent, services, barbers, timezone, now })
   const incomingConfirmation = state?.confirmation_state === 'awaiting_confirmation' && parseExplicitConfirmation(text)
   if (incomingConfirmation) {
@@ -91,15 +112,85 @@ export function advanceConversationTurn({ state = null, scope, eventId, text, me
   }
 
   let current = state
-  if (current && !isConversationStateFresh(current, now) && extracted.intent === 'booking_intent') current = null
-  if (!current) current = { ...createConversationState({ ...scope, now }), timezone: timezone || null }
+  const stateFresh = Boolean(current && isConversationStateFresh(current, now))
+  if (stateFresh && current.awaiting_customer_name === true && !hasBookingDetail(extracted.fields)) {
+    const name = extractCustomerName(text)
+    if (name) {
+      extracted.fields.customer_name = name
+      extracted.fields.pending_intent = 'booking_intent'
+    }
+  }
+  // Una conversación vencida no bloquea un mensaje nuevo: se empieza otra con
+  // el mismo alcance y se conserva sólo la memoria del saludo con enlace. Un
+  // reintento del mismo evento sigue llegando a la deduplicación.
+  if (current && !stateFresh && current.last_event_id !== textFrom(eventId)) current = null
+  if (!current) current = { ...createConversationState({ ...scope, now }), timezone: timezone || null, ...channelFieldsFrom(state) }
   const merged = mergeConversationTurn({ state: current, expectedScope: scope, eventId, extracted: extracted.fields, now })
   if (!merged.accepted) return { accepted: false, reason: merged.reason, duplicate: merged.duplicate, state: merged.state, intent: extracted.intent, extracted }
-  const action = nextConversationAction(merged.state, { expectedScope: scope, now })
-  return { accepted: true, duplicate: false, reason: null, state: merged.state, action, intent: merged.state.pending_intent || extracted.intent, extracted, confirmed: false }
+  const action = nextConversationAction(merged.state, { expectedScope: scope, customerNameRequired, now })
+  const nextState = { ...merged.state, awaiting_customer_name: action.action === 'ask_name' }
+  return { accepted: true, duplicate: false, reason: null, state: nextState, action, intent: nextState.pending_intent || extracted.intent, extracted, confirmed: false }
 }
 
-export function buildConversationProposal({ state, action, availability = null, services = [], barbers = [], businessName = 'la barbería' } = {}) {
+/**
+ * Turno en el que el cliente pidió el enlace o eligió reservar por la web.
+ * No agenda nada y deja sin efecto cualquier reserva que se estuviera armando
+ * por chat, para no confirmar después un turno paralelo.
+ */
+export function applyWebChannelTurn({ state = null, scope, eventId, text, messageType = 'text', fromMe = false, isGroup = false, isBroadcast = false, timezone, linkResent = false, now = new Date() } = {}) {
+  const acceptedInput = classifyConversationInput({ messageType, text, fromMe, isGroup, isBroadcast })
+  if (!acceptedInput.accepted) return { accepted: false, reason: acceptedInput.reason, state }
+  let current = state
+  if (current && !isConversationStateFresh(current, now) && current.last_event_id !== textFrom(eventId)) current = null
+  if (!current) current = { ...createConversationState({ ...scope, now }), timezone: timezone || null, ...channelFieldsFrom(state) }
+  const merged = mergeConversationTurn({
+    state: current,
+    expectedScope: scope,
+    eventId,
+    extracted: {
+      pending_intent: null,
+      last_intent: 'general_query',
+      service_id: null,
+      requested_date: null,
+      requested_time: null,
+      daypart: null,
+      barber_id: null,
+      barber_selection_pending: false,
+      awaiting_customer_name: false,
+    },
+    now,
+  })
+  if (!merged.accepted) return { accepted: false, reason: merged.reason, duplicate: merged.duplicate, state: merged.state }
+  const nextState = {
+    ...merged.state,
+    channel_choice: 'web',
+    channel_offer_at: linkResent === true ? new Date(now).toISOString() : merged.state.channel_offer_at || null,
+  }
+  return { accepted: true, duplicate: false, reason: null, state: nextState, intent: 'general_query' }
+}
+
+/** Propuesta con la misma forma que las demás, para el saludo y la elección de canal. */
+export function buildChannelProposal({ reply, intent = 'general_query', requestedAction, state = null } = {}) {
+  return {
+    intent,
+    proposed_reply: normalizeCustomerReply(reply, '¿En qué te puedo ayudar?'),
+    confidence: 0.95,
+    requested_action: requestedAction,
+    tools_considered: ['tenant_context_read'],
+    context_counts: {
+      conversation_required_fields: CONVERSATION_REQUIRED_FIELDS,
+      missing_fields: deriveMissingFields(state),
+      channel_choice: state?.channel_choice || null,
+    },
+    provider: 'qa_deterministic_conversation',
+    model: 'conversation-state-v1',
+    agent_prompt_version: CUSTOMER_FACING_PROMPT_VERSION,
+    mutation_allowed: false,
+    outbound_allowed: false,
+  }
+}
+
+export function buildConversationProposal({ state, action, availability = null, services = [], barbers = [], businessName = 'la barbería', replyPrefix = '' } = {}) {
   const safeBusinessName = textFrom(businessName) || 'la barbería'
   const service = serviceName(services, state?.service_id)
   const date = dateLabel(state?.requested_date)
@@ -135,10 +226,16 @@ export function buildConversationProposal({ state, action, availability = null, 
       requestedAction = 'booking_offer_alternatives'
       break
     }
-    case 'request_confirmation':
-      proposedReply = `Tengo disponible ${service || 'el servicio'} el ${date || 'día solicitado'} a las ${time || 'la hora solicitada'}. ¿Confirmás?`
+    case 'ask_name':
+      proposedReply = '¿A nombre de quién dejo el turno?'
+      requestedAction = 'booking_collect_customer_name'
+      break
+    case 'request_confirmation': {
+      const customer = textFrom(state?.customer_name)
+      proposedReply = `Tengo disponible ${service || 'el servicio'} el ${date || 'día solicitado'} a las ${time || 'la hora solicitada'}${customer ? ` a nombre de ${customer}` : ''}. ¿Confirmás?`
       requestedAction = 'booking_request_confirmation'
       break
+    }
     case 'ready_for_booking_mutation':
       proposedReply = 'Perfecto, ya tengo todos los datos.'
       requestedAction = 'booking_confirmed_ready'
@@ -164,7 +261,7 @@ export function buildConversationProposal({ state, action, availability = null, 
   if (availability?.rpc_executed === true) tools.push('availability_rpc_read')
   return {
     intent: 'booking_intent',
-    proposed_reply: normalizeCustomerReply(proposedReply, '¿En qué te puedo ayudar?'),
+    proposed_reply: normalizeCustomerReply(textFrom(replyPrefix) ? `${textFrom(replyPrefix)} ${proposedReply}` : proposedReply, '¿En qué te puedo ayudar?'),
     confidence: 0.95,
     requested_action: requestedAction,
     tools_considered: tools,

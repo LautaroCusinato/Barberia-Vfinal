@@ -11,6 +11,7 @@ import {
   parseQaAgentOutboundTenantAllowlist,
   qaAgentOutboundInstanceForTenant,
 } from '../_shared/whatsappAgentOutboundPilot.mjs'
+import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
 import { buildQaEvolutionSendTextPath, normalizeRecipient, sanitizeProviderResult } from '../_shared/whatsappOutboundPilot.mjs'
 
 const MAX_EVENT_AGE_MS = 30 * 60 * 1000
@@ -97,6 +98,18 @@ Deno.serve(async (request) => {
       .maybeSingle()
     if (connectionError) return json({ error: 'connection_lookup_failed', outbound_allowed: false }, 502)
     if (!connection || Number(connection.barberia_id) !== tenantId || Number(connection.integration_id) !== integrationId || connection.state !== 'CONNECTED' || connection.instance_name !== expectedInstance || connection.instance_name === PROTECTED_WHATSAPP_INSTANCE) return json({ error: 'qa_connection_not_connected', outbound_allowed: false }, 409)
+
+    // La pausa por atención humana se vuelve a leer justo antes de enviar: si
+    // alguien del equipo tomó el chat después de la propuesta, no se responde.
+    const { data: pauseRows, error: pauseError } = await admin
+      .from('config')
+      .select('barberia_id,clave,valor')
+      .eq('barberia_id', tenantId)
+      .eq('clave', 'bot_activo')
+    if (pauseError) return json({ error: 'manual_pause_lookup_failed', outbound_allowed: false }, 502)
+    let pause
+    try { pause = evaluateBotPause(pauseRows || [], tenantId) } catch { return json({ error: 'manual_pause_lookup_failed', outbound_allowed: false }, 502) }
+    if (!pause.botActive) return json({ error: 'bot_paused', outbound_allowed: false }, 409)
 
     const { data: integration, error: integrationError } = await admin
       .from('saas_integraciones')
