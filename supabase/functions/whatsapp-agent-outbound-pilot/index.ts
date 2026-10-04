@@ -5,6 +5,7 @@ import {
   agentOutboundGuard,
   buildAgentOutboundOperationId,
   buildBookingConfirmationOperationId,
+  classifyEvolutionSendOutcome,
   isQaAgentOutboundTenantAllowed,
   isPersistedConversationScope,
   isRealPersistedSourceMetadata,
@@ -47,11 +48,11 @@ function constantTimeEqual(left: string, right: string) {
   return mismatch === 0
 }
 
-async function finishClaim(admin: ReturnType<typeof adminClient>, integrationId: number, operationId: string, result: string) {
+async function finishClaim(admin: ReturnType<typeof adminClient>, integrationId: number, operationId: string, result: string, status: 'completed' | 'failed' = 'completed') {
   const { data, error } = await admin.rpc('finish_whatsapp_event', {
     p_integration_id: integrationId,
     p_event_id: operationId,
-    p_status: 'completed',
+    p_status: status,
     p_result_reference: result,
   })
   return !error && data === true
@@ -235,12 +236,22 @@ Deno.serve(async (request) => {
         method: 'POST',
         headers: { apikey: apiKey, 'content-type': 'application/json' },
         body: JSON.stringify({ number: recipient, text: proposedReply }),
+        signal: AbortSignal.timeout(15_000),
       })
     } catch {
-      return json({ error: 'evolution_send_failed_no_retry', operation_id: operationId, outbound_allowed: true }, 502)
+      // Sin respuesta: pudo haberse entregado. El reclamo queda en
+      // processing (bloquea repeticiones) y no se reintenta.
+      return json({ error: 'evolution_send_uncertain_no_retry', send_outcome: 'uncertain', operation_id: operationId, outbound_allowed: true }, 502)
     }
     const providerBody = await response.json().catch(() => null)
-    if (!response.ok) return json({ error: 'evolution_send_failed_no_retry', operation_id: operationId, outbound_allowed: true }, 502)
+    const outcome = classifyEvolutionSendOutcome({ status: response.status })
+    if (outcome === 'rejected') {
+      // Rechazo explícito del proveedor: el mensaje no salió. Se registra
+      // como fallido para que el saludo pueda volver a ofrecerse.
+      await finishClaim(admin, connection.integration_id, operationId, `evolution_rejected:${response.status}`, 'failed')
+      return json({ error: 'evolution_send_rejected', send_outcome: 'rejected', operation_id: operationId, outbound_allowed: true }, 502)
+    }
+    if (outcome !== 'sent') return json({ error: 'evolution_send_uncertain_no_retry', send_outcome: 'uncertain', operation_id: operationId, outbound_allowed: true }, 502)
 
     const providerResult = sanitizeProviderResult(providerBody)
     const completed = await finishClaim(admin, connection.integration_id, operationId, `agent_outbound_sent:${operationId}`)

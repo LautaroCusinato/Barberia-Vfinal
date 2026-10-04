@@ -76,7 +76,7 @@ export function extractConversationTurn({ text, pendingIntent = null, services =
 
 // Campos que sobreviven al vencimiento de la conversación: recuerdan si ya se
 // ofreció el enlace y qué camino eligió el cliente, para no repetir el saludo.
-const CHANNEL_FIELDS = Object.freeze(['channel_offer_at', 'channel_choice'])
+const CHANNEL_FIELDS = Object.freeze(['channel_offer_at', 'channel_offer_event_id', 'channel_choice'])
 const BOOKING_DETAIL_FIELDS = Object.freeze(['service_id', 'requested_date', 'requested_time', 'daypart', 'barber_id'])
 
 function channelFieldsFrom(state) {
@@ -174,6 +174,7 @@ export function applyWebChannelTurn({ state = null, scope, eventId, text, messag
     ...merged.state,
     channel_choice: 'web',
     channel_offer_at: linkResent === true ? new Date(now).toISOString() : merged.state.channel_offer_at || null,
+    channel_offer_event_id: linkResent === true ? textFrom(eventId) : merged.state.channel_offer_event_id || null,
   }
   return { accepted: true, duplicate: false, reason: null, state: nextState, intent: 'general_query' }
 }

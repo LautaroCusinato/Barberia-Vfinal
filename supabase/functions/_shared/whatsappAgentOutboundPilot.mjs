@@ -34,6 +34,18 @@ export function qa927OneShotOperationId(runId) {
   return /^[a-zA-Z0-9_-]{8,80}$/.test(value) ? `agent-outbound:qa-927:${value}` : null
 }
 
+// Resultado de un envío a Evolution. Sólo un rechazo explícito del proveedor
+// prueba que el mensaje no salió; un error de red, timeout, 408/429 o 5xx
+// puede haber entregado igual, así que queda incierto y no se reintenta.
+const CONFIRMED_REJECTION_STATUSES = new Set([400, 401, 403, 404, 422])
+export function classifyEvolutionSendOutcome({ threw = false, status = null } = {}) {
+  if (threw === true) return 'uncertain'
+  const code = Number(status)
+  if (code >= 200 && code < 300) return 'sent'
+  if (CONFIRMED_REJECTION_STATUSES.has(code)) return 'rejected'
+  return 'uncertain'
+}
+
 export function buildBookingConfirmationOperationId(turnoId) {
   const id = Number(turnoId)
   return Number.isSafeInteger(id) && id > 0 ? `booking-confirmation:${id}` : null

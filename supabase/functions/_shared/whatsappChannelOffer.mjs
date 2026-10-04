@@ -13,6 +13,9 @@ export const PUBLIC_BOOKING_ENVIRONMENT_ENV = 'WHATSAPP_PUBLIC_BOOKING_ENVIRONME
 export const CHANNEL_OFFER_COOLDOWN_MS = 12 * 60 * 60 * 1000
 // Orígenes que sirven el frontend productivo. Un entorno que no es producción
 // nunca ofrece estos enlaces aunque se configuren por error.
+// Margen para que la ruta n8n intente el envío del saludo. Sin reclamo de
+// envío pasado este margen, el saludo se considera no intentado.
+export const OFFER_DELIVERY_GRACE_MS = 2 * 60 * 1000
 export const KNOWN_PRODUCTION_WEB_ORIGINS = Object.freeze(['https://barberia-177.pages.dev'])
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/
@@ -99,6 +102,29 @@ function offerTimestamp(state) {
   return Number.isFinite(time) ? time : null
 }
 
+/**
+ * Estado de entrega del saludo anterior según su reclamo de envío
+ * (saas_automation_events, operación agent-outbound:<evento>):
+ *   completed -> 'delivered'; processing -> 'uncertain' (pudo salir: no se
+ *   repite); failed -> 'failed' (rechazo confirmado); sin reclamo -> 'pending'
+ *   dentro del margen y 'not_attempted' después. Sin evento registrado
+ *   (estados anteriores) -> null: se respeta el período normal.
+ */
+export function offerDeliveryState({ offerEventId, claim = null, offeredAt, now = new Date() } = {}) {
+  if (!textFrom(offerEventId)) return null
+  const status = textFrom(claim?.status)
+  if (status === 'completed') return 'delivered'
+  if (status === 'failed') return 'failed'
+  if (status) return 'uncertain'
+  const age = new Date(now).getTime() - new Date(textFrom(offeredAt)).getTime()
+  if (!Number.isFinite(age) || age < OFFER_DELIVERY_GRACE_MS) return 'pending'
+  return 'not_attempted'
+}
+
+export function isOfferUndelivered(delivery) {
+  return delivery === 'failed' || delivery === 'not_attempted'
+}
+
 /** El último saludo con enlace sigue vigente para esta conversación. */
 export function isChannelOfferFresh(state, now = new Date()) {
   const offeredAt = offerTimestamp(state)
@@ -108,8 +134,8 @@ export function isChannelOfferFresh(state, now = new Date()) {
 }
 
 /** Hay un saludo vigente que todavía espera que el cliente elija. */
-export function isChannelChoicePending(state, now = new Date()) {
-  return isChannelOfferFresh(state, now) && !textFrom(state?.channel_choice)
+export function isChannelChoicePending(state, now = new Date(), previousOfferDelivery = null) {
+  return isChannelOfferFresh(state, now) && !textFrom(state?.channel_choice) && !isOfferUndelivered(previousOfferDelivery)
 }
 
 function hasBookingDetails(fields = {}) {
@@ -123,9 +149,11 @@ function hasBookingDetails(fields = {}) {
  * sigue con la reserva sin obligarlo a elegir. Nunca se repite mientras el
  * saludo anterior está vigente ni durante una confirmación en curso.
  */
-export function shouldOfferChannels({ state = null, intent, extractedFields = {}, linkAvailable, now = new Date() } = {}) {
+export function shouldOfferChannels({ state = null, intent, extractedFields = {}, linkAvailable, previousOfferDelivery = null, now = new Date() } = {}) {
   if (linkAvailable !== true) return { offer: false, reason: 'link_unavailable' }
-  if (isChannelOfferFresh(state, now)) return { offer: false, reason: 'offer_recently_sent' }
+  // El período de 12 h sólo bloquea un saludo entregado o con resultado
+  // incierto; uno rechazado o nunca intentado se vuelve a ofrecer.
+  if (isChannelOfferFresh(state, now) && !isOfferUndelivered(previousOfferDelivery)) return { offer: false, reason: 'offer_recently_sent' }
   if (!OFFER_INTENTS.has(textFrom(intent))) return { offer: false, reason: 'intent_answered_directly' }
   if (hasBookingDetails(extractedFields)) return { offer: false, reason: 'concrete_booking_request' }
   if (state && ['awaiting_confirmation', 'confirmed'].includes(textFrom(state.confirmation_state))) return { offer: false, reason: 'confirmation_in_progress' }

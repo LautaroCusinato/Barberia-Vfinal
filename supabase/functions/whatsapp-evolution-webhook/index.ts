@@ -12,8 +12,11 @@ import {
   buildWebChoiceReply,
   classifyChannelChoice,
   isChannelChoicePending,
+  isChannelOfferFresh,
+  offerDeliveryState,
   shouldOfferChannels,
 } from '../_shared/whatsappChannelOffer.mjs'
+import { buildAgentOutboundOperationId } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { advanceConversationTurn, applyWebChannelTurn, buildChannelProposal, buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
 import { nextConversationAction, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
 import { canonicalArgentineMobile } from '../_shared/whatsappCustomer.mjs'
@@ -370,6 +373,18 @@ async function isCustomerNameRequired(admin: ReturnType<typeof adminClient>, ten
   return !safeString(data?.nombre)
 }
 
+// Entrega del saludo anterior según su reclamo de envío. Si la consulta falla
+// se asume resultado incierto: nunca se arriesga a duplicar el saludo.
+async function loadPreviousOfferDelivery(admin: ReturnType<typeof adminClient>, integrationId: number, state: Record<string, any> | null, now: Date) {
+  const offerEventId = safeString(state?.channel_offer_event_id)
+  if (!offerEventId || !isChannelOfferFresh(state, now)) return null
+  const operationId = buildAgentOutboundOperationId(offerEventId)
+  if (!operationId) return 'uncertain'
+  const { data, error } = await admin.from('saas_automation_events').select('status').eq('integration_id', integrationId).eq('event_id', operationId).maybeSingle()
+  if (error) return 'uncertain'
+  return offerDeliveryState({ offerEventId, claim: data, offeredAt: state?.channel_offer_at, now })
+}
+
 // Enlace público del negocio: slug del tenant resuelto + origen explícito del
 // entorno. Si falta algo o el texto no pasa el filtro de respuestas, no hay
 // enlace (no se inventa uno).
@@ -438,7 +453,8 @@ async function processInboundMessage({
   const bookingLink = resolveBookingLink(context.business, chatBookingEnabled)
   const customerNameRequired = await isCustomerNameRequired(admin, tenantId, inbound.remoteJid)
   const channelChoice = classifyChannelChoice(inbound.text)
-  const choicePending = isChannelChoicePending(previousConversation, now)
+  const previousOfferDelivery = await loadPreviousOfferDelivery(admin, Number(connection.integration_id), previousConversation, now)
+  const choicePending = isChannelChoicePending(previousConversation, now, previousOfferDelivery)
   // Sin enlace disponible, pedirlo no corta una reserva por chat en curso.
   const linkUnavailableRequest = channelChoice === 'link_request' && bookingLink.available !== true
   const webTurn = (channelChoice === 'link_request' && !linkUnavailableRequest) || (choicePending && channelChoice === 'web')
@@ -479,14 +495,16 @@ async function processInboundMessage({
     conversationState = chatChosen ? { ...conversation.state, channel_choice: 'chat' } : conversation.state
     const offer = chatChosen
       ? { offer: false }
-      : shouldOfferChannels({ state: previousConversation, intent: conversation.intent, extractedFields: conversation.extracted?.fields, linkAvailable: bookingLink.available === true, now })
+      : shouldOfferChannels({ state: previousConversation, intent: conversation.intent, extractedFields: conversation.extracted?.fields, linkAvailable: bookingLink.available === true, previousOfferDelivery, now })
     if (linkUnavailableRequest) {
       conversationAction = 'channel_link_unavailable'
       proposal = buildChannelProposal({ reply: buildLinkResendReply({ linkAvailable: false, chatBookingEnabled }), intent: conversation.intent === 'booking_intent' ? 'booking_intent' : 'general_query', requestedAction: conversationAction, state: conversationState })
     } else if (offer.offer) {
-      conversationState = { ...conversationState, channel_offer_at: now.toISOString(), channel_choice: null }
+      // Se guarda el evento que lleva el saludo para conocer después si se entregó.
+      conversationState = { ...conversationState, channel_offer_at: now.toISOString(), channel_offer_event_id: inbound.eventId, channel_choice: null }
       conversationAction = 'channel_offer'
       proposal = buildChannelProposal({ reply: bookingLink.offerReply, intent: conversation.intent === 'booking_intent' ? 'booking_intent' : 'general_query', requestedAction: conversationAction, state: conversationState })
+      proposal.context_counts = { ...proposal.context_counts, previous_offer_delivery: previousOfferDelivery }
     } else {
       bookingFlow = conversation.intent === 'booking_intent' || conversationState?.pending_intent === 'booking_intent'
       if (bookingFlow && conversation.action?.action === 'check_availability') {

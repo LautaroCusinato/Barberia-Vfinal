@@ -221,5 +221,6 @@ for (const name of ['Enviar respuesta', 'Guardar reserva', 'Enviar confirmación
   assert.equal(nodes[name].credentials?.httpCustomAuth?.id, 'australQa36FnSecret', 'clave secreta QA que reconocen las funciones')
 }
 assert.match(nodes['Enviar confirmación'].parameters.jsonBody, /booking_confirmation/)
+assert.match(nodes['Validar ruta QA 36'].parameters.jsCode, /const allowedTenants = \[819, 927\];/, 'lista explícita de tenants QA')
 
 console.log(JSON.stringify({ task: 36, route: 'evolution->supabase->n8n', booking: 'automatic_after_confirmation', confirmation: 'after_persisted_booking_once', simulated: true, result: 'PASS' }))
