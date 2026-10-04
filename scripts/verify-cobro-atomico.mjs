@@ -67,4 +67,8 @@ assert.doesNotMatch(app, /from\('pagos'\)\.insert/, 'no quedan INSERT directos d
 const modal = fs.readFileSync('src/components/CobroModal.jsx', 'utf8')
 assert.match(modal, /error\?\.name === 'CobroError'/)
 
+// La prueba SQL local corre en bash: debe seguir con LF tras un checkout en Windows.
+assert.match(fs.readFileSync('.gitattributes', 'utf8'), /^scripts\/sql\/cobro-atomico\/run\.sh text eol=lf$/m, 'falta la regla eol=lf de run.sh')
+assert.doesNotMatch(fs.readFileSync('scripts/sql/cobro-atomico/run.sh', 'utf8'), /\r/, 'run.sh no debe tener CRLF')
+
 console.log(JSON.stringify({ suite: 'cobro-atomico', migration: file, rpc: 'registrar_cobro_turno', result: 'PASS' }))

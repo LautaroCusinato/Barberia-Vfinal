@@ -1,15 +1,34 @@
 #!/usr/bin/env bash
 # Prueba de comportamiento de registrar_cobro_turno (tarea 05) sobre un
-# cluster Postgres efímero y local (initdb en un directorio temporal, puerto
-# 55432). No usa .env ni toca ninguna base remota. Requiere PostgreSQL 15+.
-# Uso: bash scripts/sql/cobro-atomico/run.sh   (PG_BIN=<carpeta bin> opcional)
+# cluster Postgres efímero y local. No usa .env ni toca ninguna base remota.
+#
+# Requisitos:
+#   * bash (Git Bash en Windows; Linux/macOS sirven igual) con mktemp, grep y tail.
+#   * Binarios de PostgreSQL 13 o superior: initdb, pg_ctl, createdb y psql
+#     (probado con 18). Por defecto se buscan en la instalación de Windows
+#     "C:\Program Files\PostgreSQL\18\bin"; en otro lugar, PG_BIN=<carpeta bin>.
+#     No hace falta un servidor corriendo ni credenciales: se crea un cluster
+#     propio con autenticación trust sólo en 127.0.0.1.
+#   * Puerto 55432 libre (cambiable con PG_TEST_PORT).
+#   * El archivo debe tener finales LF: .gitattributes lo fija con eol=lf para
+#     que un checkout en Windows no lo convierta a CRLF.
+# El cluster y los temporales se borran al terminar, aun si una prueba falla.
+#
+# Uso: bash scripts/sql/cobro-atomico/run.sh
+#      PG_BIN=/usr/lib/postgresql/16/bin bash scripts/sql/cobro-atomico/run.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 BIN="${PG_BIN:-/c/Program Files/PostgreSQL/18/bin}"
+for tool in initdb pg_ctl createdb psql; do
+  if [ ! -x "$BIN/$tool" ] && [ ! -x "$BIN/$tool.exe" ]; then
+    echo "No se encontró $tool en '$BIN'. Indicá la carpeta con PG_BIN=<carpeta bin>." >&2
+    exit 2
+  fi
+done
 DATA="$(mktemp -d)"
 OUT="$(mktemp -d)"
-PORT=55432
+PORT="${PG_TEST_PORT:-55432}"
 export PGPORT=$PORT PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=cobro PGCLIENTENCODING=UTF8
 
 "$BIN/initdb" -D "$DATA" -U postgres -A trust -E UTF8 --no-locale >/dev/null
