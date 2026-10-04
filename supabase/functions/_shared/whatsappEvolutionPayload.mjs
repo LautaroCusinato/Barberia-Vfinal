@@ -8,3 +8,10 @@ export function normalizeMessagesUpsertData(data) {
   if (data && typeof data === 'object') return [data]
   return []
 }
+
+export function canonicalSenderJid(primary, alternate) {
+  const jid = String(primary || '').trim()
+  const alt = String(alternate || '').trim()
+  if (jid.toLowerCase().endsWith('@lid') && /^\d{10,16}@s\.whatsapp\.net$/i.test(alt)) return alt.toLowerCase()
+  return jid
+}

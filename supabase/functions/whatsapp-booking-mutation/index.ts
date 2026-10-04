@@ -7,9 +7,10 @@ import { canonicalArgentineMobile, resolveBookingCustomer } from '../_shared/wha
 import {
   QA_BOOKING_MUTATION_ENVIRONMENT,
   QA_BOOKING_MUTATION_FLAG,
-  QA_BOOKING_MUTATION_INSTANCE,
+  QA_BOOKING_MUTATION_TENANTS_ENV,
   QA_BOOKING_MUTATION_PROMPT_VERSION,
-  QA_BOOKING_MUTATION_TENANT_ID,
+  isQaBookingTenantAllowed,
+  qaBookingInstanceForTenant,
   bookingMutationGuard,
   buildBookingClaimEventId,
   buildBookingConfirmedReply,
@@ -51,11 +52,11 @@ function safeErrorCode(error: unknown) {
 
 // Cliente del negocio con el mismo teléfono canónico (misma regla que la
 // reserva web y que la restricción única barberia_id + telefono).
-async function loadExistingCustomer(admin: ReturnType<typeof adminClient>, phone: string) {
+async function loadExistingCustomer(admin: ReturnType<typeof adminClient>, tenantId: number, phone: string) {
   const { data, error } = await admin
     .from('clientes')
     .select('nombre,email')
-    .eq('barberia_id', QA_BOOKING_MUTATION_TENANT_ID)
+    .eq('barberia_id', tenantId)
     .eq('telefono', phone)
     .maybeSingle()
   if (error) throw new Error('customer_lookup_failed')
@@ -84,48 +85,55 @@ Deno.serve(async (request) => {
     if (!eventId || eventId.length > 200) return json({ error: 'event_id_required', mutation_allowed: false }, 422)
 
     const admin = adminClient()
+    // El tenant sale de la corrida persistida por el webhook (nunca del
+    // cuerpo) y debe estar en la lista explícita de tenants QA con reserva.
+    const { data: sourceRows, error: sourceError } = await admin
+      .from('saas_automation_shadow_runs')
+      .select('id,tenant_id,integration_id,event_id,intent,metadata,observed_at')
+      .eq('event_id', eventId)
+      .limit(2)
+    if (sourceError) return json({ error: 'source_lookup_failed', mutation_allowed: false }, 502)
+    if (!sourceRows?.length) return json({ error: 'real_persisted_source_required', mutation_allowed: false }, 404)
+    if (sourceRows.length > 1) return json({ error: 'source_event_ambiguous', mutation_allowed: false }, 409)
+    const sourceRun = sourceRows[0]
+    const tenantId = Number(sourceRun.tenant_id)
+    const allowedTenants = Deno.env.get(QA_BOOKING_MUTATION_TENANTS_ENV)
+    if (!isQaBookingTenantAllowed(tenantId, allowedTenants)) return json({ error: 'qa_tenant_required', mutation_allowed: false }, 403)
+    const expectedInstance = qaBookingInstanceForTenant(tenantId)
+
     const { data: connection, error: connectionError } = await admin
       .from('saas_whatsapp_connections')
       .select('id,barberia_id,integration_id,provider,environment,state,instance_name')
-      .eq('barberia_id', QA_BOOKING_MUTATION_TENANT_ID)
+      .eq('barberia_id', tenantId)
       .eq('provider', 'evolution')
       .eq('environment', QA_BOOKING_MUTATION_ENVIRONMENT)
-      .eq('instance_name', QA_BOOKING_MUTATION_INSTANCE)
+      .eq('instance_name', expectedInstance)
       .maybeSingle()
     if (connectionError) return json({ error: 'connection_lookup_failed', mutation_allowed: false }, 502)
     if (!connection || connection.state !== 'CONNECTED' || connection.instance_name === PROTECTED_INSTANCE) return json({ error: 'qa_connection_not_connected', mutation_allowed: false }, 409)
+    if (Number(connection.integration_id) !== Number(sourceRun.integration_id)) return json({ error: 'source_integration_mismatch', mutation_allowed: false }, 403)
 
     // Con la pausa por atención humana activa no se agenda automáticamente.
     const { data: pauseRows, error: pauseError } = await admin
       .from('config')
       .select('barberia_id,clave,valor')
-      .eq('barberia_id', QA_BOOKING_MUTATION_TENANT_ID)
+      .eq('barberia_id', tenantId)
       .eq('clave', 'bot_activo')
     if (pauseError) return json({ error: 'manual_pause_lookup_failed', mutation_allowed: false }, 502)
     let pause
-    try { pause = evaluateBotPause(pauseRows || [], QA_BOOKING_MUTATION_TENANT_ID) } catch { return json({ error: 'manual_pause_lookup_failed', mutation_allowed: false }, 502) }
+    try { pause = evaluateBotPause(pauseRows || [], tenantId) } catch { return json({ error: 'manual_pause_lookup_failed', mutation_allowed: false }, 502) }
     if (!pause.botActive) return json({ error: 'bot_paused', mutation_allowed: false, booking_mutation_executed: false }, 409)
 
     const { data: integration, error: integrationError } = await admin
       .from('saas_integraciones')
       .select('id,barberia_id,proveedor,integration_type,estado')
       .eq('id', connection.integration_id)
-      .eq('barberia_id', QA_BOOKING_MUTATION_TENANT_ID)
+      .eq('barberia_id', tenantId)
       .maybeSingle()
     if (integrationError) return json({ error: 'integration_lookup_failed', mutation_allowed: false }, 502)
     if (!integration || integration.proveedor !== 'evolution' || integration.integration_type !== 'whatsapp' || integration.estado !== 'conectado') {
       return json({ error: 'qa_integration_not_connected', mutation_allowed: false }, 409)
     }
-
-    const { data: sourceRun, error: sourceError } = await admin
-      .from('saas_automation_shadow_runs')
-      .select('id,tenant_id,integration_id,event_id,intent,metadata,observed_at')
-      .eq('tenant_id', QA_BOOKING_MUTATION_TENANT_ID)
-      .eq('integration_id', connection.integration_id)
-      .eq('event_id', eventId)
-      .maybeSingle()
-    if (sourceError) return json({ error: 'source_lookup_failed', mutation_allowed: false }, 502)
-    if (!sourceRun) return json({ error: 'real_persisted_source_required', mutation_allowed: false }, 404)
 
     const metadata = sourceRun.metadata && typeof sourceRun.metadata === 'object' ? sourceRun.metadata as Record<string, unknown> : {}
     const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
@@ -143,7 +151,7 @@ Deno.serve(async (request) => {
     }) : false
     const stateFresh = state ? isConversationStateFresh(state) : false
     const promptVersionValid = textFrom(agent?.prompt_version) === QA_BOOKING_MUTATION_PROMPT_VERSION
-    const stateValid = stateScopeValid && stateFresh && promptVersionValid && state ? isConfirmedBookingState(state, eventId) : false
+    const stateValid = stateScopeValid && stateFresh && promptVersionValid && state ? isConfirmedBookingState(state, eventId, allowedTenants) : false
     const sourceEventReal = isRealPersistedSourceMetadata(metadata)
     const sourceFresh = eventIsFresh(sourceRun.observed_at)
 
@@ -153,13 +161,13 @@ Deno.serve(async (request) => {
     const { data: business, error: businessError } = await admin
       .from('barberias')
       .select('id,nombre,slug,zona_horaria')
-      .eq('id', QA_BOOKING_MUTATION_TENANT_ID)
+      .eq('id', tenantId)
       .maybeSingle()
     const { data: service, error: serviceError } = await admin
       .from('servicios')
       .select('id,nombre,activo')
       .eq('id', Number(state.service_id))
-      .eq('barberia_id', QA_BOOKING_MUTATION_TENANT_ID)
+      .eq('barberia_id', tenantId)
       .eq('activo', true)
       .maybeSingle()
     if (businessError || serviceError || !business?.slug || !service) return json({ error: 'authoritative_service_required', mutation_allowed: false }, 409)
@@ -217,12 +225,13 @@ Deno.serve(async (request) => {
       availabilityRechecked: true,
       requestedSlotAvailable: recheck.requested_slot_available,
       operationClaimAvailable: { available: true, integrationId: connection.integration_id },
+      allowedTenants,
     })
     if (!guard.allowed) return json({ error: guard.reason, mutation_allowed: false, revalidated: true, booking_mutation_executed: false }, 403)
 
     // Cliente existente: conserva su ficha. Cliente nuevo: el nombre confirmado
     // en la conversación; sin ese nombre no se agenda (no hay nombre de relleno).
-    const customer = resolveBookingCustomer({ existing: await loadExistingCustomer(admin, recipient), conversationName: state.customer_name })
+    const customer = resolveBookingCustomer({ existing: await loadExistingCustomer(admin, tenantId, recipient), conversationName: state.customer_name })
     if (customer.status === 'name_required') return json({ error: 'customer_name_required', mutation_allowed: false, revalidated: true, booking_mutation_executed: false }, 409)
     const { data: booking, error: bookingError } = await admin.rpc('crear_reserva_whatsapp', {
       p_integration_id: connection.integration_id,

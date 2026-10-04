@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
 import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate, normalizeCustomerReply, resolveRequestedServices } from '../_shared/whatsappAgentShadow.mjs'
-import { QA_BOOKING_MUTATION_FLAG, QA_BOOKING_MUTATION_TENANT_ID } from '../_shared/whatsappBookingMutation.mjs'
+import { QA_BOOKING_MUTATION_FLAG, QA_BOOKING_MUTATION_TENANTS_ENV, isQaBookingTenantAllowed } from '../_shared/whatsappBookingMutation.mjs'
 import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
 import {
   CHAT_CHOICE_PREFIX,
@@ -17,7 +17,17 @@ import {
 import { advanceConversationTurn, applyWebChannelTurn, buildChannelProposal, buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
 import { nextConversationAction, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
 import { canonicalArgentineMobile } from '../_shared/whatsappCustomer.mjs'
-import { normalizeMessagesUpsertData } from '../_shared/whatsappEvolutionPayload.mjs'
+import { canonicalSenderJid, normalizeMessagesUpsertData } from '../_shared/whatsappEvolutionPayload.mjs'
+import { EVOLUTION_QR_TTL_MS, qrImageFromEvolutionEvent } from '../_shared/whatsappQrEvent.mjs'
+import { isFreshInboundTimestamp } from '../_shared/whatsappInboundFreshness.mjs'
+import { isQa927WindowOpen } from '../_shared/whatsappQa927Window.mjs'
+import {
+  QA_BOOKING_ROUTE_EXPIRES_ENV,
+  QA_BOOKING_ROUTE_TENANTS_ENV,
+  QA_BOOKING_ROUTE_URL,
+  buildQaBookingRouteBody,
+  isQaBookingRouteEnabled,
+} from '../_shared/whatsappQaBookingRoute.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -26,6 +36,51 @@ const PROTECTED_INSTANCE = 'miwsp'
 const WEBHOOK_HEADER = 'X-Austral-Webhook-Secret'
 const ALLOWED_EVENTS = new Set(['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT'])
 const INBOUND_EVENT = 'MESSAGES_UPSERT'
+const QA_927_TENANT_ID = 927
+const QA_927_INSTANCE = 'austral-qa-tenant-927'
+const QA_927_N8N_URL = 'https://n8n.cuchitron.lat/webhook/austral-qa-927-outbound'
+
+async function forwardQa927Event(connection: Record<string, any>, instance: string, eventId: string) {
+  if (Number(connection.barberia_id) !== QA_927_TENANT_ID || instance !== QA_927_INSTANCE) return
+  if (Deno.env.get('WHATSAPP_QA_927_AUTOMATION_ENABLED') !== '1' || !isQa927WindowOpen(Deno.env.get('WHATSAPP_QA_927_OUTBOUND_EXPIRES_AT'))) return
+  const secret = safeString(Deno.env.get('EVOLUTION_WEBHOOK_SECRET'))
+  const anonKey = safeString(Deno.env.get('SUPABASE_ANON_KEY'))
+  if (!secret || !anonKey) throw new Error('qa_927_forward_not_configured')
+  const response = await fetch(QA_927_N8N_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-austral-qa-route-secret': secret,
+      authorization: `Bearer ${anonKey}`,
+    },
+    body: JSON.stringify({ event_id: eventId, tenant_id: QA_927_TENANT_ID, integration_id: connection.integration_id, instance }),
+    signal: AbortSignal.timeout(12_000),
+  })
+  if (!response.ok) throw new Error('qa_927_forward_failed')
+}
+
+// Ruta QA de la tarea 36: después de persistir el mensaje, avisa al workflow
+// n8n QA, que orquesta respuesta, reserva y confirmación. Sólo para tenants
+// en la lista explícita y dentro de la ventana; el webhook n8n responde al
+// recibir, así que esta llamada no espera el envío. Un fallo devuelve 503 para
+// que Evolution reintente; los pasos posteriores son idempotentes.
+async function forwardQaBookingRoute(connection: Record<string, any>, instance: string, eventId: string, readyForBookingMutation: boolean) {
+  if (!isQaBookingRouteEnabled({
+    tenantId: connection.barberia_id,
+    instance,
+    tenantList: Deno.env.get(QA_BOOKING_ROUTE_TENANTS_ENV),
+    expiresAt: Deno.env.get(QA_BOOKING_ROUTE_EXPIRES_ENV),
+  })) return
+  const secret = safeString(Deno.env.get('EVOLUTION_WEBHOOK_SECRET'))
+  if (!secret) throw new Error('qa_booking_route_not_configured')
+  const response = await fetch(QA_BOOKING_ROUTE_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-austral-qa-route-secret': secret },
+    body: JSON.stringify(buildQaBookingRouteBody({ eventId, tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, readyForBookingMutation })),
+    signal: AbortSignal.timeout(12_000),
+  })
+  if (!response.ok) throw new Error('qa_booking_route_failed')
+}
 
 function projectRef() {
   const raw = Deno.env.get('SUPABASE_URL') || ''
@@ -90,12 +145,9 @@ function messageData(payload: Record<string, unknown>, { allowEnvelopeIdentity =
   const key = data.key && typeof data.key === 'object' ? data.key as Record<string, unknown> : {}
   const message = data.message && typeof data.message === 'object' ? data.message as Record<string, unknown> : {}
   const eventId = safeString(key.id || data.messageId || (allowEnvelopeIdentity ? payload.message_id || payload.event_id || payload.id : '')).slice(0, 200)
-  const rawJid = safeString(key.remoteJid || key.participant || data.remoteJid || (allowEnvelopeIdentity ? payload.sender : ''))
-  // Un contacto con identidad LID sólo se usa con la alternativa de teléfono
-  // que entrega el proveedor (remoteJidAlt), con el mismo formato verificado
-  // que el workflow QA de n8n. Sin ella, se conserva el LID: no es un teléfono.
-  const alternateJid = safeString(key.remoteJidAlt)
-  const remoteJid = /^\d+@lid$/.test(rawJid) && /^\d{5,20}@s\.whatsapp\.net$/.test(alternateJid) ? alternateJid : rawJid
+  // Un contacto LID sólo se usa con la alternativa de teléfono verificada que
+  // entrega el proveedor (remoteJidAlt); sin ella se conserva el LID.
+  const remoteJid = canonicalSenderJid(key.remoteJid || key.participant || data.remoteJid || (allowEnvelopeIdentity ? payload.sender : ''), key.remoteJidAlt || data.remoteJidAlt)
   const fromMe = key.fromMe === true || data.fromMe === true || (allowEnvelopeIdentity && payload.fromMe === true)
   const rawMessageType = safeString(data.messageType || payload.messageType || Object.keys(message)[0]).slice(0, 80).toLowerCase()
   const messageType = rawMessageType === 'conversation' || rawMessageType === 'extendedtextmessage' ? 'text' : rawMessageType || null
@@ -360,9 +412,17 @@ async function processInboundMessage({
   const inbound = messageData(payload, { allowEnvelopeIdentity: !isBatch })
   if (!inbound.eventId || !inbound.remoteJid) return { body: { error: 'message_identity_required', mutation_blocked: true }, status: 422 }
   if (inbound.fromMe) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: 'from_me_ignored', mutation_blocked: true }, status: 202 }
-  const { data: existing, error: existingError } = await admin.from('saas_automation_shadow_runs').select('id').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle()
+  if (!isFreshInboundTimestamp(inbound.timestamp)) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: 'stale_or_invalid_timestamp', mutation_blocked: true, outbound_send: false }, status: 202 }
+  const { data: existing, error: existingError } = await admin.from('saas_automation_shadow_runs').select('id,metadata').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle()
   if (existingError) return { body: { error: 'shadow_lookup_failed', mutation_blocked: true }, status: 502 }
-  if (existing) return { body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, status: 202 }
+  if (existing) {
+    try { await forwardQa927Event(connection, instance, inbound.eventId) } catch { return { body: { error: 'qa_927_forward_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
+    // Reintento de Evolution: se vuelve a avisar a n8n; envío, reserva y
+    // confirmación son idempotentes por evento/turno.
+    const existingState = (existing.metadata as Record<string, any> | null)?.conversation_state
+    try { await forwardQaBookingRoute(connection, instance, inbound.eventId, existingState?.ready_for_booking_mutation === true) } catch { return { body: { error: 'qa_booking_route_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
+    return { body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, status: 202 }
+  }
   const tenantId = Number(connection.barberia_id)
   const pause = await loadBotPause(admin, tenantId)
   if (!pause.botActive) return { body: { received: true, accepted: false, event: INBOUND_EVENT, tenant_id: connection.barberia_id, reason: 'bot_paused', mutation_blocked: true, outbound_send: false }, status: 202 }
@@ -373,7 +433,7 @@ async function processInboundMessage({
   const now = new Date()
   const scope = { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }
   // Reservar por chat sólo se ofrece donde el circuito QA puede agendar.
-  const chatBookingEnabled = tenantId === QA_BOOKING_MUTATION_TENANT_ID && safeString(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1'
+  const chatBookingEnabled = isQaBookingTenantAllowed(tenantId, Deno.env.get(QA_BOOKING_MUTATION_TENANTS_ENV)) && safeString(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1'
   const bookingLink = resolveBookingLink(context.business, chatBookingEnabled)
   const customerNameRequired = await isCustomerNameRequired(admin, tenantId, inbound.remoteJid)
   const channelChoice = classifyChannelChoice(inbound.text)
@@ -525,6 +585,8 @@ async function processInboundMessage({
   })
   if (recordError) return { body: { error: 'shadow_record_failed', mutation_blocked: true }, status: 502 }
   const shadowRun = Array.isArray(recorded) ? recorded[0] : recorded
+  try { await forwardQa927Event(connection, instance, inbound.eventId) } catch { return { body: { error: 'qa_927_forward_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
+  try { await forwardQaBookingRoute(connection, instance, inbound.eventId, bookingFlow && conversationState.ready_for_booking_mutation === true) } catch { return { body: { error: 'qa_booking_route_failed', mutation_blocked: true, outbound_send: false }, status: 503 } }
   return {
     body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, shadow_run_id: shadowRun?.shadow_run_id || null, duplicate: false, intent: proposal.intent, proposed_reply: proposal.proposed_reply, provider: proposal.provider, mutation_blocked: true, outbound_send: false, conversation_state: bookingFlow ? conversationState.confirmation_state : null, ready_for_booking_mutation: bookingFlow ? conversationState.ready_for_booking_mutation === true : false },
     status: 200,
@@ -582,9 +644,22 @@ Deno.serve(async (request) => {
         outbound_send: false,
       }, status)
     }
+    const qr = event === 'QRCODE_UPDATED' ? qrImageFromEvolutionEvent(payload) : null
+    if (event === 'QRCODE_UPDATED' && !qr) return json({ error: 'invalid_qr_event', mutation_blocked: true }, 422)
     const state = event === 'QRCODE_UPDATED' ? 'QR_READY' : connectionState(payload as Record<string, unknown>)
     if (state) {
-      const { error: updateError } = await admin.from('saas_whatsapp_connections').update({ state, last_verified_at: new Date().toISOString(), qr_expires_at: event === 'QRCODE_UPDATED' ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : null, last_error_code: null, last_error_message: null }).eq('id', connection.id).eq('provider', 'evolution').eq('environment', 'qa')
+      const qrExpiresAt = qr ? new Date(Date.now() + EVOLUTION_QR_TTL_MS).toISOString() : null
+      const fields = {
+        state,
+        last_verified_at: new Date().toISOString(),
+        last_error_code: null,
+        last_error_message: null,
+        ...(qr ? { qr_payload: qr, qr_expires_at: qrExpiresAt, pairing_expires_at: qrExpiresAt } : {}),
+        ...(state === 'CONNECTED' || state === 'DISCONNECTED' ? { qr_payload: null, qr_expires_at: null, pairing_expires_at: null } : {}),
+      }
+      let update = admin.from('saas_whatsapp_connections').update(fields).eq('id', connection.id).eq('provider', 'evolution').eq('environment', 'qa')
+      if (event === 'QRCODE_UPDATED') update = update.neq('state', 'CONNECTED')
+      const { error: updateError } = await update
       if (updateError) return json({ error: 'connection_state_update_failed' }, 502)
     }
     return json({ received: true, accepted: true, event, tenant_id: connection.barberia_id, mutation_blocked: true })

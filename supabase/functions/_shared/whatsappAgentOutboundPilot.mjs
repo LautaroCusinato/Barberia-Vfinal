@@ -27,6 +27,32 @@ export function buildAgentOutboundOperationId(eventId) {
   return clean ? `agent-outbound:${clean}` : null
 }
 
+// Modo one-shot del recorrido QA 927 de otro chat (desplegado en QA el 24/09).
+// Sólo se usa con WHATSAPP_QA_927_AUTOMATION_ENABLED=1; preservado tal cual.
+export function qa927OneShotOperationId(runId) {
+  const value = textFrom(runId)
+  return /^[a-zA-Z0-9_-]{8,80}$/.test(value) ? `agent-outbound:qa-927:${value}` : null
+}
+
+export function buildBookingConfirmationOperationId(turnoId) {
+  const id = Number(turnoId)
+  return Number.isSafeInteger(id) && id > 0 ? `booking-confirmation:${id}` : null
+}
+
+/**
+ * La confirmación posterior a guardar el turno sí afirma la reserva: sólo es
+ * válida si el turno ya está persistido (lo decide el llamador con datos de
+ * la base). Igual se rechazan secretos, SQL, pagos y textos fuera de tamaño.
+ */
+export function isSafeBookingConfirmationReply({ reply, bookingPersisted }) {
+  const value = textFrom(reply)
+  if (bookingPersisted !== true || !value || value.length > 1000) return false
+  if (/service_role|access_token|webhook_secret|authorization|api[_ -]?key|card[_ -]?token|password|secret/i.test(value)) return false
+  if (/\b(insert|update|delete|drop|alter|truncate|create table|grant|revoke)\b/i.test(value)) return false
+  if (/\b(cobr|pag(ar|o)|invoice|preapproval|suscripci[oó]n)\b/i.test(value)) return false
+  return /^¡Listo! Tu turno/.test(value)
+}
+
 export function isQaAgentOutboundRuntime({ projectRef, provisioningEnv, whatsappMode, pilotMode }) {
   return projectRef === 'cmsymmszlzikqpvfqjre'
     && provisioningEnv === 'qa'
@@ -116,6 +142,8 @@ export function agentOutboundGuard({
   proposedReply,
   sourceMetadata,
   operationAcquired,
+  replyKind = 'proposal',
+  bookingPersisted = false,
 }) {
   if (runtimeValid !== true) return { allowed: false, reason: 'qa_shadow_runtime_required' }
   if (enabled !== true) return { allowed: false, reason: 'agent_outbound_pilot_disabled' }
@@ -132,7 +160,9 @@ export function agentOutboundGuard({
   if (sourceFromMe === true) return { allowed: false, reason: 'from_me_ignored' }
   if (senderHashMatches !== true) return { allowed: false, reason: 'sender_not_allowlisted' }
   if (intent === 'price_query' && !hasAuthoritativePriceSource(sourceMetadata)) return { allowed: false, reason: 'price_source_required' }
-  if (!isSafePersistedReply({ intent, reply: proposedReply, metadata: sourceMetadata })) return { allowed: false, reason: 'unsafe_or_missing_proposed_reply' }
+  if (replyKind === 'booking_confirmation') {
+    if (!isAllowedAgentIntent(intent) || !isSafeBookingConfirmationReply({ reply: proposedReply, bookingPersisted })) return { allowed: false, reason: 'unsafe_or_unpersisted_booking_confirmation' }
+  } else if (!isSafePersistedReply({ intent, reply: proposedReply, metadata: sourceMetadata })) return { allowed: false, reason: 'unsafe_or_missing_proposed_reply' }
   if (operationAcquired !== true) return { allowed: false, reason: 'operation_already_claimed' }
   return { allowed: true, reason: null }
 }

@@ -238,7 +238,7 @@ const mutation = await loadEdgeFunction('whatsapp-booking-mutation')
 const outbound = await loadEdgeFunction('whatsapp-agent-outbound-pilot')
 let eventCounter = 0
 async function send(text, { id = `EVT${eventCounter += 1}`, instance = 'austral-qa-tenant-1', key = {} } = {}) {
-  const result = await webhook({ event: 'messages.upsert', instance, data: { key: { id, remoteJid: CLIENT_JID, fromMe: false, ...key }, message: { conversation: text }, messageType: 'conversation', messageTimestamp: 1 } }, { 'X-Austral-Webhook-Secret': 'harness-secret' })
+  const result = await webhook({ event: 'messages.upsert', instance, data: { key: { id, remoteJid: CLIENT_JID, fromMe: false, ...key }, message: { conversation: text }, messageType: 'conversation', messageTimestamp: Math.floor(Date.now() / 1000) } }, { 'X-Austral-Webhook-Secret': 'harness-secret' })
   return { ...result, id }
 }
 const book = (eventId) => mutation({ event_id: eventId }, { authorization: 'Bearer operador' })

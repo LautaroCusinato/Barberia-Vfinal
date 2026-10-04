@@ -4,14 +4,19 @@ import {
   PROTECTED_WHATSAPP_INSTANCE,
   agentOutboundGuard,
   buildAgentOutboundOperationId,
+  buildBookingConfirmationOperationId,
   isQaAgentOutboundTenantAllowed,
   isPersistedConversationScope,
   isRealPersistedSourceMetadata,
   isQaAgentOutboundRuntime,
   parseQaAgentOutboundTenantAllowlist,
+  qa927OneShotOperationId,
   qaAgentOutboundInstanceForTenant,
 } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
+import { buildBookingClaimEventId, buildBookingConfirmedReply } from '../_shared/whatsappBookingMutation.mjs'
+import { canonicalArgentineMobile } from '../_shared/whatsappCustomer.mjs'
+import { isQa927WindowOpen } from '../_shared/whatsappQa927Window.mjs'
 import { buildQaEvolutionSendTextPath, normalizeRecipient, sanitizeProviderResult } from '../_shared/whatsappOutboundPilot.mjs'
 
 const MAX_EVENT_AGE_MS = 30 * 60 * 1000
@@ -66,10 +71,14 @@ Deno.serve(async (request) => {
     if (!runtimeValid) return json({ error: 'qa_shadow_runtime_required', outbound_allowed: false }, 403)
 
     const body = await request.json().catch(() => null)
-    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body as Record<string, unknown>).some((key) => key !== 'event_id')) return json({ error: 'event_id_only', outbound_allowed: false }, 422)
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body as Record<string, unknown>).some((key) => key !== 'event_id' && key !== 'kind')) return json({ error: 'event_id_only', outbound_allowed: false }, 422)
     const eventId = safeString((body as Record<string, unknown>).event_id)
-    const operationId = buildAgentOutboundOperationId(eventId)
-    if (!operationId) return json({ error: 'event_id_required', outbound_allowed: false }, 422)
+    // kind=booking_confirmation: aviso posterior a guardar el turno. El texto
+    // se arma con la fila guardada, nunca con la propuesta del modelo.
+    const kind = safeString((body as Record<string, unknown>).kind) || 'proposal'
+    if (kind !== 'proposal' && kind !== 'booking_confirmation') return json({ error: 'kind_not_supported', outbound_allowed: false }, 422)
+    const eventOperationId = buildAgentOutboundOperationId(eventId)
+    if (!eventOperationId) return json({ error: 'event_id_required', outbound_allowed: false }, 422)
 
     const admin = adminClient()
     const { data: sourceRun, error: sourceError } = await admin
@@ -87,10 +96,15 @@ Deno.serve(async (request) => {
     if (!tenantAllowlisted) return json({ error: 'qa_tenant_not_allowlisted', outbound_allowed: false }, 403)
     const expectedInstance = qaAgentOutboundInstanceForTenant(tenantId)
     if (!expectedInstance || expectedInstance === PROTECTED_WHATSAPP_INSTANCE) return json({ error: 'qa_instance_required', outbound_allowed: false }, 403)
+    // Recorrido one-shot del 927 (otro chat), sólo con su flag legado activo.
+    const legacy927 = tenantId === 927 && safeString(Deno.env.get('WHATSAPP_QA_927_AUTOMATION_ENABLED')) === '1' && kind === 'proposal'
+    let operationId = legacy927 ? qa927OneShotOperationId(Deno.env.get('WHATSAPP_QA_927_OUTBOUND_RUN_ID')) : eventOperationId
+    if (!operationId) return json({ error: 'qa_927_one_shot_not_configured', outbound_allowed: false }, 503)
+    if (legacy927 && !isQa927WindowOpen(Deno.env.get('WHATSAPP_QA_927_OUTBOUND_EXPIRES_AT'))) return json({ error: 'qa_927_window_closed', outbound_allowed: false }, 403)
 
     const { data: connection, error: connectionError } = await admin
       .from('saas_whatsapp_connections')
-      .select('id,barberia_id,integration_id,provider,environment,state,instance_name')
+      .select('id,barberia_id,integration_id,provider,environment,state,instance_name,automation_enabled,outbound_enabled,booking_enabled,handoff_enabled')
       .eq('barberia_id', tenantId)
       .eq('integration_id', integrationId)
       .eq('provider', 'evolution')
@@ -98,6 +112,7 @@ Deno.serve(async (request) => {
       .maybeSingle()
     if (connectionError) return json({ error: 'connection_lookup_failed', outbound_allowed: false }, 502)
     if (!connection || Number(connection.barberia_id) !== tenantId || Number(connection.integration_id) !== integrationId || connection.state !== 'CONNECTED' || connection.instance_name !== expectedInstance || connection.instance_name === PROTECTED_WHATSAPP_INSTANCE) return json({ error: 'qa_connection_not_connected', outbound_allowed: false }, 409)
+    if (legacy927 && (connection.automation_enabled !== true || connection.outbound_enabled !== true || connection.booking_enabled !== false || connection.handoff_enabled !== false)) return json({ error: 'qa_927_flags_not_ready', outbound_allowed: false }, 403)
 
     // La pausa por atención humana se vuelve a leer justo antes de enviar: si
     // alguien del equipo tomó el chat después de la propuesta, no se responde.
@@ -120,7 +135,7 @@ Deno.serve(async (request) => {
     if (integrationError) return json({ error: 'integration_lookup_failed', outbound_allowed: false }, 502)
 
     const metadata = sourceRun.metadata && typeof sourceRun.metadata === 'object' ? sourceRun.metadata as Record<string, unknown> : {}
-    const proposedReply = safeString(metadata.proposed_reply)
+    let proposedReply = safeString(metadata.proposed_reply)
     const sourceObservedAt = new Date(String(sourceRun.observed_at || '')).getTime()
     const sourceFresh = Number.isFinite(sourceObservedAt) && Date.now() - sourceObservedAt >= 0 && Date.now() - sourceObservedAt <= MAX_EVENT_AGE_MS
     const sourceEventReal = sourceFresh && isRealPersistedSourceMetadata(metadata)
@@ -128,6 +143,40 @@ Deno.serve(async (request) => {
 
     const recipient = normalizeRecipient(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
     if (!recipient) return json({ error: 'qa_recipient_not_configured', outbound_allowed: false }, 503)
+
+    let bookingPersisted = false
+    if (kind === 'booking_confirmation') {
+      // El turno tiene que estar guardado por crear_reserva_whatsapp para esta
+      // misma conversación (reclamo completado) y ser de este negocio y de
+      // este mismo destinatario.
+      const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : {}
+      const claimKey = buildBookingClaimEventId(state)
+      if (!claimKey) return json({ error: 'booking_claim_key_invalid', outbound_allowed: false }, 409)
+      const { data: claimRow, error: claimLookupError } = await admin
+        .from('saas_automation_events')
+        .select('status,result_reference')
+        .eq('integration_id', integrationId)
+        .eq('event_id', claimKey)
+        .maybeSingle()
+      if (claimLookupError) return json({ error: 'booking_claim_lookup_failed', outbound_allowed: false }, 502)
+      if (claimRow?.status !== 'completed' || !/^\d+$/.test(safeString(claimRow?.result_reference))) return json({ error: 'booking_not_persisted', outbound_allowed: false }, 409)
+      const { data: turno, error: turnoError } = await admin
+        .from('turnos')
+        .select('id,barberia_id,servicio_id,fecha,hora,estado,origen,telefono')
+        .eq('id', Number(claimRow.result_reference))
+        .eq('barberia_id', tenantId)
+        .maybeSingle()
+      if (turnoError) return json({ error: 'booking_lookup_failed', outbound_allowed: false }, 502)
+      if (!turno || turno.origen !== 'whatsapp' || ['cancelado', 'no_asistio'].includes(safeString(turno.estado)) || safeString(turno.telefono) !== canonicalArgentineMobile(recipient)) return json({ error: 'booking_not_persisted', outbound_allowed: false }, 409)
+      const [{ data: service }, { data: business }] = await Promise.all([
+        admin.from('servicios').select('nombre').eq('id', turno.servicio_id).eq('barberia_id', tenantId).maybeSingle(),
+        admin.from('barberias').select('nombre').eq('id', tenantId).maybeSingle(),
+      ])
+      proposedReply = safeString(buildBookingConfirmedReply({ businessName: business?.nombre, serviceName: service?.nombre, fecha: turno.fecha, hora: turno.hora }))
+      operationId = buildBookingConfirmationOperationId(turno.id)
+      if (!operationId || !proposedReply) return json({ error: 'booking_confirmation_invalid', outbound_allowed: false }, 409)
+      bookingPersisted = true
+    }
     const recipientHash = safeString(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
     const pilotEnabled = safeString(Deno.env.get('WHATSAPP_AGENT_OUTBOUND_PILOT_ENABLED')) === '1'
     const sourceHash = safeString(metadata.sender_hash)
@@ -162,6 +211,8 @@ Deno.serve(async (request) => {
       proposedReply,
       sourceMetadata: metadata,
       operationAcquired: true,
+      replyKind: kind,
+      bookingPersisted,
     })
     if (!guard.allowed) return json({ error: guard.reason, outbound_allowed: false }, 403)
 
@@ -194,7 +245,7 @@ Deno.serve(async (request) => {
     const providerResult = sanitizeProviderResult(providerBody)
     const completed = await finishClaim(admin, connection.integration_id, operationId, `agent_outbound_sent:${operationId}`)
     if (!completed) return json({ error: 'outbound_sent_audit_unknown_no_retry', operation_id: operationId, outbound_allowed: true }, 502)
-    return json({ sent: true, duplicate: false, operation_id: operationId, ...providerResult, outbound_allowed: true, mutation_allowed: false })
+    return json({ sent: true, duplicate: false, kind, operation_id: operationId, ...providerResult, outbound_allowed: true, mutation_allowed: false })
   } catch (error) {
     const code = safeString((error as { message?: string })?.message).replace(/[^a-z0-9_:-]/gi, '').slice(0, 80) || 'agent_outbound_error'
     return json({ error: code, outbound_allowed: false }, 503)
