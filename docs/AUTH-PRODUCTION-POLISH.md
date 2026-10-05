@@ -21,7 +21,22 @@ Los flujos de registro, reenvío de confirmación, recuperación y cambio de ema
 
 `https://barberia.cuchitron.lat/auth/confirm?next=...`
 
-En desarrollo se conserva el origen local sólo cuando Vite está en modo `DEV` y la aplicación se ejecuta explícitamente en `localhost`, `127.0.0.1` o `::1`. En producción, una pestaña alojada en cualquier otro origen (incluido un `pages.dev` no configurado) cae de forma segura en el dominio canónico; un preview sólo puede usarse si declara `VITE_APP_BASE_URL` explícitamente. No se confía en `next` sin una allowlist de rutas relativas.
+En desarrollo se conserva el origen local sólo cuando Vite está en modo `DEV` y la aplicación se ejecuta explícitamente en `localhost`, `127.0.0.1` o `::1`. El origen del navegador no habilita redirects de QA. Los builds sin configuración QA válida usan el dominio canónico de producción. `next` sólo acepta rutas relativas internas.
+
+### Builds de QA y previews (tarea 08)
+
+QA usa builds con `DEV=false`, igual que producción. Para que los enlaces de registro, reenvío, recuperación, cambio de email e invitaciones permanezcan en QA, configurar conjuntamente al compilar:
+
+```dotenv
+VITE_SUPABASE_URL=https://cmsymmszlzikqpvfqjre.supabase.co
+VITE_APP_BASE_URL=https://barberia-qa.cuchitron.lat
+```
+
+La anon key debe pertenecer al mismo proyecto QA. También se admite como base un preview explícito `https://<rama-o-hash>.barberia-177.pages.dev`, con un solo nivel de subdominio. No se admite cualquier `pages.dev`, HTTP remoto, puertos alternativos ni URLs con credenciales. El dominio raíz `barberia-177.pages.dev` no se considera un preview de QA. Agregar otro proyecto o dominio requiere revisar esta lista en el código.
+
+Una URL de QA con backend productivo, desconocido o vacío no habilita el redirect QA. La configuración inválida conserva el fallback canónico anterior; no habilitar pruebas de email hasta verificar las dos variables del build. Cambiar variables de hosting requiere reconstruir el sitio.
+
+Antes de enviar emails, revisar **únicamente en Supabase QA** su Site URL y Redirect URLs explícitas. Los templates que usan `{{ .SiteURL }}` siguen dependiendo de esa configuración aunque el frontend envíe `redirectTo`. La corrección local no modifica el dashboard ni los templates remotos y no demuestra la entrega de emails. Probar registro, reenvío, recuperación, cambio de email e invitación con cuentas QA después de aprobar esos ajustes; nunca agregar previews a la configuración de Auth de producción.
 
 La ruta `/auth/confirm`:
 
