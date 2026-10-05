@@ -2,6 +2,7 @@ import { StrictMode, useState } from 'react'
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { useTurnoMoves } from './useTurnoMoves.js'
+import { persistirMovimiento } from './turnoMoves.js'
 
 const turno = { id: 1, barbero_id: 3, fecha: '2026-10-12', hora: '09:00', updated_at: 'v1' }
 const destino = { fecha: turno.fecha, hora: '10:00' }
@@ -92,5 +93,43 @@ describe('cola de movimientos conectada al estado React', () => {
     h.unmount()
     expect(await onUndo()).toBe(false)
     expect(guardar).toHaveBeenCalledTimes(1)
+  })
+
+  it('después de cambiar el estado sin recibir la versión nueva, mueve y deshace contra la base simulada', async () => {
+    // Base con una sola fila: el trigger renueva updated_at en cada UPDATE.
+    let fila = { ...turno, barberia_id: 927, estado: 'confirmado', updated_at: '2026-10-05T12:00:00Z' }
+    let version = 0
+    const escrituras = []
+    const supabase = { from: () => {
+      const filtros = []
+      let valores = null
+      const query = {
+        update: (v) => { valores = v; return query },
+        select: () => query,
+        eq: (k, v) => { filtros.push([k, v]); return query },
+        maybeSingle: async () => {
+          const coincide = filtros.every(([k, v]) => String(fila[k]).slice(0, k === 'hora' ? 5 : undefined) === String(v).slice(0, k === 'hora' ? 5 : undefined))
+          if (!valores) return { data: coincide ? { ...fila } : null, error: null }
+          escrituras.push(valores)
+          if (!coincide) return { data: null, error: null }
+          version += 1
+          fila = { ...fila, ...valores, updated_at: `2026-10-05T13:00:0${version}Z` }
+          return { data: { ...fila }, error: null }
+        },
+      }
+      return query
+    } }
+    const h = montar((id, origen, destinoMovimiento) => persistirMovimiento(supabase, { barberiaId: 927, turnoId: id, origen, destino: destinoMovimiento }))
+    act(() => h.result.current.setTurnos([{ ...turno, estado: 'confirmado', updated_at: '2026-10-05T12:00:00Z' }]))
+    // Otro camino del panel (estado o cobro) cambia la fila sin devolver updated_at.
+    fila = { ...fila, estado: 'atendido', updated_at: '2026-10-05T12:05:00Z' }
+    act(() => h.result.current.setTurnos((prev) => prev.map((t) => ({ ...t, estado: 'atendido' }))))
+    await act(async () => { expect(await h.result.current.mover(turno, destino)).toBe(true) })
+    expect(h.result.current.turnos[0]).toMatchObject({ hora: '10:00', estado: 'atendido', updated_at: '2026-10-05T13:00:01Z' })
+    expect(h.onError).not.toHaveBeenCalled()
+    await act(async () => { expect(await h.onMovido.mock.calls[0][0].onUndo()).toBe(true) })
+    expect(fila).toMatchObject({ hora: '09:00', estado: 'atendido' })
+    expect(h.result.current.turnos[0]).toMatchObject({ hora: '09:00', updated_at: '2026-10-05T13:00:02Z' })
+    expect(escrituras.every((v) => Object.keys(v).join() === 'fecha,hora')).toBe(true)
   })
 })

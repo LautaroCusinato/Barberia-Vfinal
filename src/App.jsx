@@ -48,7 +48,7 @@ import { initialWorkspaceCollection } from './lib/runtimeStability.js'
 import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './lib/whatsappProvisioning.js'
 import { enqueueLatest } from './lib/latestIntentQueue.js'
 import { useTurnoMoves } from './lib/useTurnoMoves.js'
-import { persistirMovimiento, TURNO_CAMBIO } from './lib/turnoMoves.js'
+import { persistirMovimiento, TURNO_CAMBIO, TURNO_SIN_PERMISO } from './lib/turnoMoves.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
@@ -762,6 +762,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       : Promise.resolve({ ...origen, ...destino }),
     onError: (error) => {
       if (error?.code === TURNO_CAMBIO) mostrarValidacion('El turno cambió o ya no está disponible. Actualizá la agenda antes de volver a moverlo.')
+      else if (error?.code === TURNO_SIN_PERMISO) mostrarValidacion('Tu usuario no tiene permiso para mover turnos en este negocio, o el negocio no tiene la agenda habilitada.')
       else {
         const mensaje = mensajeErrorTurno(error)
         if (mensaje) mostrarValidacion(mensaje)
