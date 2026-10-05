@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, CalendarDays, CalendarPlus, Check, CheckCircle2, Clock3, MapPin, MessageCircle, Moon, RefreshCw, Sun } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import PhoneField from '../components/PhoneField'
@@ -31,6 +31,12 @@ const formatDateLabel = (date) => date ? capitalizar(dateAtNoon(date).toLocaleDa
 const formatShortDate = (date) => date ? capitalizar(dateAtNoon(date).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replaceAll('.', '')) : ''
 const formatTimezone = (timezone) => timezone === 'America/Argentina/Buenos_Aires' ? 'Argentina · Buenos Aires' : timezone || 'zona horaria del negocio'
 const isValidEmail = (email) => !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+const sameOffer = (before, after) => Boolean(before && after
+  && before.id === after.id && before.nombre === after.nombre
+  && Number(before.precio) === Number(after.precio)
+  && Number(before.duracion_min) === Number(after.duracion_min)
+  && normalizeCurrency(before.moneda) === normalizeCurrency(after.moneda))
+const UNCERTAIN_BOOKING = 'No pudimos comprobar si la reserva se guardó. Consultá al negocio antes de volver a reservar para evitar duplicarla.'
 const initials = (name) => String(name || '?').split(/[\s_·-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?'
 const prefersReducedMotion = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
 const DAY_PERIODS = [{ key: 'manana', label: 'Mañana', test: (hour) => hour < 12 }, { key: 'tarde', label: 'Tarde', test: (hour) => hour >= 12 && hour < 19 }, { key: 'noche', label: 'Noche', test: (hour) => hour >= 19 }]
@@ -230,7 +236,7 @@ function BookingSuccess({ success, business, theme, brandStyle, onThemeToggle })
   useEffect(() => { headingRef.current?.focus({ preventScroll: true }) }, [])
   const service = success.servicio
   const professional = success.barbero
-  const duration = professional?.duracion_min || success.duracion_min
+  const duration = success.duracion_min || professional?.duracion_min
   const firstName = String(success.nombre || '').split(/\s+/)[0]
   const addToCalendar = calendarHref({ fecha: success.fecha, hora: success.hora, duracion: duration, titulo: `${service?.nombre || 'Turno'} · ${business?.nombre || 'Reserva'}`, lugar: business?.direccion, timezone: business?.zona_horaria })
   const contactHref = buildWhatsAppHref(whatsappNumber(business?.whatsapp), `Hola! Tengo un turno el ${formatDateLabel(success.fecha)} a las ${formatTime(success.hora)} (${service?.nombre || 'turno'}) y quería hacer una consulta.`)
@@ -307,8 +313,13 @@ function DayStrip({ minDate, maxDate, value, onChange }) {
 }
 
 export default function PublicBooking({ slug }) {
+  return <PublicBookingFlow key={slug} slug={slug} />
+}
+
+function PublicBookingFlow({ slug }) {
   const [catalogo, setCatalogo] = useState(null)
-  const [servicio, setServicio] = useState(null)
+  const [servicioId, setServicioId] = useState(null)
+  const servicio = useMemo(() => catalogo?.servicios.find((item) => item.id === servicioId) ?? null, [catalogo, servicioId])
   const [fecha, setFecha] = useState(dateKey)
   const [slots, setSlots] = useState([])
   const [barberoId, setBarberoId] = useState(null)
@@ -319,20 +330,35 @@ export default function PublicBooking({ slug }) {
   const [loading, setLoading] = useState(true)
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [error, setError] = useState('')
+  const [slotsError, setSlotsError] = useState('')
+  const [catalogNotice, setCatalogNotice] = useState('')
   const [submitError, setSubmitError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [availabilityNotice, setAvailabilityNotice] = useState('')
   const [success, setSuccess] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const [confirmationUncertain, setConfirmationUncertain] = useState(false)
   const [theme, setTheme] = useState(() => initialTheme(slug))
   const [step, setStep] = useState(1)
   const selectionRef = useRef({ barberoId: null, hora: null })
   const previousSlotsContextRef = useRef(null)
   const slotsRequestRef = useRef(0)
+  const catalogRequestRef = useRef(0)
+  const submittingRef = useRef(false)
+  const finishedRef = useRef(false)
+  const mountedRef = useRef(true)
   const stepHeadingRef = useRef(null)
   const stepChangedRef = useRef(false)
 
-  useEffect(() => { selectionRef.current = { barberoId, hora } }, [barberoId, hora])
+  useLayoutEffect(() => { selectionRef.current = { barberoId, hora, servicio, fecha, moneda: catalogo?.barberia?.moneda } }, [barberoId, hora, servicio, fecha, catalogo?.barberia?.moneda])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      catalogRequestRef.current += 1
+      slotsRequestRef.current += 1
+    }
+  }, [])
   useEffect(() => {
     try { localStorage.setItem(`public-booking-theme:${slug}`, theme) } catch { /* storage is optional */ }
   }, [slug, theme])
@@ -344,6 +370,7 @@ export default function PublicBooking({ slug }) {
   useEffect(() => {
     try { window.history.replaceState({ ...(window.history.state || {}), bookingStep: 1 }, '') } catch { /* history is optional */ }
     const onPopState = (event) => {
+      if (submittingRef.current) return
       const next = Number(event.state?.bookingStep)
       stepChangedRef.current = true
       setStep(next >= 1 && next <= STEPS.length ? next : 1)
@@ -365,7 +392,7 @@ export default function PublicBooking({ slug }) {
   }, [step])
 
   const goToStep = (next) => {
-    if (next === step) return
+    if (submittingRef.current || next === step) return
     stepChangedRef.current = true
     setStep(next)
     try {
@@ -375,49 +402,89 @@ export default function PublicBooking({ slug }) {
   }
 
   const cargarCatalogo = useCallback(async () => {
-    if (!isSupabaseConfigured) { setError('La página de reservas no está configurada.'); setLoading(false); return }
-    const { data, error: rpcError } = await supabase.rpc('catalogo_reserva_publica', { p_slug: slug })
-    if (rpcError || !data?.barberia) { setError('No encontramos esta barbería o negocio. Las reservas pueden estar temporalmente pausadas.'); setLoading(false); return }
-    const nextCatalog = { ...data, servicios: Array.isArray(data.servicios) ? data.servicios : [] }
-    setCatalogo(nextCatalog)
-    setServicio((current) => current && nextCatalog.servicios.some((s) => s.id === current.id) ? current : nextCatalog.servicios[0] ?? null)
-    setError('')
-    setLoading(false)
+    const requestId = ++catalogRequestRef.current
+    const vigente = () => mountedRef.current && requestId === catalogRequestRef.current && !finishedRef.current
+    try {
+      if (!isSupabaseConfigured) { setError('La página de reservas no está configurada.'); return null }
+      const { data, error: rpcError } = await supabase.rpc('catalogo_reserva_publica', { p_slug: slug })
+      if (!vigente()) return null
+      if (rpcError) throw rpcError
+      if (!data?.barberia) {
+        setError('No encontramos esta barbería o negocio. Las reservas pueden estar temporalmente pausadas.')
+        return null
+      }
+      const nextCatalog = { ...data, servicios: Array.isArray(data.servicios) ? data.servicios.filter((s) => s.activo !== false) : [] }
+      const previous = selectionRef.current.servicio
+      const selected = nextCatalog.servicios.find((s) => s.id === previous?.id) ?? nextCatalog.servicios[0] ?? null
+      if (previous && (!sameOffer(previous, selected) || normalizeCurrency(selectionRef.current.moneda) !== normalizeCurrency(data.barberia.moneda))) {
+        setCatalogNotice('El servicio cambió. Revisá el precio y la duración antes de confirmar.')
+      }
+      if (previous && (previous.id !== selected?.id || Number(previous.duracion_min) !== Number(selected?.duracion_min))) {
+        slotsRequestRef.current += 1
+        setSlots([])
+        setBarberoId(null)
+        setHora(null)
+        if (previous.id !== selected?.id) {
+          stepChangedRef.current = true
+          setStep(1)
+          setCatalogNotice('El servicio elegido ya no está disponible. Elegí otro servicio para continuar.')
+        }
+      }
+      setCatalogo(nextCatalog)
+      setServicioId(selected?.id ?? null)
+      setError('')
+      return nextCatalog
+    } catch {
+      if (vigente()) setError('No pudimos actualizar los servicios. Intentá nuevamente.')
+      return null
+    } finally {
+      if (vigente()) setLoading(false)
+    }
   }, [slug])
 
+  const serviceId = servicio?.id
+  const serviceDuration = servicio?.duracion_min
   const cargarSlots = useCallback(async () => {
-    if (!servicio || !fecha || !isSupabaseConfigured) return null
     const requestId = ++slotsRequestRef.current
+    const vigente = () => mountedRef.current && requestId === slotsRequestRef.current && !finishedRef.current
+    if (serviceId == null || !fecha || !isSupabaseConfigured) {
+      setSlots([])
+      setLoadingSlots(false)
+      return null
+    }
     setLoadingSlots(true)
-    const { data, error: rpcError } = await supabase.rpc('horarios_disponibles_reserva_publica', {
-      p_slug: slug, p_servicio_id: servicio.id, p_fecha: fecha,
-    })
-    // A service/date change can leave an older RPC in flight. Only the latest
-    // response may update the visible availability; stale responses must not
-    // replace valid slots with an empty result.
-    if (requestId !== slotsRequestRef.current) return null
-    let nextSlots = null
-    if (rpcError) {
-      setError('No pudimos actualizar la disponibilidad. Intentá nuevamente.')
-    } else {
-      nextSlots = data ?? []
+    try {
+      const { data, error: rpcError } = await supabase.rpc('horarios_disponibles_reserva_publica', {
+        p_slug: slug, p_servicio_id: serviceId, p_fecha: fecha,
+      })
+      if (!vigente()) return null
+      if (rpcError || !Array.isArray(data)) throw rpcError || new Error('Disponibilidad inválida')
+      const nextSlots = data
       const previous = selectionRef.current
-      const sameContext = previousSlotsContextRef.current?.serviceId === servicio.id && previousSlotsContextRef.current?.fecha === fecha
+      const sameContext = previousSlotsContextRef.current?.serviceId === serviceId && previousSlotsContextRef.current?.fecha === fecha
       const stillAvailable = nextSlots.some((slot) => slot.barbero_id === previous.barberoId && slot.hora === previous.hora)
       if (sameContext && previous.hora && !stillAvailable) setAvailabilityNotice('La disponibilidad se actualizó y el horario seleccionado dejó de estar disponible. Elegí otro horario.')
       setSlots(nextSlots)
       setBarberoId((id) => nextSlots.some((slot) => slot.barbero_id === id) ? id : (nextSlots[0]?.barbero_id ?? null))
       setHora((current) => nextSlots.some((slot) => slot.barbero_id === previous.barberoId && slot.hora === current) ? current : null)
-      previousSlotsContextRef.current = { serviceId: servicio.id, fecha }
+      previousSlotsContextRef.current = { serviceId, fecha }
+      setSlotsError('')
+      return nextSlots
+    } catch {
+      if (vigente()) setSlotsError('No pudimos actualizar la disponibilidad. Intentá nuevamente.')
+      return null
+    } finally {
+      if (vigente()) setLoadingSlots(false)
     }
-    setLoadingSlots(false)
-    return nextSlots
-  }, [slug, servicio, fecha])
+  }, [slug, serviceId, fecha])
 
   useEffect(() => { cargarCatalogo() }, [cargarCatalogo])
-  useEffect(() => { cargarSlots() }, [cargarSlots])
   useEffect(() => {
-    const refresh = () => { if (document.visibilityState === 'visible') { cargarCatalogo(); cargarSlots() } }
+    cargarSlots()
+    return () => { slotsRequestRef.current += 1 }
+  }, [cargarSlots, serviceDuration])
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible' && !submittingRef.current && !finishedRef.current) { cargarCatalogo(); cargarSlots() } }
     window.addEventListener('focus', refresh)
     let timer = null
     const syncTimer = () => {
@@ -454,19 +521,20 @@ export default function PublicBooking({ slug }) {
   const visibleStep = !servicio ? 1 : step
   const toggleTheme = () => setTheme((current) => current === 'dark' ? 'light' : 'dark')
 
-  const clearFeedback = () => { setAvailabilityNotice(''); setError(''); setSubmitError('') }
+  const clearFeedback = () => { setAvailabilityNotice(''); setSlotsError(''); if (!confirmationUncertain) setSubmitError('') }
   const seleccionarServicio = (nextService) => {
-    if (servicio?.id !== nextService.id) { setServicio(nextService); setBarberoId(null); setHora(null); setFieldErrors({}); clearFeedback() }
+    if (submittingRef.current) return
+    if (servicio?.id !== nextService.id) { setServicioId(nextService.id); setBarberoId(null); setHora(null); setFieldErrors({}); clearFeedback() }
     goToStep(2)
   }
-  const seleccionarFecha = (value) => { if (!value || value === fecha) return; setFecha(value); setBarberoId(null); setHora(null); setFieldErrors({}); clearFeedback() }
-  const seleccionarProfesional = (id) => { setBarberoId(id); setHora(null); clearFeedback() }
-  const seleccionarHora = (nextHour) => { setHora(nextHour); setFieldErrors({}); clearFeedback() }
-  const reintentarHorarios = () => { setError(''); cargarSlots() }
+  const seleccionarFecha = (value) => { if (submittingRef.current || !value || value === fecha) return; setFecha(value); setBarberoId(null); setHora(null); setFieldErrors({}); clearFeedback() }
+  const seleccionarProfesional = (id) => { if (submittingRef.current) return; setBarberoId(id); setHora(null); clearFeedback() }
+  const seleccionarHora = (nextHour) => { if (submittingRef.current) return; setHora(nextHour); setFieldErrors({}); clearFeedback() }
+  const reintentarHorarios = () => { if (!submittingRef.current) cargarSlots() }
 
   const confirmar = async (event) => {
     event.preventDefault()
-    if (submitting) return
+    if (submittingRef.current || finishedRef.current || confirmationUncertain) return
     if (!servicio || !barbero || !hora) { setSubmitError('Elegí un profesional y un horario para continuar.'); return }
     const nextErrors = {}
     if (!nombre.trim()) nextErrors.nombre = 'Ingresá tu nombre y apellido.'
@@ -485,29 +553,71 @@ export default function PublicBooking({ slug }) {
     setSubmitError('')
     // Estado propio del envío: cargarSlots apaga loadingSlots al terminar y
     // antes eso re-habilitaba el botón mientras se creaba la reserva.
+    submittingRef.current = true
     setSubmitting(true)
+    let mutationStarted = false
     try {
+      const freshCatalog = await cargarCatalogo()
+      if (!mountedRef.current) return
+      if (!freshCatalog) { setSubmitError('No pudimos revisar el servicio. Intentá nuevamente.'); return }
+      const freshService = freshCatalog.servicios.find((s) => s.id === servicio.id)
+      if (!sameOffer(servicio, freshService) || normalizeCurrency(freshCatalog.barberia.moneda || freshService?.moneda) !== currency) {
+        setSubmitError('El servicio cambió. Revisá el resumen antes de confirmar otra vez.')
+        return
+      }
       // Reconsultamos primero, para no confirmar una opción que cambió mientras el formulario estaba abierto.
       const disponibles = await cargarSlots()
-      if (disponibles && !disponibles.some((slot) => slot.barbero_id === barbero.barbero_id && slot.hora === hora)) {
+      if (!mountedRef.current) return
+      if (!disponibles) { setSubmitError('No pudimos revisar los horarios. Intentá nuevamente.'); return }
+      const chosenSlot = disponibles.find((slot) => slot.barbero_id === barbero.barbero_id && slot.hora === hora)
+      if (!chosenSlot) {
         setSubmitError('Ese horario acaba de ocuparse. Elegí otro horario.')
         return
       }
+      if (Number(chosenSlot.duracion_min) !== Number(barbero.duracion_min)) {
+        setSubmitError('La duración del turno cambió. Revisá el resumen antes de confirmar otra vez.')
+        return
+      }
+      mutationStarted = true
       const { data, error: rpcError } = await supabase.rpc('crear_reserva_publica', {
         p_slug: slug, p_servicio_id: servicio.id, p_barbero_id: barbero.barbero_id,
         p_fecha: fecha, p_hora: hora, p_nombre: nombre.trim(), p_telefono: soloDigitos(telefono), p_email: email.trim() || null,
       })
+      if (!mountedRef.current) return
       if (rpcError) {
+        // Una excepción SQL confirma el rechazo de esa transacción. Errores
+        // de transporte/proxy no prueban que el servidor no haya guardado.
+        const rejected = /^(22|23|42|P0)[0-9A-Z]{3}$/.test(rpcError.code || '')
+          || ['40001', '40P01'].includes(rpcError.code)
+        if (!rejected) {
+          setConfirmationUncertain(true)
+          setSubmitError(UNCERTAIN_BOOKING)
+          return
+        }
         const known = knownBookingError(rpcError)
         if (known?.field) setFieldErrors((current) => ({ ...current, [known.field]: known.message }))
         setSubmitError(safeRpcError(rpcError))
         await cargarSlots()
         return
       }
-      setSuccess({ ...(data?.[0] ?? { fecha, hora, duracion_min: barbero.duracion_min }), servicio, barbero, nombre: nombre.trim(), telefono: soloDigitos(telefono), moneda: currency })
+      const created = Array.isArray(data) && data.length === 1 ? data[0] : null
+      if (!created || !/^[1-9]\d*$/.test(String(created.turno_id)) || created.fecha !== fecha
+        || formatTime(created.hora) !== formatTime(hora) || !(Number(created.duracion_min) > 0)) {
+        setConfirmationUncertain(true)
+        setSubmitError(UNCERTAIN_BOOKING)
+        return
+      }
+      finishedRef.current = true
+      setSuccess({ ...created, servicio: freshService, barbero: chosenSlot, nombre: nombre.trim(), telefono: soloDigitos(telefono), moneda: currency })
       window.scrollTo({ top: 0 })
+    } catch {
+      if (mountedRef.current) {
+        if (mutationStarted) setConfirmationUncertain(true)
+        setSubmitError(mutationStarted ? UNCERTAIN_BOOKING : 'No pudimos revisar la reserva. Intentá nuevamente.')
+      }
     } finally {
-      setSubmitting(false)
+      submittingRef.current = false
+      if (mountedRef.current) setSubmitting(false)
     }
   }
 
@@ -546,8 +656,8 @@ export default function PublicBooking({ slug }) {
               {visibleStep > 1 && <IconButton className="booking-back" label="Volver al paso anterior" onClick={() => goToStep(visibleStep - 1)}><ArrowLeft size={18} /></IconButton>}
               <h2 id="booking-step-title" ref={stepHeadingRef} tabIndex={-1}>{STEP_TITLES[visibleStep - 1]}</h2>
             </div>
-            <LiveRegion className={`booking-notice ${availabilityNotice ? 'has-message' : ''}`}>{availabilityNotice}</LiveRegion>
-            {error && <div className="booking-error" role="alert"><span>{error}</span><Button variant="secondary" size="sm" onClick={reintentarHorarios}><RefreshCw size={14} aria-hidden="true" /> Reintentar</Button></div>}
+            <LiveRegion className={`booking-notice ${catalogNotice || availabilityNotice ? 'has-message' : ''}`}>{[catalogNotice, availabilityNotice].filter(Boolean).join(' ')}</LiveRegion>
+            {(error || slotsError) && <div className="booking-error" role="alert"><span>{error || slotsError}</span><Button variant="secondary" size="sm" disabled={submitting} onClick={error ? cargarCatalogo : reintentarHorarios}><RefreshCw size={14} aria-hidden="true" /> Reintentar</Button></div>}
 
             {visibleStep === 1 && (
               catalogo.servicios.length === 0
@@ -620,14 +730,16 @@ export default function PublicBooking({ slug }) {
               <form className="booking-step-body booking-form" onSubmit={confirmar} noValidate aria-labelledby="booking-step-title">
                 <BookingSummary as="section" className="booking-review" title="Tu turno" service={servicio} professional={barbero} date={fecha} time={hora} currency={currency} onEdit={goToStep} />
                 {!hora && <div className="booking-error" role="alert"><span>Elegí un horario para poder confirmar.</span><Button variant="secondary" size="sm" onClick={() => goToStep(2)}>Elegir horario</Button></div>}
-                <fieldset className="booking-fields">
+                <fieldset className="booking-fields" disabled={submitting}>
                   <legend>Tus datos</legend>
                   <FormField label="Nombre y apellido" required error={fieldErrors.nombre} id="booking-name"><Input value={nombre} onChange={(event) => { setNombre(event.target.value); setFieldErrors((current) => ({ ...current, nombre: '' })) }} placeholder="Ej.: Juan Pérez" autoComplete="name" autoCapitalize="words" maxLength={80} enterKeyHint="next" /></FormField>
                   <FormField label="Teléfono celular" required hint={PHONE_HINT} error={fieldErrors.telefono} id="booking-phone"><PhoneField data-booking-phone value={telefono} onChange={(value) => { setTelefono(value); setFieldErrors((current) => ({ ...current, telefono: '' })) }} className="booking-phone-field" aria-label="Teléfono" enterKeyHint="next" /></FormField>
                   <FormField label="Email (opcional)" hint="Queda guardado con tus datos de cliente del negocio." error={fieldErrors.email} id="booking-email"><Input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setFieldErrors((current) => ({ ...current, email: '' })) }} placeholder="tu@email.com" autoComplete="email" inputMode="email" maxLength={120} enterKeyHint="done" /></FormField>
                 </fieldset>
-                {submitError && <div className="booking-error booking-submit-error" role="alert"><span>{submitError}</span>{!hasFieldError && hora && <Button variant="secondary" size="sm" onClick={() => goToStep(2)}>Elegir otro horario</Button>}</div>}
-                <Button type="submit" variant="primary" size="lg" className="booking-button booking-submit" disabled={!hora || loadingSlots || submitting} loading={loadingSlots || submitting}>{submitLabel}</Button>
+                {submitError && <div className="booking-error booking-submit-error" role="alert"><span>{submitError}</span>{confirmationUncertain
+                  ? contactHref && <a className="booking-button booking-button-secondary booking-link-button" href={contactHref} target="_blank" rel="noreferrer">Consultar al negocio</a>
+                  : !hasFieldError && hora && <Button variant="secondary" size="sm" onClick={() => goToStep(2)}>Elegir otro horario</Button>}</div>}
+                <Button type="submit" variant="primary" size="lg" className="booking-button booking-submit" disabled={!hora || loadingSlots || submitting || confirmationUncertain} loading={loadingSlots || submitting}>{submitLabel}</Button>
                 <p className="booking-form-note">Al confirmar verificamos nuevamente que el horario siga libre.</p>
               </form>
             )}
