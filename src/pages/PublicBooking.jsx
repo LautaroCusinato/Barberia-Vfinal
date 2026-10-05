@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarDays, CalendarPlus, CheckCircle2, Clock3, MapPin, MessageCircle, Moon, Scissors, Sun, UserRound } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, CalendarPlus, Check, CheckCircle2, Clock3, MapPin, MessageCircle, Moon, RefreshCw, Sun } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import PhoneField from '../components/PhoneField'
-import { Badge, Button, Card, EmptyState, FormField, IconButton, Input, LiveRegion, Skeleton, Spinner } from '../components/ui'
+import { Button, Card, EmptyState, FormField, IconButton, Input, LiveRegion, Skeleton, Spinner } from '../components/ui'
 import { PREFIJO_AR, capitalizar, soloDigitos, telefonoNacionalValido, formatPrecio } from '../lib/text'
 import { buildWhatsAppHref } from '../lib/commercialCatalog'
 import './PublicBooking.css'
 
-// Los pasos del indicador coinciden 1:1 con las secciones numeradas de la página.
-const STEPS = [{ label: 'Servicio', short: 'Serv.' }, { label: 'Profesional', short: 'Prof.' }, { label: 'Horario', short: 'Hora' }, { label: 'Tus datos', short: 'Datos' }, { label: 'Confirmación', short: 'Listo' }]
+// La reserva se recorre en tres pasos. El indicador refleja el paso visible:
+// los pasos completos se pueden volver a abrir sin perder lo elegido.
+const STEPS = [{ label: 'Servicio', short: 'Servicio' }, { label: 'Fecha y hora', short: 'Horario' }, { label: 'Tus datos', short: 'Datos' }]
+const STEP_TITLES = ['Elegí un servicio', 'Elegí día y horario', 'Revisá y confirmá']
 const PHONE_HINT = 'Código de área sin 0 y número sin 15. Ej.: 11 5555-1234 o 351 555-1234.'
-const PHONE_ERROR = 'Ingresá tu número completo: 10 dígitos después de +54 9.'
+const PHONE_ERROR = 'Ingresá tu número completo: 10 dígitos después de +54 9.'
 const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
+const QUICK_DAYS = 14
 const dateKey = (timezone = DEFAULT_TIMEZONE) => {
   try { return new Intl.DateTimeFormat('en-CA', { timeZone: timezone || DEFAULT_TIMEZONE }).format(new Date()) } catch { return new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE }).format(new Date()) }
 }
@@ -23,10 +26,14 @@ const addDays = (key, days) => {
 const formatTime = (time) => String(time || '').slice(0, 5)
 const normalizeCurrency = (currency) => /^[A-Z]{3}$/.test(String(currency || '').toUpperCase()) ? String(currency).toUpperCase() : 'ARS'
 const formatMoney = (amount, currency) => formatPrecio(amount, normalizeCurrency(currency))
-const formatDateLabel = (date) => date ? capitalizar(new Date(`${date}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })) : 'Elegí una fecha'
+const dateAtNoon = (date) => new Date(`${date}T12:00:00`)
+const formatDateLabel = (date) => date ? capitalizar(dateAtNoon(date).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })) : 'Elegí una fecha'
+const formatShortDate = (date) => date ? capitalizar(dateAtNoon(date).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replaceAll('.', '')) : ''
 const formatTimezone = (timezone) => timezone === 'America/Argentina/Buenos_Aires' ? 'Argentina · Buenos Aires' : timezone || 'zona horaria del negocio'
 const isValidEmail = (email) => !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-const initials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?'
+const initials = (name) => String(name || '?').split(/[\s_·-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?'
+const prefersReducedMotion = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+const DAY_PERIODS = [{ key: 'manana', label: 'Mañana', test: (hour) => hour < 12 }, { key: 'tarde', label: 'Tarde', test: (hour) => hour >= 12 && hour < 19 }, { key: 'noche', label: 'Noche', test: (hour) => hour >= 19 }]
 
 // Enlace "Agregar a Google Calendar" en la zona horaria del negocio (ctz),
 // sin conversiones manuales de huso.
@@ -78,9 +85,10 @@ const contrastRatio = (a, b) => {
 
 const accentForeground = (hex) => (1.05 / (luminanceOf(hex) + 0.05)) >= 4.5 ? '#fff' : '#201b17'
 
-// El color de marca se usa también como color de texto (etiquetas "Paso N",
-// íconos). Con marcas claras (amarillo, celeste) el texto quedaba ilegible:
-// lo mezclamos hacia la tinta del tema hasta llegar a 4.5:1 sobre la tarjeta.
+// El color de marca se usa también como color de texto (etiquetas, íconos,
+// bordes de selección). Con marcas claras (amarillo, celeste) el texto
+// quedaba ilegible: lo mezclamos hacia la tinta del tema hasta llegar a 4.5:1
+// sobre la superficie de Austral (--surface / --ink de cada tema).
 const mixHex = (from, to, amount) => {
   const a = normalizeHex(from).slice(1)
   const b = normalizeHex(to).slice(1)
@@ -90,8 +98,8 @@ const mixHex = (from, to, amount) => {
   }).join('')
 }
 const accentTextFor = (hex, theme) => {
-  const surface = theme === 'dark' ? '#24201d' : '#ffffff'
-  const ink = theme === 'dark' ? '#f4ede5' : '#251f19'
+  const surface = theme === 'dark' ? '#211e1a' : '#ffffff'
+  const ink = theme === 'dark' ? '#f1ece4' : '#202020'
   for (let amount = 0; amount <= 1; amount += 0.1) {
     const candidate = mixHex(hex, ink, amount)
     if (contrastRatio(candidate, surface) >= 4.5) return candidate
@@ -132,14 +140,40 @@ const safeRpcError = (rpcError) => {
   return 'No pudimos confirmar la reserva. Revisá los datos e intentá nuevamente.'
 }
 
-function BookingProgress({ activeStep }) {
+function BusinessMark({ business, size = 'md' }) {
+  return <span className={`booking-mark booking-mark--${size}`} aria-hidden="true">{business?.logo_url ? <img src={business.logo_url} alt="" /> : initials(business?.nombre)}</span>
+}
+
+function BookingHeader({ business, theme, onThemeToggle }) {
+  return (
+    <header className="booking-header">
+      <div className="booking-brand">
+        <BusinessMark business={business} />
+        <div className="booking-brand-text">
+          <p className="booking-brand-name">{business?.nombre || 'Reservas online'}</p>
+          {business?.direccion && <p className="booking-brand-address"><MapPin size={14} aria-hidden="true" /> <span>{business.direccion}</span></p>}
+        </div>
+      </div>
+      {onThemeToggle && <IconButton className="booking-theme-toggle" label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} onClick={onThemeToggle}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</IconButton>}
+    </header>
+  )
+}
+
+function BookingProgress({ step, maxStep, onStep }) {
   return (
     <nav className="booking-progress" aria-label="Progreso de la reserva">
+      <p className="booking-progress-count">Paso {step} de {STEPS.length}</p>
       <ol>
-        {STEPS.map((label, index) => {
-          const step = index + 1
-          const state = step < activeStep ? 'complete' : step === activeStep ? 'current' : 'pending'
-          return <li className={`booking-progress-step ${state}`} key={label.label} aria-current={state === 'current' ? 'step' : undefined}><span aria-hidden="true">{state === 'complete' ? '✓' : step}</span><small><span className="booking-progress-full">{label.label}</span><span className="booking-progress-short" aria-hidden="true">{label.short}</span></small></li>
+        {STEPS.map((item, index) => {
+          const number = index + 1
+          const state = number < step ? 'complete' : number === step ? 'current' : 'pending'
+          const reachable = number !== step && number <= maxStep
+          const content = <><span aria-hidden="true">{state === 'complete' ? <Check size={14} strokeWidth={3} /> : number}</span><small><span className="booking-progress-full">{item.label}</span><span className="booking-progress-short" aria-hidden="true">{item.short}</span></small></>
+          return (
+            <li className={`booking-progress-step ${state}`} key={item.label} aria-current={state === 'current' ? 'step' : undefined}>
+              {reachable ? <button type="button" onClick={() => onStep(number)} aria-label={`${number < step ? 'Volver a' : 'Ir a'} ${item.label}`}>{content}</button> : <div>{content}</div>}
+            </li>
+          )
         })}
       </ol>
     </nav>
@@ -150,19 +184,21 @@ function SummaryValue({ value, placeholder }) {
   return value ? <dd>{value}</dd> : <dd className="is-pending">{placeholder}</dd>
 }
 
-function BookingSummary({ service, professional, date, time, currency }) {
+function SummaryRow({ label, value, placeholder, onEdit, editLabel }) {
+  return <div><dt>{label}</dt><SummaryValue value={value} placeholder={placeholder} />{onEdit && value && <button type="button" className="booking-edit" onClick={onEdit} aria-label={editLabel}>Cambiar</button>}</div>
+}
+
+function BookingSummary({ service, professional, date, time, currency, onEdit, as = 'aside', title = 'Tu reserva', className = '' }) {
   return (
-    <Card as="aside" className="booking-summary" aria-labelledby="booking-summary-title">
-      <div className="booking-summary-heading"><div><p className="booking-eyebrow">Tu reserva</p><h2 id="booking-summary-title">Resumen</h2></div><Badge variant={time ? 'success' : 'muted'}>{time ? 'Lista para confirmar' : 'Pendiente'}</Badge></div>
+    <Card as={as} className={`booking-summary ${className}`} aria-label={title}>
+      <p className="booking-eyebrow">{title}</p>
       <dl className="booking-summary-list">
-        <div><dt>Servicio</dt><SummaryValue value={service?.nombre} placeholder="Elegí un servicio" /></div>
-        <div><dt>Profesional</dt><SummaryValue value={professional?.barbero_nombre} placeholder="Elegí un profesional" /></div>
-        <div><dt>Fecha</dt><SummaryValue value={date ? formatDateLabel(date) : ''} placeholder="Elegí una fecha" /></div>
-        <div><dt>Hora</dt><SummaryValue value={time ? formatTime(time) : ''} placeholder="Elegí un horario" /></div>
-        <div><dt>Duración</dt><SummaryValue value={service && professional ? `${professional.duracion_min} min` : ''} placeholder="—" /></div>
-        <div className="booking-summary-total"><dt>Total</dt><SummaryValue value={service ? formatMoney(service.precio, currency) : ''} placeholder="—" /></div>
+        <SummaryRow label="Servicio" value={service?.nombre} placeholder="Elegí un servicio" onEdit={onEdit && (() => onEdit(1))} editLabel="Cambiar servicio" />
+        <SummaryRow label="Día y hora" value={date && time ? `${formatDateLabel(date)} · ${formatTime(time)}` : ''} placeholder="Elegí un horario" onEdit={onEdit && (() => onEdit(2))} editLabel="Cambiar día y horario" />
+        <SummaryRow label="Profesional" value={time ? professional?.barbero_nombre : ''} placeholder="—" onEdit={onEdit && (() => onEdit(2))} editLabel="Cambiar profesional" />
+        <SummaryRow label="Duración" value={service && professional && time ? `${professional.duracion_min} min` : ''} placeholder="—" />
       </dl>
-      <p className="booking-summary-note"><Clock3 size={14} aria-hidden="true" /> Horarios en la zona del negocio</p>
+      <div className="booking-summary-total"><span>Total</span><strong>{service ? formatMoney(service.precio, currency) : '—'}</strong></div>
     </Card>
   )
 }
@@ -172,14 +208,26 @@ function BookingFooter() {
 }
 
 function BookingSkeleton() {
-  return <div className="booking-loading-card" aria-label="Cargando reservas" role="status"><div className="booking-skeleton-intro"><Skeleton width="92px" height={10} /><Skeleton width="72%" height={30} /><Skeleton width="88%" height={14} /></div>{[1, 2, 3].map((section) => <div className="booking-skeleton-section" key={section}><Skeleton width="120px" height={18} /><div className="booking-skeleton-grid"><Skeleton height={54} /><Skeleton height={54} /><Skeleton height={54} /></div></div>)}<span className="booking-loading-label"><Spinner size={16} /> Cargando disponibilidad…</span></div>
+  return (
+    <div className="booking-shell" role="status" aria-label="Cargando reservas">
+      <div className="booking-header booking-header--skeleton"><Skeleton width={44} height={44} className="booking-skeleton-mark" /><div className="booking-skeleton-lines"><Skeleton width="180px" height={18} /><Skeleton width="140px" height={12} /></div></div>
+      <div className="booking-card booking-card--skeleton">
+        <Skeleton width="220px" height={28} />
+        <Skeleton height={44} />
+        {[1, 2, 3].map((item) => <Skeleton key={item} height={84} />)}
+        <span className="booking-loading-label"><Spinner size={16} /> Cargando servicios y disponibilidad…</span>
+      </div>
+    </div>
+  )
 }
 
 function BookingError({ message, onRetry }) {
-  return <Card className="booking-state-card" role="alert"><EmptyState icon={<CalendarDays size={28} aria-hidden="true" />} title="No pudimos abrir esta reserva" description={message || 'El negocio no está disponible en este momento.'} action={<Button variant="secondary" onClick={onRetry}>Intentar nuevamente</Button>} /></Card>
+  return <Card className="booking-state-card" role="alert"><EmptyState icon={<CalendarDays size={32} aria-hidden="true" />} title="No pudimos abrir esta reserva" description={message || 'El negocio no está disponible en este momento.'} action={<Button variant="secondary" onClick={onRetry}><RefreshCw size={16} aria-hidden="true" /> Intentar nuevamente</Button>} /></Card>
 }
 
 function BookingSuccess({ success, business, theme, brandStyle, onThemeToggle }) {
+  const headingRef = useRef(null)
+  useEffect(() => { headingRef.current?.focus({ preventScroll: true }) }, [])
   const service = success.servicio
   const professional = success.barbero
   const duration = professional?.duracion_min || success.duracion_min
@@ -187,24 +235,75 @@ function BookingSuccess({ success, business, theme, brandStyle, onThemeToggle })
   const addToCalendar = calendarHref({ fecha: success.fecha, hora: success.hora, duracion: duration, titulo: `${service?.nombre || 'Turno'} · ${business?.nombre || 'Reserva'}`, lugar: business?.direccion, timezone: business?.zona_horaria })
   const contactHref = buildWhatsAppHref(whatsappNumber(business?.whatsapp), `Hola! Tengo un turno el ${formatDateLabel(success.fecha)} a las ${formatTime(success.hora)} (${service?.nombre || 'turno'}) y quería hacer una consulta.`)
   return <main className="public-booking" data-theme={theme} style={brandStyle}>
-    <header className="booking-header"><div className="booking-brand">{business?.logo_url ? <img src={business.logo_url} alt="" /> : <Scissors size={24} aria-hidden="true" />}<span>{business?.nombre || 'Reservas online'}</span></div><IconButton className="booking-theme-toggle" label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} onClick={onThemeToggle}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</IconButton></header>
-    <Card as="section" className="booking-success" aria-labelledby="booking-success-title">
-      <CheckCircle2 className="booking-success-icon" size={52} aria-hidden="true" />
-      <h1 id="booking-success-title">¡Turno reservado!</h1>
-      <p>{firstName ? `${firstName}, te esperamos` : 'Te esperamos'} en <strong>{business?.nombre}</strong>.</p>
-      <div className="booking-success-when"><CalendarDays size={20} aria-hidden="true" /><div><span>Fecha y hora</span><strong>{formatDateLabel(success.fecha)} · {formatTime(success.hora)}</strong></div></div>
-      <div className="booking-success-details"><div><span>Servicio</span><strong>{service?.nombre || 'Tu servicio'}</strong></div><div><span>Profesional</span><strong>{professional?.barbero_nombre || 'Tu profesional'}</strong></div><div><span>Duración</span><strong>{duration} min</strong></div><div><span>Total</span><strong>{formatMoney(service?.precio, success.moneda)}</strong></div></div>
-      {business?.direccion && <p className="booking-success-note"><MapPin size={16} aria-hidden="true" /> {business.direccion}</p>}
-      <p className="booking-success-timezone">Horario local: {formatTimezone(business?.zona_horaria)}.</p>
-      <div className="booking-success-actions">
-        {addToCalendar && <a className="booking-button booking-link-button" href={addToCalendar} target="_blank" rel="noreferrer"><CalendarPlus size={18} aria-hidden="true" /> Agregar al calendario</a>}
-        {contactHref && <a className="booking-button booking-button-secondary booking-link-button" href={contactHref} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> Escribir al negocio</a>}
-        <Button variant="secondary" className="booking-button booking-button-secondary" onClick={() => window.location.reload()}>Reservar otro turno</Button>
-      </div>
-      {contactHref && <p className="booking-success-help">¿Necesitás cambiar o cancelar el turno? Escribinos por WhatsApp.</p>}
-    </Card>
-    <BookingFooter />
+    <div className="booking-shell booking-shell--narrow">
+      <BookingHeader business={business} theme={theme} onThemeToggle={onThemeToggle} />
+      <Card as="section" className="booking-success" aria-labelledby="booking-success-title">
+        <div className="booking-success-hero">
+          <span className="booking-success-icon"><CheckCircle2 size={34} aria-hidden="true" /></span>
+          <h1 id="booking-success-title" ref={headingRef} tabIndex={-1}>¡Turno reservado!</h1>
+          <p>{firstName ? `${firstName}, te esperamos` : 'Te esperamos'} en <strong>{business?.nombre}</strong>.</p>
+        </div>
+        <div className="booking-ticket">
+          <div className="booking-ticket-when">
+            <span className="booking-ticket-label"><CalendarDays size={16} aria-hidden="true" /> Fecha y hora</span>
+            <strong>{formatDateLabel(success.fecha)}</strong>
+            <span className="booking-ticket-time">{formatTime(success.hora)} h</span>
+          </div>
+          <dl className="booking-ticket-details">
+            <div><dt>Servicio</dt><dd>{service?.nombre || 'Tu servicio'}</dd></div>
+            <div><dt>Profesional</dt><dd>{professional?.barbero_nombre || 'Tu profesional'}</dd></div>
+            <div><dt>Duración</dt><dd>{duration} min</dd></div>
+            <div><dt>Total</dt><dd>{formatMoney(service?.precio, success.moneda)}</dd></div>
+          </dl>
+          {business?.direccion && <p className="booking-ticket-place"><MapPin size={16} aria-hidden="true" /> {business.direccion}</p>}
+          <p className="booking-ticket-note"><Clock3 size={14} aria-hidden="true" /> Horario local: {formatTimezone(business?.zona_horaria)}.</p>
+        </div>
+        <div className="booking-success-actions">
+          {addToCalendar && <a className="booking-button booking-link-button" href={addToCalendar} target="_blank" rel="noreferrer"><CalendarPlus size={18} aria-hidden="true" /> Agregar al calendario</a>}
+          {contactHref && <a className="booking-button booking-button-secondary booking-link-button" href={contactHref} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> Escribir al negocio</a>}
+          <Button variant="secondary" className="booking-button booking-button-secondary" onClick={() => window.location.reload()}>Reservar otro turno</Button>
+        </div>
+        {contactHref && <p className="booking-success-help">¿Necesitás cambiar o cancelar el turno? Escribinos por WhatsApp.</p>}
+      </Card>
+      <BookingFooter />
+    </div>
   </main>
+}
+
+function DayStrip({ minDate, maxDate, value, onChange }) {
+  const listRef = useRef(null)
+  const days = useMemo(() => {
+    const result = []
+    for (let offset = 0; offset < QUICK_DAYS; offset += 1) {
+      const key = addDays(minDate, offset)
+      if (!key || (maxDate && key > maxDate)) break
+      result.push(key)
+    }
+    return result
+  }, [minDate, maxDate])
+  // Mantener visible el día elegido dentro de la tira, sin mover la página.
+  useEffect(() => {
+    const list = listRef.current
+    const selected = list?.querySelector('[aria-pressed="true"]')
+    if (!list || !selected) return
+    const left = selected.offsetLeft - list.offsetLeft
+    if (left < list.scrollLeft || left + selected.offsetWidth > list.scrollLeft + list.clientWidth) list.scrollTo({ left: Math.max(0, left - 16), behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+  }, [value])
+  return (
+    <div className="booking-days" ref={listRef} role="group" aria-label="Próximos días">
+      {days.map((key, index) => {
+        const date = dateAtNoon(key)
+        const top = index === 0 ? 'Hoy' : index === 1 ? 'Mañana' : capitalizar(date.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', ''))
+        return (
+          <button type="button" key={key} className={value === key ? 'selected' : ''} aria-pressed={value === key} aria-label={formatDateLabel(key)} onClick={() => onChange(key)}>
+            <small>{top}</small>
+            <strong>{date.getDate()}</strong>
+            <small>{date.toLocaleDateString('es-AR', { month: 'short' }).replace('.', '')}</small>
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function PublicBooking({ slug }) {
@@ -226,14 +325,54 @@ export default function PublicBooking({ slug }) {
   const [success, setSuccess] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [theme, setTheme] = useState(() => initialTheme(slug))
+  const [step, setStep] = useState(1)
   const selectionRef = useRef({ barberoId: null, hora: null })
   const previousSlotsContextRef = useRef(null)
   const slotsRequestRef = useRef(0)
+  const stepHeadingRef = useRef(null)
+  const stepChangedRef = useRef(false)
 
   useEffect(() => { selectionRef.current = { barberoId, hora } }, [barberoId, hora])
   useEffect(() => {
     try { localStorage.setItem(`public-booking-theme:${slug}`, theme) } catch { /* storage is optional */ }
   }, [slug, theme])
+
+  // Cada paso es una entrada del historial con la misma URL: el botón Atrás
+  // del teléfono (o del navegador de WhatsApp) vuelve al paso anterior en vez
+  // de abandonar la reserva. No se guarda ningún dato del cliente en la URL
+  // ni en el historial, sólo el número de paso.
+  useEffect(() => {
+    try { window.history.replaceState({ ...(window.history.state || {}), bookingStep: 1 }, '') } catch { /* history is optional */ }
+    const onPopState = (event) => {
+      const next = Number(event.state?.bookingStep)
+      stepChangedRef.current = true
+      setStep(next >= 1 && next <= STEPS.length ? next : 1)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  // Al cambiar de paso, el foco pasa al título del paso y la vista vuelve al
+  // inicio de la tarjeta: en el celular el contenido anterior queda arriba.
+  useEffect(() => {
+    if (!stepChangedRef.current) return
+    stepChangedRef.current = false
+    const heading = stepHeadingRef.current
+    if (!heading) return
+    heading.focus({ preventScroll: true })
+    const top = heading.closest('.booking-card')?.getBoundingClientRect().top
+    if (Number.isFinite(top) && top < 0) window.scrollTo({ top: window.scrollY + top - 12, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+  }, [step])
+
+  const goToStep = (next) => {
+    if (next === step) return
+    stepChangedRef.current = true
+    setStep(next)
+    try {
+      if (next > step) window.history.pushState({ ...(window.history.state || {}), bookingStep: next }, '')
+      else window.history.replaceState({ ...(window.history.state || {}), bookingStep: next }, '')
+    } catch { /* history is optional */ }
+  }
 
   const cargarCatalogo = useCallback(async () => {
     if (!isSupabaseConfigured) { setError('La página de reservas no está configurada.'); setLoading(false); return }
@@ -296,10 +435,14 @@ export default function PublicBooking({ slug }) {
 
   const profesionales = useMemo(() => {
     const seen = new Map()
-    slots.forEach((slot) => { if (!seen.has(slot.barbero_id)) seen.set(slot.barbero_id, slot) })
+    slots.forEach((slot) => {
+      if (!seen.has(slot.barbero_id)) seen.set(slot.barbero_id, { ...slot, total: 0 })
+      seen.get(slot.barbero_id).total += 1
+    })
     return [...seen.values()]
   }, [slots])
   const horarios = useMemo(() => slots.filter((slot) => slot.barbero_id === barberoId), [slots, barberoId])
+  const horariosPorFranja = useMemo(() => DAY_PERIODS.map((period) => ({ ...period, slots: horarios.filter((slot) => period.test(Number(formatTime(slot.hora).slice(0, 2)))) })).filter((period) => period.slots.length), [horarios])
   const barbero = profesionales.find((professional) => professional.barbero_id === barberoId)
   const currency = normalizeCurrency(catalogo?.barberia?.moneda || servicio?.moneda)
   const accent = normalizeHex(catalogo?.barberia?.color_principal)
@@ -307,13 +450,19 @@ export default function PublicBooking({ slug }) {
   const accentText = accentForeground(accent)
   const brandStyle = { '--booking-accent': accent, '--booking-secondary': secondary, '--booking-accent-foreground': accentText, '--booking-accent-text': accentTextFor(accent, theme) }
   const phoneIsValid = telefonoNacionalValido(telefono)
-  const activeStep = !servicio ? 1 : !barbero ? 2 : !hora ? 3 : !nombre.trim() || !phoneIsValid ? 4 : 5
+  const maxStep = !servicio ? 1 : !hora ? 2 : 3
+  const visibleStep = !servicio ? 1 : step
+  const toggleTheme = () => setTheme((current) => current === 'dark' ? 'light' : 'dark')
 
   const clearFeedback = () => { setAvailabilityNotice(''); setError(''); setSubmitError('') }
-  const seleccionarServicio = (nextService) => { setServicio(nextService); setBarberoId(null); setHora(null); setFieldErrors({}); clearFeedback() }
-  const seleccionarFecha = (event) => { setFecha(event.target.value); setBarberoId(null); setHora(null); setFieldErrors({}); clearFeedback() }
+  const seleccionarServicio = (nextService) => {
+    if (servicio?.id !== nextService.id) { setServicio(nextService); setBarberoId(null); setHora(null); setFieldErrors({}); clearFeedback() }
+    goToStep(2)
+  }
+  const seleccionarFecha = (value) => { if (!value || value === fecha) return; setFecha(value); setBarberoId(null); setHora(null); setFieldErrors({}); clearFeedback() }
   const seleccionarProfesional = (id) => { setBarberoId(id); setHora(null); clearFeedback() }
   const seleccionarHora = (nextHour) => { setHora(nextHour); setFieldErrors({}); clearFeedback() }
+  const reintentarHorarios = () => { setError(''); cargarSlots() }
 
   const confirmar = async (event) => {
     event.preventDefault()
@@ -364,9 +513,9 @@ export default function PublicBooking({ slug }) {
 
   const retry = () => { setError(''); setLoading(true); cargarCatalogo() }
 
-  if (success) return <BookingSuccess success={success} business={catalogo?.barberia} theme={theme} brandStyle={brandStyle} onThemeToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
+  if (success) return <BookingSuccess success={success} business={catalogo?.barberia} theme={theme} brandStyle={brandStyle} onThemeToggle={toggleTheme} />
   if (loading) return <main className="public-booking" data-theme={theme} style={brandStyle}><BookingSkeleton /></main>
-  if (error && !catalogo) return <main className="public-booking" data-theme={theme} style={brandStyle}><BookingError message={error} onRetry={retry} /><BookingFooter /></main>
+  if (error && !catalogo) return <main className="public-booking" data-theme={theme} style={brandStyle}><div className="booking-shell booking-shell--narrow"><BookingError message={error} onRetry={retry} /><BookingFooter /></div></main>
 
   const business = catalogo.barberia
   const minDate = dateKey(business.zona_horaria)
@@ -374,68 +523,119 @@ export default function PublicBooking({ slug }) {
   const maxDate = Number.isInteger(maxDays) && maxDays > 0 ? addDays(minDate, maxDays) : ''
   // Sólo acotamos el máximo: el servidor ya descarta fechas pasadas y el selector usa min.
   const outOfRange = Boolean(fecha && maxDate && fecha > maxDate)
-  const dateHint = maxDate ? `Podés reservar hasta ${maxDays} días por adelantado · ${formatTimezone(business.zona_horaria)}.` : `Disponible desde hoy · ${formatTimezone(business.zona_horaria)}.`
+  const dateHint = maxDate ? `Hasta ${maxDays} días por adelantado.` : 'Desde hoy.'
   const submitLabel = submitting ? 'Confirmando reserva…' : loadingSlots ? 'Validando disponibilidad…' : 'Confirmar reserva'
+  const hasFieldError = Object.values(fieldErrors).some(Boolean)
+  const contactHref = buildWhatsAppHref(whatsappNumber(business.whatsapp), 'Hola! Quería consultar por un turno.')
+  const selectionText = visibleStep === 1
+    ? (servicio ? `${servicio.nombre} · ${formatMoney(servicio.precio, currency)}` : 'Elegí un servicio')
+    : (hora ? `${formatShortDate(fecha)} · ${formatTime(hora)} · ${barbero?.barbero_nombre || ''}` : 'Elegí un horario para continuar')
+  const canContinue = visibleStep === 1 ? Boolean(servicio) : Boolean(hora && barbero && !loadingSlots)
 
   return (
     <main className="public-booking" data-theme={theme} style={brandStyle}>
-      <header className="booking-header"><div className="booking-brand">{business.logo_url ? <img src={business.logo_url} alt="" /> : <Scissors size={24} aria-hidden="true" />}<span>{business.nombre}</span></div><div className="booking-header-actions">{business.direccion && <span className="booking-address"><MapPin size={16} aria-hidden="true" /> {business.direccion}</span>}<IconButton className="booking-theme-toggle" label={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</IconButton></div></header>
-      <div className="booking-layout">
-        <BookingSummary service={servicio} professional={barbero} date={fecha} time={hora} currency={currency} />
-        <Card as="section" className="booking-card booking-main-card" aria-labelledby="booking-title">
-          <div className="booking-intro"><p className="booking-eyebrow">Reservas online</p><h1 id="booking-title">Elegí tu próximo turno</h1><p>Elegí servicio, profesional y horario. La disponibilidad se actualiza en tiempo real.</p>{business.direccion && <p className="booking-intro-address"><MapPin size={15} aria-hidden="true" /> {business.direccion}</p>}</div>
-          <BookingProgress activeStep={activeStep} />
-          <LiveRegion className={`booking-live-region ${availabilityNotice ? 'has-message' : ''}`}>{availabilityNotice}</LiveRegion>
-          {error && <LiveRegion assertive className="booking-error">{error}</LiveRegion>}
-
-          <div className="booking-section" aria-labelledby="booking-service-title">
-            <div className="booking-section-heading"><div><p className="booking-step-label">Paso 1</p><h2 id="booking-service-title"><Scissors size={18} aria-hidden="true" /> Servicio</h2></div><span className="booking-section-meta">{catalogo.servicios.length === 1 ? '1 disponible' : `${catalogo.servicios.length} disponibles`}</span></div>
-            {catalogo.servicios.length === 0 ? <EmptyState title="No hay servicios disponibles" description="Este negocio todavía no publicó servicios para reservar." action={<Button variant="secondary" onClick={retry}>Actualizar</Button>} /> : <div className="service-list">{catalogo.servicios.map((service) => <button type="button" key={service.id} className={servicio?.id === service.id ? 'selected' : ''} aria-pressed={servicio?.id === service.id} onClick={() => seleccionarServicio(service)}><span className="booking-option-check" aria-hidden="true">{servicio?.id === service.id ? '✓' : ''}</span><span className="booking-option-content"><strong>{service.nombre}</strong>{service.descripcion && <small>{service.descripcion}</small>}<span>{service.duracion_min} min · {formatMoney(service.precio, currency)}</span></span></button>)}</div>}
-          </div>
-
-          <div className="booking-section" aria-labelledby="booking-professional-title">
-            <div className="booking-section-heading"><div><p className="booking-step-label">Paso 2</p><h2 id="booking-professional-title"><UserRound size={18} aria-hidden="true" /> Fecha y profesional</h2></div><span className="booking-section-meta">{loadingSlots ? 'Actualizando…' : profesionales.length ? `${profesionales.length} ${profesionales.length === 1 ? 'disponible' : 'disponibles'}` : 'Sin disponibilidad'}</span></div>
-            <FormField label="Fecha" hint={dateHint} id="booking-date"><Input className="booking-date" type="date" min={minDate} max={maxDate || undefined} value={fecha} onChange={seleccionarFecha} aria-label="Fecha elegida" /></FormField>
-            <div className="booking-subsection">
-              {loadingSlots ? <div className="booking-inline-loading" role="status"><Spinner size={16} /> Actualizando disponibilidad…</div>
-                : outOfRange ? <EmptyState title="Elegí otra fecha" description={maxDate ? `Este negocio toma reservas desde hoy y hasta ${maxDays} días por adelantado.` : 'Este negocio toma reservas desde hoy.'} />
-                  : profesionales.length === 0 ? <EmptyState title="No hay profesionales disponibles" description="Probá con otra fecha o servicio para ver nuevas opciones." />
-                    : <div className="professional-list">{profesionales.map((professional) => <button type="button" key={professional.barbero_id} className={barberoId === professional.barbero_id ? 'selected' : ''} aria-pressed={barberoId === professional.barbero_id} onClick={() => seleccionarProfesional(professional.barbero_id)}><span className="booking-avatar" style={{ '--avatar-color': normalizeHex(professional.barbero_color, accent) }} aria-hidden="true">{initials(professional.barbero_nombre)}</span><span><strong>{professional.barbero_nombre}</strong><small>Disponible para {servicio?.nombre || 'este servicio'}</small></span><span className="booking-option-check" aria-hidden="true">{barberoId === professional.barbero_id ? '✓' : ''}</span></button>)}</div>}
+      <div className="booking-shell">
+        <BookingHeader business={business} theme={theme} onThemeToggle={toggleTheme} />
+        <div className="booking-layout">
+          <Card as="section" className={`booking-card booking-step-${visibleStep}`} aria-labelledby="booking-step-title">
+            <div className="booking-intro">
+              <h1 id="booking-title">Elegí tu próximo turno</h1>
+              <BookingProgress step={visibleStep} maxStep={maxStep} onStep={goToStep} />
             </div>
-          </div>
+            <div className="booking-step-heading">
+              {visibleStep > 1 && <IconButton className="booking-back" label="Volver al paso anterior" onClick={() => goToStep(visibleStep - 1)}><ArrowLeft size={18} /></IconButton>}
+              <h2 id="booking-step-title" ref={stepHeadingRef} tabIndex={-1}>{STEP_TITLES[visibleStep - 1]}</h2>
+            </div>
+            <LiveRegion className={`booking-notice ${availabilityNotice ? 'has-message' : ''}`}>{availabilityNotice}</LiveRegion>
+            {error && <div className="booking-error" role="alert"><span>{error}</span><Button variant="secondary" size="sm" onClick={reintentarHorarios}><RefreshCw size={14} aria-hidden="true" /> Reintentar</Button></div>}
 
-          <div className="booking-section" aria-labelledby="booking-time-title">
-            <div className="booking-section-heading"><div><p className="booking-step-label">Paso 3</p><h2 id="booking-time-title"><Clock3 size={18} aria-hidden="true" /> Horario</h2></div><span className="booking-section-meta">{barbero && !loadingSlots ? `${horarios.length} ${horarios.length === 1 ? 'opción' : 'opciones'} · ${formatDateLabel(fecha)}` : 'Hora local'}</span></div>
-            <div className="booking-subsection booking-subsection--flush">
-              {loadingSlots ? <div className="time-skeleton-grid">{[1, 2, 3, 4, 5, 6].map((item) => <Skeleton height={50} key={item} />)}</div> : !barbero ? <p className="booking-muted">Elegí un profesional para ver sus horarios.</p> : horarios.length === 0 ? <EmptyState title="No quedan horarios libres" description="Elegí otra fecha o profesional para continuar." /> : <div className="time-list">{horarios.map((slot) => <button type="button" key={slot.hora} className={hora === slot.hora ? 'selected' : ''} aria-pressed={hora === slot.hora} onClick={() => seleccionarHora(slot.hora)}>{formatTime(slot.hora)}</button>)}</div>}
-            </div>
-          </div>
+            {visibleStep === 1 && (
+              catalogo.servicios.length === 0
+                ? <EmptyState className="booking-empty" icon={<CalendarDays size={28} aria-hidden="true" />} title="No hay servicios disponibles" description="Este negocio todavía no publicó servicios para reservar online." action={<div className="booking-empty-actions"><Button variant="secondary" onClick={retry}><RefreshCw size={16} aria-hidden="true" /> Actualizar</Button>{contactHref && <a className="booking-button booking-button-secondary booking-link-button" href={contactHref} target="_blank" rel="noreferrer"><MessageCircle size={16} aria-hidden="true" /> Escribir al negocio</a>}</div>} />
+                : <div className="service-list">{catalogo.servicios.map((service) => {
+                  const selected = servicio?.id === service.id
+                  return (
+                    <button type="button" key={service.id} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => seleccionarServicio(service)}>
+                      <span className="booking-option-content">
+                        <strong>{service.nombre}</strong>
+                        {service.descripcion && <small>{service.descripcion}</small>}
+                        <span className="booking-option-meta"><Clock3 size={13} aria-hidden="true" /> {service.duracion_min} min</span>
+                      </span>
+                      <span className="booking-option-side">
+                        <span className="booking-price">{formatMoney(service.precio, currency)}</span>
+                        <span className="booking-option-check" aria-hidden="true">{selected ? <Check size={14} strokeWidth={3} /> : <ArrowRight size={14} />}</span>
+                      </span>
+                    </button>
+                  )
+                })}</div>
+            )}
 
-          <form className="booking-section booking-form" onSubmit={confirmar} noValidate aria-labelledby="booking-data-title">
-            <div className="booking-section-heading"><div><p className="booking-step-label">Paso 4</p><h2 id="booking-data-title">Tus datos</h2></div><span className="booking-section-meta">Sólo para confirmar el turno</span></div>
-            <div className="booking-form-grid">
-              <FormField label="Nombre y apellido" required error={fieldErrors.nombre} id="booking-name"><Input value={nombre} onChange={(event) => { setNombre(event.target.value); setFieldErrors((current) => ({ ...current, nombre: '' })) }} placeholder="Ej.: Juan Pérez" autoComplete="name" autoCapitalize="words" maxLength={80} enterKeyHint="next" /></FormField>
-              <FormField label="Teléfono" required hint={PHONE_HINT} error={fieldErrors.telefono} id="booking-phone"><PhoneField data-booking-phone value={telefono} onChange={(value) => { setTelefono(value); setFieldErrors((current) => ({ ...current, telefono: '' })) }} className="booking-phone-field" aria-label="Teléfono" enterKeyHint="next" /></FormField>
-              <FormField label="Email (opcional)" hint="Sólo si querés recibir el detalle por correo." error={fieldErrors.email} id="booking-email"><Input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setFieldErrors((current) => ({ ...current, email: '' })) }} placeholder="tu@email.com" autoComplete="email" inputMode="email" maxLength={120} enterKeyHint="done" /></FormField>
-            </div>
-            <div className="booking-final-summary">
-              <div><p className="booking-step-label">Paso 5 · Confirmación</p><h3>Revisá tu reserva</h3></div>
-              <dl>
-                <div><dt>Negocio</dt><dd>{business.nombre}</dd></div>
-                <div><dt>Servicio</dt><SummaryValue value={servicio?.nombre} placeholder="Pendiente" /></div>
-                <div><dt>Profesional</dt><SummaryValue value={barbero?.barbero_nombre} placeholder="Pendiente" /></div>
-                <div><dt>Fecha y hora</dt><SummaryValue value={fecha && hora ? `${formatDateLabel(fecha)} · ${formatTime(hora)}` : ''} placeholder="Elegí un horario" /></div>
-                <div><dt>Duración y total</dt><SummaryValue value={barbero && servicio ? `${barbero.duracion_min} min · ${formatMoney(servicio.precio, currency)}` : ''} placeholder="Pendiente" /></div>
-                <div><dt>Cliente</dt><SummaryValue value={nombre.trim() ? <>{nombre.trim()}{phoneIsValid && <> · <span className="booking-nowrap">{telefono}</span></>}</> : ''} placeholder="Completá tus datos" /></div>
-              </dl>
-            </div>
-            {submitError && <LiveRegion assertive className="booking-error booking-submit-error">{submitError}</LiveRegion>}
-            <Button type="submit" variant="primary" size="lg" className="booking-button" disabled={!hora || loadingSlots || submitting} loading={loadingSlots || submitting}>{submitLabel}</Button>
-            <p className="booking-form-note">{hora ? 'Al confirmar, verificamos nuevamente que el horario siga libre.' : 'Elegí un profesional y un horario para continuar.'}</p>
-          </form>
-        </Card>
+            {visibleStep === 2 && (
+              <div className="booking-step-body">
+                <section className="booking-block" aria-labelledby="booking-date-title">
+                  <div className="booking-block-heading"><h3 id="booking-date-title">Día</h3><span>{formatDateLabel(fecha)}</span></div>
+                  <DayStrip minDate={minDate} maxDate={maxDate} value={fecha} onChange={seleccionarFecha} />
+                  <FormField className="booking-other-date" label="Otra fecha" hint={`${dateHint} Horarios de ${formatTimezone(business.zona_horaria)}.`} id="booking-date"><Input className="booking-date" type="date" min={minDate} max={maxDate || undefined} value={fecha} onChange={(event) => seleccionarFecha(event.target.value)} /></FormField>
+                </section>
+
+                <section className="booking-block" aria-labelledby="booking-professional-title" aria-busy={loadingSlots || undefined}>
+                  <div className="booking-block-heading"><h3 id="booking-professional-title">Profesional</h3><span>{loadingSlots ? 'Actualizando…' : profesionales.length ? `${profesionales.length} ${profesionales.length === 1 ? 'disponible' : 'disponibles'}` : ''}</span></div>
+                  {loadingSlots ? <div className="professional-list" role="status" aria-label="Actualizando disponibilidad"><Skeleton height={64} /><Skeleton height={64} /></div>
+                    : outOfRange ? <EmptyState className="booking-empty" title="Elegí otra fecha" description={maxDate ? `Este negocio toma reservas desde hoy y hasta ${maxDays} días por adelantado.` : 'Este negocio toma reservas desde hoy.'} />
+                      : profesionales.length === 0 ? <EmptyState className="booking-empty" icon={<CalendarDays size={26} aria-hidden="true" />} title="No hay profesionales disponibles" description={`No quedan horarios libres para ${servicio?.nombre || 'este servicio'} el ${formatDateLabel(fecha).toLowerCase()}. Probá con otro día.`} action={!maxDate || addDays(fecha, 1) <= maxDate ? <Button variant="secondary" onClick={() => seleccionarFecha(addDays(fecha, 1))}>Ver el día siguiente</Button> : null} />
+                        : <div className="professional-list">{profesionales.map((professional) => {
+                          const selected = barberoId === professional.barbero_id
+                          return <button type="button" key={professional.barbero_id} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => seleccionarProfesional(professional.barbero_id)}><span className="booking-avatar" style={{ '--avatar-color': normalizeHex(professional.barbero_color, accent) }} aria-hidden="true">{initials(professional.barbero_nombre)}</span><span className="booking-option-content"><strong>{professional.barbero_nombre}</strong><small>{professional.total} {professional.total === 1 ? 'horario libre' : 'horarios libres'}</small></span><span className="booking-option-check" aria-hidden="true">{selected ? <Check size={14} strokeWidth={3} /> : ''}</span></button>
+                        })}</div>}
+                </section>
+
+                {!outOfRange && (loadingSlots || profesionales.length > 0) && (
+                  <section className="booking-block" aria-labelledby="booking-time-title">
+                    <div className="booking-block-heading"><h3 id="booking-time-title">Horario</h3><span>{barbero && !loadingSlots ? `${horarios.length} ${horarios.length === 1 ? 'opción' : 'opciones'} · hora local` : ''}</span></div>
+                    {loadingSlots ? <div className="time-list">{[1, 2, 3, 4, 5, 6].map((item) => <Skeleton height={48} key={item} />)}</div>
+                      : !barbero ? <p className="booking-muted">Elegí un profesional para ver sus horarios.</p>
+                        : horarios.length === 0 ? <EmptyState className="booking-empty" title="No quedan horarios libres" description="Elegí otro día o profesional para continuar." />
+                          : horariosPorFranja.map((period) => (
+                            <div className="booking-period" key={period.key}>
+                              <p className="booking-period-label">{period.label}</p>
+                              <div className="time-list">{period.slots.map((slot) => <button type="button" key={slot.hora} className={hora === slot.hora ? 'selected' : ''} aria-pressed={hora === slot.hora} onClick={() => seleccionarHora(slot.hora)}>{formatTime(slot.hora)}</button>)}</div>
+                            </div>
+                          ))}
+                  </section>
+                )}
+              </div>
+            )}
+
+            {visibleStep < 3 && (
+              <div className="booking-actionbar">
+                <div className="booking-actionbar-summary" aria-live="polite">
+                  <small>{visibleStep === 1 ? 'Servicio elegido' : 'Tu turno'}</small>
+                  <strong>{selectionText}</strong>
+                </div>
+                <Button variant="primary" size="lg" className="booking-button booking-continue" disabled={!canContinue} onClick={() => goToStep(visibleStep + 1)}>Continuar <ArrowRight size={18} aria-hidden="true" /></Button>
+              </div>
+            )}
+
+            {visibleStep === 3 && (
+              <form className="booking-step-body booking-form" onSubmit={confirmar} noValidate aria-labelledby="booking-step-title">
+                <BookingSummary as="section" className="booking-review" title="Tu turno" service={servicio} professional={barbero} date={fecha} time={hora} currency={currency} onEdit={goToStep} />
+                {!hora && <div className="booking-error" role="alert"><span>Elegí un horario para poder confirmar.</span><Button variant="secondary" size="sm" onClick={() => goToStep(2)}>Elegir horario</Button></div>}
+                <fieldset className="booking-fields">
+                  <legend>Tus datos</legend>
+                  <FormField label="Nombre y apellido" required error={fieldErrors.nombre} id="booking-name"><Input value={nombre} onChange={(event) => { setNombre(event.target.value); setFieldErrors((current) => ({ ...current, nombre: '' })) }} placeholder="Ej.: Juan Pérez" autoComplete="name" autoCapitalize="words" maxLength={80} enterKeyHint="next" /></FormField>
+                  <FormField label="Teléfono celular" required hint={PHONE_HINT} error={fieldErrors.telefono} id="booking-phone"><PhoneField data-booking-phone value={telefono} onChange={(value) => { setTelefono(value); setFieldErrors((current) => ({ ...current, telefono: '' })) }} className="booking-phone-field" aria-label="Teléfono" enterKeyHint="next" /></FormField>
+                  <FormField label="Email (opcional)" hint="Queda guardado con tus datos de cliente del negocio." error={fieldErrors.email} id="booking-email"><Input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setFieldErrors((current) => ({ ...current, email: '' })) }} placeholder="tu@email.com" autoComplete="email" inputMode="email" maxLength={120} enterKeyHint="done" /></FormField>
+                </fieldset>
+                {submitError && <div className="booking-error booking-submit-error" role="alert"><span>{submitError}</span>{!hasFieldError && hora && <Button variant="secondary" size="sm" onClick={() => goToStep(2)}>Elegir otro horario</Button>}</div>}
+                <Button type="submit" variant="primary" size="lg" className="booking-button booking-submit" disabled={!hora || loadingSlots || submitting} loading={loadingSlots || submitting}>{submitLabel}</Button>
+                <p className="booking-form-note">Al confirmar verificamos nuevamente que el horario siga libre.</p>
+              </form>
+            )}
+          </Card>
+          <BookingSummary service={servicio} professional={barbero} date={fecha} time={hora} currency={currency} onEdit={(target) => target <= maxStep && goToStep(target)} className="booking-aside" />
+        </div>
+        <BookingFooter />
       </div>
-      <BookingFooter />
     </main>
   )
 }

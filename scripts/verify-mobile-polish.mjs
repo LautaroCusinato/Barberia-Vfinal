@@ -32,8 +32,10 @@ assert.match(markdown, /export function stripMarkdown/)
 assert.doesNotMatch(markdown, /dangerouslySetInnerHTML/)
 assert.match(messages, /<SafeMarkdown value=\{m\.texto\}/)
 assert.match(messages, /stripMarkdown\(/)
-assert.match(booking, /short: 'Serv\.'/)
-assert.match(bookingStyles, /\.booking-progress-step > span \{/)
+assert.match(booking, /short: 'Horario'/)
+// El círculo del paso se apunta como hijo directo del botón/contenedor, no
+// con un selector descendiente que también alcanzaría las etiquetas cortas.
+assert.match(bookingStyles, /\.booking-progress-step > button > span,\r?\n\.booking-progress-step > div > span \{/)
 assert.doesNotMatch(bookingStyles, /\.booking-progress-step span \{ /)
 assert.match(landing, /COMMERCIAL_CATALOG/)
 
