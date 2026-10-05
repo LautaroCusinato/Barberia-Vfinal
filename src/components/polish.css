@@ -797,7 +797,7 @@ html.theme-transition *::after {
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 2px 4px 2px 2px;
+    padding: var(--space-2);
   }
   .view-fit--equipo .barberos-grid > * { flex: 0 0 auto; }
   .view-fit--equipo .equipo-detalle {
@@ -811,6 +811,18 @@ html.theme-transition *::after {
   }
   .view-fit--equipo .equipo-detalle-lista { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 }
+
+/* Listas que hacen scroll dentro de un panel (Equipo, Mensajes, Agenda): la
+ * elevación al pasar el mouse, el anillo de selección y el foco de teclado
+ * sobresalen hasta 8px de la tarjeta y el overflow los recortaba en el primer
+ * y el último elemento. Este margen interior los deja dentro del área visible. */
+.conv-list-scroll,
+.day-side-list,
+.equipo-detalle-lista {
+  padding-block: var(--space-2);
+  scroll-padding-block: var(--space-2);
+}
+.view-fit--equipo .barberos-grid { scroll-padding-block: var(--space-2); }
 
 /* Estadísticas: paneles de la misma fila con igual altura. */
 .stats-two-col { align-items: stretch; }
