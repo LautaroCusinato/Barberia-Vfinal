@@ -3,11 +3,12 @@ const keyOf = (tabla, id) => `${tabla}:${String(id)}`
 
 export async function persistirBorrado(supabase, { tabla, barberiaId, fila }) {
   if (!TABLAS.has(tabla) || !barberiaId || fila?.id == null) throw new Error('Contexto de borrado inválido')
-  let query = supabase.from(tabla).delete().eq('barberia_id', barberiaId).eq('id', fila.id)
-  if (fila.updated_at) query = query.eq('updated_at', fila.updated_at)
-  const { data, error } = await query.select('id')
+  // Sin filtro por updated_at: las ediciones locales (estado, texto, cobro)
+  // no actualizan esa columna en memoria y el trigger sí la cambia en la base,
+  // así que exigirla rechazaba borrados válidos hasta la siguiente recarga.
+  const { data, error } = await supabase.from(tabla).delete().eq('barberia_id', barberiaId).eq('id', fila.id).select('id')
   if (error) throw error
-  // RLS, un borrado ajeno o una versión modificada pueden devolver cero filas.
+  // RLS o un borrado ajeno pueden devolver cero filas.
   // No hay evidencia para anunciar éxito ni para reintentar automáticamente.
   if (!Array.isArray(data) || data.length !== 1 || String(data[0]?.id) !== String(fila.id)) {
     throw new Error('No se confirmó el borrado. Actualizá los datos antes de volver a intentarlo.')

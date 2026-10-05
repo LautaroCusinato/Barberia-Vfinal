@@ -5,8 +5,9 @@ const SALIDA_MS = 160
 let secuencia = 0
 
 // Cola de avisos breves. Cada aviso puede tener `onUndo` (botón "Deshacer")
-// y `onExpire` (se ejecuta al vencer o confirmar con su botón de cierre).
-// Al desplazarlo o salir se descarta con onDiscard: iniciar una petición durante
+// y `onExpire` (se ejecuta al vencer, al confirmar con su botón de cierre o
+// al ser desplazado cuando todos los avisos visibles ofrecen Deshacer).
+// Al salir se descarta con onDiscard: iniciar una petición durante
 // pagehide/desmontaje no garantiza que llegue al servidor.
 export function useToasts({ max = 2, contexto = null } = {}) {
   const [toasts, setToasts] = useState([])
@@ -42,8 +43,15 @@ export function useToasts({ max = 2, contexto = null } = {}) {
     const timer = setTimeout(() => cerrar(id, 'expire'), duracion)
     entradas.current.set(id, { onUndo, onExpire, onDiscard, timer })
     setToasts((prev) => [...prev, { id, mensaje, duracion, labelCerrar, deshacer: Boolean(onUndo) }])
-    const activos = [...entradas.current.keys()]
-    while (activos.length > max) cerrar(activos.shift(), 'discard')
+    // Primero salen los avisos informativos. Si todos ofrecen Deshacer, el más
+    // viejo se cierra como si hubiera vencido: un borrado pedido no se revierte
+    // en silencio por mostrar otro aviso.
+    while (entradas.current.size > max) {
+      const activos = [...entradas.current.entries()]
+      const informativo = activos.find(([, entrada]) => !entrada.onUndo)
+      if (informativo) cerrar(informativo[0], 'discard')
+      else cerrar(activos[0][0], 'expire')
+    }
     return id
   }, [cerrar, max])
 

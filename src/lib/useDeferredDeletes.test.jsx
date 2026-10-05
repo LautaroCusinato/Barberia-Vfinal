@@ -71,18 +71,51 @@ describe('Deshacer con temporizador y ciclo de vida del panel', () => {
     await act(async () => vi.advanceTimersByTimeAsync(6000))
     expect(h.guardar).toHaveBeenCalledTimes(1)
   })
-  it('superar el máximo de avisos cancela el más viejo en vez de borrar sin Deshacer', async () => {
+  it('superar el máximo de avisos confirma el borrado más viejo, sin revertirlo en silencio', async () => {
     const h = montar()
-    act(() => {
+    await act(async () => {
       h.result.current.eliminar(1)
       h.result.current.eliminar(2)
       h.result.current.eliminar(3)
     })
-    expect(h.result.current.visibles).toEqual([filas[0]])
-    expect(h.result.current.toasts).toHaveLength(2)
-    expect(h.guardar).not.toHaveBeenCalled()
+    // Los tres siguen ocultos: el primero se envió al ser desplazado.
+    expect(h.result.current.visibles).toEqual([])
+    expect(h.guardar.mock.calls.map(([arg]) => arg.id)).toEqual([1])
+    expect(h.result.current.toasts.filter((aviso) => !aviso.saliendo && aviso.mensaje === 'Eliminación pendiente')).toHaveLength(2)
     await act(async () => vi.advanceTimersByTimeAsync(5000))
-    expect(h.guardar.mock.calls.map(([arg]) => arg.id)).toEqual([2, 3])
+    // Cada fila se envía una sola vez; los avisos de éxito no desplazan
+    // pendientes ni provocan confirmaciones en cadena.
+    expect(h.guardar.mock.calls.map(([arg]) => arg.id)).toEqual([1, 2, 3])
+    expect(h.onConfirmado).toHaveBeenCalledTimes(3)
+    act(() => h.result.current.setBase(filas))
+    expect(h.result.current.visibles).toEqual([])
+  })
+  it('un aviso informativo sale antes que un borrado pendiente', async () => {
+    const h = montar()
+    act(() => { h.result.current.eliminar(1) })
+    act(() => {
+      h.result.current.mostrar({ mensaje: 'Turno guardado' })
+      h.result.current.mostrar({ mensaje: 'Cliente guardado' })
+    })
+    expect(h.guardar).not.toHaveBeenCalled()
+    const activos = h.result.current.toasts.filter((aviso) => !aviso.saliendo).map((aviso) => aviso.mensaje)
+    expect(activos).toEqual(['Eliminación pendiente', 'Cliente guardado'])
+    const pendiente = h.result.current.toasts.find((aviso) => aviso.mensaje === 'Eliminación pendiente')
+    act(() => h.result.current.cerrar(pendiente.id, 'undo'))
+    expect(h.result.current.visibles).toEqual(filas)
+    await act(async () => vi.advanceTimersByTimeAsync(6000))
+    expect(h.guardar).not.toHaveBeenCalled()
+  })
+  it('la lista filtrada conserva su identidad entre renders si nada cambió', async () => {
+    const h = montar()
+    await act(async () => { h.result.current.eliminar(1) })
+    await act(async () => vi.advanceTimersByTimeAsync(5000))
+    const antes = h.result.current.visibles
+    h.rerender({ contexto: '927' })
+    expect(h.result.current.visibles).toBe(antes)
+    act(() => h.result.current.setBase([...filas]))
+    expect(h.result.current.visibles).not.toBe(antes)
+    expect(h.result.current.visibles).toEqual(filas.slice(1))
   })
   it('pagehide cancela lo que aún no se envió sin iniciar peticiones', async () => {
     const h = montar()

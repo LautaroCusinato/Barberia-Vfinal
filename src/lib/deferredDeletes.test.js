@@ -105,12 +105,19 @@ describe('borrado remoto acotado', () => {
     const query = { delete: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), select: vi.fn().mockResolvedValue(respuesta) }
     return { query, from: vi.fn(() => query) }
   }
-  it('filtra por negocio, id y versión, y exige una fila devuelta', async () => {
+  it('filtra por negocio e id, y exige una fila devuelta', async () => {
     const db = cliente({ data: [{ id: 5 }], error: null })
     await persistirBorrado(db, { tabla: 'notas', barberiaId: 927, fila })
     expect(db.from).toHaveBeenCalledWith('notas')
-    expect(db.query.eq.mock.calls).toEqual([['barberia_id', 927], ['id', 5], ['updated_at', fila.updated_at]])
+    expect(db.query.eq.mock.calls).toEqual([['barberia_id', 927], ['id', 5]])
     expect(db.query.select).toHaveBeenCalledWith('id')
+  })
+  it('no exige el updated_at en memoria: tras editar localmente sigue desactualizado', async () => {
+    // Cambiar estado, texto o cobrar actualiza la fila local sin traer el
+    // updated_at nuevo del trigger; ese valor viejo no debe bloquear el borrado.
+    const db = cliente({ data: [{ id: 5 }], error: null })
+    await persistirBorrado(db, { tabla: 'turnos', barberiaId: 927, fila: { ...fila, updated_at: '2020-01-01T00:00:00Z' } })
+    expect(db.query.eq.mock.calls.some(([columna]) => columna === 'updated_at')).toBe(false)
   })
   it.each([[], null, [{ id: 8 }], [{ id: 5 }, { id: 6 }]])('no acepta una respuesta ambigua %j', async (data) => {
     await expect(persistirBorrado(cliente({ data }), { tabla: 'turnos', barberiaId: 927, fila })).rejects.toThrow('No se confirmó')

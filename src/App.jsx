@@ -823,7 +823,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       onError: (error) => reportError(`${mensajeError}. Actualizá los datos para comprobar si sigue disponible`, error),
     })
     if (!operacion) return false
-    mostrarToast({
+    const aviso = mostrarToast({
       mensaje: `${tabla === 'turnos' ? 'Turno' : tabla === 'notas' ? 'Nota' : 'Día libre'}: eliminación pendiente. Al salir antes de guardar, se cancela.`,
       labelCerrar: 'Eliminar ahora',
       duracion: 5000,
@@ -831,6 +831,11 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       onDiscard: operacion.deshacer,
       onExpire: operacion.confirmar,
     })
+    // Sin aviso no hay Deshacer ni vencimiento: la fila quedaría oculta.
+    if (aviso == null) {
+      operacion.deshacer()
+      return false
+    }
     return true
   }
 

@@ -48,7 +48,8 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
     if (saliendo) return
     setSaliendo(true)
     setNotesOpen(false)
-    despuesDelColapso(() => onDeleteTurno(turno.id))
+    // Si el borrado no se programa (p. ej. un movimiento en curso), la fila vuelve.
+    despuesDelColapso(() => { if (onDeleteTurno(turno.id) === false) setSaliendo(false) })
   }
 
   return (

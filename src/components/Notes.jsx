@@ -33,7 +33,7 @@ function NoteCard({ nota, onUpdate, onDelete }) {
   const eliminar = () => {
     if (deleting) return
     setDeleting(true)
-    despuesDelColapso(() => onDelete?.(nota.id))
+    despuesDelColapso(() => { if (onDelete?.(nota.id) === false) setDeleting(false) })
   }
 
   const cancelar = () => {
