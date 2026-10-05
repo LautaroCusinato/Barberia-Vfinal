@@ -47,6 +47,8 @@ import { reportClientError } from './lib/observability.js'
 import { initialWorkspaceCollection } from './lib/runtimeStability.js'
 import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './lib/whatsappProvisioning.js'
 import { enqueueLatest } from './lib/latestIntentQueue.js'
+import { useTurnoMoves } from './lib/useTurnoMoves.js'
+import { persistirMovimiento, TURNO_CAMBIO } from './lib/turnoMoves.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
@@ -751,6 +753,25 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
   }, [barberiaId, isSupabaseConfigured, reloadKey, reportError])
 
+  const movimientos = useTurnoMoves({
+    contexto: `${barberiaId}:${demoMode}:${demoSessionId}:${isSupabaseConfigured}`,
+    turnos,
+    setTurnos,
+    guardar: (turnoId, origen, destino) => isSupabaseConfigured
+      ? persistirMovimiento(supabase, { barberiaId, turnoId, origen, destino })
+      : Promise.resolve({ ...origen, ...destino }),
+    onError: (error) => {
+      if (error?.code === TURNO_CAMBIO) mostrarValidacion('El turno cambió o ya no está disponible. Actualizá la agenda antes de volver a moverlo.')
+      else {
+        const mensaje = mensajeErrorTurno(error)
+        if (mensaje) mostrarValidacion(mensaje)
+        else reportError('No se pudo mover el turno. Actualizá la agenda para comprobar su horario.', error)
+      }
+    },
+    onObsoleto: () => mostrarValidacion('El turno cambió. Este Deshacer o movimiento ya no está disponible; actualizá la agenda.'),
+    onMovido: ({ hora, onUndo }) => mostrarToast({ mensaje: `Turno movido a ${hora}`, duracion: 5000, onUndo }),
+  })
+
   if (isSupabaseConfigured && (loading || loadedForTenant !== barberiaId)) {
     return <WorkspacePreparing businessName={barberiaNombre || DEFAULT_BUSINESS_NAME} />
   }
@@ -928,31 +949,23 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
   }
 
-  const deleteTurno = (turnoId) => eliminarConDeshacer(turnos, setTurnos, turnoId, 'turnos', 'Turno eliminado', 'No se pudo eliminar el turno')
+  const moverTurno = movimientos.mover
 
-  // Arrastrar en la agenda: aplica la nueva fecha/hora al instante, la guarda
-  // y ofrece "Deshacer" (que vuelve a la posición anterior sin otro aviso).
-  const reprogramarTurno = async (turnoId, destino) => {
-    const anterior = turnos.find((t) => t.id === turnoId)
-    if (!anterior) return false
-    setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, ...destino } : t)))
-    if (!isSupabaseConfigured) return true
-    const { error } = await supabase.from('turnos').update(destino).eq('id', turnoId)
-    if (!error) return true
-    setTurnos((prev) => prev.map((t) => (t.id === turnoId ? { ...t, fecha: anterior.fecha, hora: anterior.hora } : t)))
-    const mensaje = mensajeErrorTurno(error)
-    if (mensaje) mostrarValidacion(mensaje)
-    else reportError('No se pudo mover el turno', error)
-    return false
-  }
-  const moverTurno = async (turno, { fecha, hora }) => {
-    const origen = { fecha: turno.fecha, hora: turno.hora }
-    const movido = await reprogramarTurno(turno.id, { fecha, hora })
-    if (movido) mostrarToast({ mensaje: `Turno movido a ${hora}`, duracion: 5000, onUndo: () => { reprogramarTurno(turno.id, origen) } })
-    return movido
+  const deleteTurno = (turnoId) => {
+    if (movimientos.pendiente(turnoId)) {
+      mostrarValidacion('Esperá a que termine de guardarse el movimiento del turno.')
+      return false
+    }
+    movimientos.invalidar(turnoId)
+    return eliminarConDeshacer(turnos, setTurnos, turnoId, 'turnos', 'Turno eliminado', 'No se pudo eliminar el turno')
   }
 
   const guardarTurno = async ({ paciente, telefono, clienteId, fecha, hora, motivo, estado, servicio_id, barbero_id, precio, duracion }, existingId) => {
+    if (existingId && movimientos.pendiente(existingId)) {
+      mostrarValidacion('Esperá a que termine de guardarse el movimiento del turno.')
+      return false
+    }
+    if (existingId) movimientos.invalidar(existingId)
     const servicio = servicios.find((item) => String(item.id) === String(servicio_id))
     const barbero = barberos.find((item) => String(item.id) === String(barbero_id))
     const duracionReal = duracionServicioBarbero(barbero, servicio, duracion)

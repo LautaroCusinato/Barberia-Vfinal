@@ -274,7 +274,8 @@ function crearArrastre(setVista) {
       }
     }
     setVista(null)
-    if (soltar && s.active && s.target?.estado === 'ok') {
+    if (soltar && s.active && s.target?.estado === 'ok'
+      && latestRef.current.validar(s.turno, s.target.fecha, s.target.hora).estado === 'ok') {
       latestRef.current.alSoltar(s.turno, { fecha: s.target.fecha, hora: s.target.hora })
     }
   }
@@ -418,21 +419,8 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
     }
   }, [])
 
-  // Movimientos de turnos aplicados en pantalla mientras se confirman (y
-  // después, hasta que la lista recibida ya refleje el cambio).
+  // Vista provisional hasta que el padre confirma (o rechaza) cada guardado.
   const [movidos, setMovidos] = useState({})
-  useEffect(() => {
-    setMovidos((prev) => {
-      const ids = Object.keys(prev)
-      if (!ids.length) return prev
-      const next = { ...prev }
-      for (const id of ids) {
-        const actual = turnos.find((t) => String(t.id) === id)
-        if (!actual || (actual.fecha === prev[id].fecha && actual.hora === prev[id].hora)) delete next[id]
-      }
-      return Object.keys(next).length === ids.length ? prev : next
-    })
-  }, [turnos])
 
   const turnosVista = useMemo(() => {
     if (!Object.keys(movidos).length) return turnos
@@ -462,16 +450,19 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   const moverTurno = useCallback((turno, destino) => {
     if (!onMoverTurno) return
     const id = String(turno.id)
+    const movimiento = { ...destino }
     const revertir = () => setMovidos((prev) => {
-      if (!prev[id]) return prev
+      // Una respuesta vieja no debe borrar la posición provisional más nueva,
+      // incluso cuando ambos arrastres terminan en el mismo horario.
+      if (prev[id] !== movimiento) return prev
       const next = { ...prev }
       delete next[id]
       return next
     })
-    setMovidos((prev) => ({ ...prev, [id]: destino }))
-    Promise.resolve()
+    setMovidos((prev) => ({ ...prev, [id]: movimiento }))
+    return Promise.resolve()
       .then(() => onMoverTurno(turno, destino))
-      .then((ok) => { if (ok !== true) revertir() }, revertir)
+      .then((ok) => { revertir(); return ok === true }, () => { revertir(); return false })
   }, [onMoverTurno])
 
   const [dragVista, arrastre] = useArrastreSemana({ habilitado: typeof onMoverTurno === 'function', validar: validarMovimiento, alSoltar: moverTurno })
@@ -541,6 +532,10 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   const currentTimeLabel = formatCurrentTime(now)
   const nowMin = toMinutes(currentTimeLabel)
   const weekKey = format(weekDays[0], 'yyyy-MM-dd')
+
+  useLayoutEffect(() => {
+    arrastre.cancelar()
+  }, [arrastre, viewMode, weekKey, barberoFiltro])
 
   // ===== LÍNEA "AHORA" EN LA GRILLA SEMANAL =====
   const weekGridRef = useRef(null)
