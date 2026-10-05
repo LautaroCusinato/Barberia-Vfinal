@@ -10,6 +10,8 @@ import CobroModal from './components/CobroModal'
 import Toaster from './components/Toaster'
 import TopProgress from './components/TopProgress'
 import { useToasts } from './lib/useToasts.js'
+import { useDeferredDeletes } from './lib/useDeferredDeletes.js'
+import { persistirBorrado } from './lib/deferredDeletes.js'
 import { DURACION_AVISO_MS, MENSAJES_EXITO, conAvisoExito } from './lib/avisosExito.js'
 import { agregarPagoSinDuplicar, nuevaClaveCobro, registrarCobroTurno } from './lib/cobroTurno.js'
 import { cascadaInicial } from './lib/cascade.js'
@@ -166,13 +168,13 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const demoSnapshot = demoMode ? getDemoSnapshot(demoSessionId) : null
   const themeKey = demoMode ? 'austral-demo-theme' : tenantStorageKey('theme', barberiaId)
   const [view, setView] = useState(workspaceViewFromUrl)
-  const [turnos, setTurnos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.turnos, fallbackValue: mockTurnos }))
+  const [turnosBase, setTurnos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.turnos, fallbackValue: mockTurnos }))
   const [conversaciones, setConversaciones] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.conversaciones, fallbackValue: mockConversaciones }))
   const [pacientes, setPacientes] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.pacientes, fallbackValue: mockPacientes }))
-  const [notas, setNotas] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.notas, fallbackValue: mockNotas }))
+  const [notasBase, setNotas] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.notas, fallbackValue: mockNotas }))
   const [servicios, setServicios] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.servicios, fallbackValue: mockServicios }))
   const [barberos, setBarberos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.barberos, fallbackValue: mockBarberos }))
-  const [bloqueos, setBloqueos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.bloqueos, fallbackValue: [] }))
+  const [bloqueosBase, setBloqueos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.bloqueos, fallbackValue: [] }))
   const [pagos, setPagos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.pagos, fallbackValue: [] }))
   const [cobroTurno, setCobroTurno] = useState(null)
   // Una clave por apertura del modal de cobro (reintentos incluidos) y un
@@ -198,7 +200,12 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [errorRecuperable, setErrorRecuperable] = useState(false)
   // Avisos informativos: no son errores y no van en rojo.
   const [aviso, setAviso] = useState('')
-  const { toasts, mostrar: mostrarToast, cerrar: cerrarToast } = useToasts()
+  const contextoBorrados = `${barberiaId}:${demoMode}:${demoSessionId}:${isSupabaseConfigured}`
+  const { toasts, mostrar: mostrarToast, cerrar: cerrarToast } = useToasts({ contexto: contextoBorrados })
+  const borrados = useDeferredDeletes(contextoBorrados)
+  const turnos = borrados.filtrar('turnos', turnosBase)
+  const notas = borrados.filtrar('notas', notasBase)
+  const bloqueos = borrados.filtrar('bloqueos_agenda', bloqueosBase)
   const [reloadKey, setReloadKey] = useState(0)
   const barberoWritesRef = useRef({})
   const servicioWritesRef = useRef({})
@@ -258,8 +265,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   useEffect(() => {
     if (!demoMode || !demoSessionId) return
-    saveDemoSnapshot(demoSessionId, { turnos, conversaciones, pacientes, notas, servicios, barberos, bloqueos, pagos, tenantBranding, horariosDefault, zonaHoraria })
-  }, [demoMode, demoSessionId, turnos, conversaciones, pacientes, notas, servicios, barberos, bloqueos, pagos, tenantBranding, horariosDefault, zonaHoraria])
+    saveDemoSnapshot(demoSessionId, { turnos: turnosBase, conversaciones, pacientes, notas: notasBase, servicios, barberos, bloqueos: bloqueosBase, pagos, tenantBranding, horariosDefault, zonaHoraria })
+  }, [demoMode, demoSessionId, turnosBase, conversaciones, pacientes, notasBase, servicios, barberos, bloqueosBase, pagos, tenantBranding, horariosDefault, zonaHoraria])
 
   const todayKey = todayInClinicTZ(zonaHoraria)
   const demoDefaultTurnDate = demoMode && !turnoFechaPrefijada
@@ -801,37 +808,28 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     return false
   }
 
-  // Borrado con "Deshacer": saca el elemento al instante y recién lo borra en
-  // la base cuando vence el aviso. Si se deshace (o la base lo rechaza),
-  // vuelve a su posición original.
+  // Oculta sin eliminar de la lista base. Las recargas siguen actualizando
+  // esa lista; Deshacer muestra la versión más reciente, no un snapshot viejo.
   const eliminarConDeshacer = (lista, setLista, id, tabla, mensaje, mensajeError) => {
     const anterior = lista.find((item) => item.id === id)
-    const indiceAnterior = lista.findIndex((item) => item.id === id)
     if (!anterior) return true
-    const restaurar = () => setLista((prev) => {
-      if (prev.some((item) => item.id === id)) return prev
-      const restaurados = [...prev]
-      restaurados.splice(Math.max(0, Math.min(indiceAnterior, restaurados.length)), 0, anterior)
-      return restaurados
-    })
-    setLista((prev) => prev.filter((item) => item.id !== id))
-    mostrarToast({
-      mensaje,
-      duracion: 5000,
-      onUndo: restaurar,
-      onExpire: async () => {
-        if (!isSupabaseConfigured) return
-        let error
-        try {
-          ({ error } = await supabase.from(tabla).delete().eq('id', id))
-        } catch (thrown) {
-          error = thrown
-        }
-        if (error) {
-          restaurar()
-          reportError(mensajeError, error)
-        }
+    const operacion = borrados.programar({
+      tabla, id, retener: isSupabaseConfigured,
+      guardar: () => isSupabaseConfigured ? persistirBorrado(supabase, { tabla, barberiaId, fila: anterior }) : Promise.resolve(),
+      onConfirmado: () => {
+        setLista((prev) => prev.filter((item) => item.id !== id))
+        mostrarToast({ mensaje })
       },
+      onError: (error) => reportError(`${mensajeError}. Actualizá los datos para comprobar si sigue disponible`, error),
+    })
+    if (!operacion) return false
+    mostrarToast({
+      mensaje: `${tabla === 'turnos' ? 'Turno' : tabla === 'notas' ? 'Nota' : 'Día libre'}: eliminación pendiente. Al salir antes de guardar, se cancela.`,
+      labelCerrar: 'Eliminar ahora',
+      duracion: 5000,
+      onUndo: operacion.deshacer,
+      onDiscard: operacion.deshacer,
+      onExpire: operacion.confirmar,
     })
     return true
   }

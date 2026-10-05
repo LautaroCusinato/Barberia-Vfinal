@@ -18,7 +18,7 @@ function ToastItem({ toast, onClose }) {
       {toast.deshacer && (
         <button type="button" className="toast-undo" onClick={() => onClose(toast.id, 'undo')}>Deshacer</button>
       )}
-      <button type="button" className="toast-close" onClick={() => onClose(toast.id, 'expire')} aria-label="Cerrar aviso">
+      <button type="button" className="toast-close" onClick={() => onClose(toast.id, 'expire')} aria-label={toast.labelCerrar || 'Cerrar aviso'} title={toast.labelCerrar || 'Cerrar aviso'}>
         <X size={14} aria-hidden="true" />
       </button>
       <span className="toast-timer" aria-hidden="true" />

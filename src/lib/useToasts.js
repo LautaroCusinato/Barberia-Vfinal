@@ -1,44 +1,69 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { reportClientError } from './observability.js'
 
 const SALIDA_MS = 160
 let secuencia = 0
 
 // Cola de avisos breves. Cada aviso puede tener `onUndo` (botón "Deshacer")
-// y `onExpire` (se ejecuta al vencer, al cerrarlo, al ser desplazado por uno
-// nuevo o al salir de la página). Así un borrado diferido nunca queda colgado.
-export function useToasts({ max = 2 } = {}) {
+// y `onExpire` (se ejecuta al vencer o confirmar con su botón de cierre).
+// Al desplazarlo o salir se descarta con onDiscard: iniciar una petición durante
+// pagehide/desmontaje no garantiza que llegue al servidor.
+export function useToasts({ max = 2, contexto = null } = {}) {
   const [toasts, setToasts] = useState([])
   const entradas = useRef(new Map())
+  const salidas = useRef(new Set())
+  const montado = useRef(false)
 
   const cerrar = useCallback((id, motivo = 'expire') => {
     const entrada = entradas.current.get(id)
     if (!entrada) return
     entradas.current.delete(id)
     clearTimeout(entrada.timer)
-    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, saliendo: true } : t)))
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), SALIDA_MS)
-    if (motivo === 'undo') entrada.onUndo?.()
-    else entrada.onExpire?.()
+    if (montado.current) {
+      if (motivo === 'discard') setToasts((prev) => prev.filter((t) => t.id !== id))
+      else {
+        setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, saliendo: true } : t)))
+        const timer = setTimeout(() => {
+          salidas.current.delete(timer)
+          if (montado.current) setToasts((prev) => prev.filter((t) => t.id !== id))
+        }, SALIDA_MS)
+        salidas.current.add(timer)
+      }
+    }
+    const callback = motivo === 'undo' ? entrada.onUndo : motivo === 'discard' ? entrada.onDiscard : entrada.onExpire
+    try {
+      Promise.resolve(callback?.()).catch((error) => reportClientError(error, { source: 'toast_callback' }))
+    } catch (error) { reportClientError(error, { source: 'toast_callback' }) }
   }, [])
 
-  const mostrar = useCallback(({ mensaje, onUndo, onExpire, duracion = 4000 }) => {
+  const mostrar = useCallback(({ mensaje, onUndo, onExpire, onDiscard, labelCerrar = 'Cerrar aviso', duracion = 4000 }) => {
+    if (!montado.current) return null
     const id = ++secuencia
     const timer = setTimeout(() => cerrar(id, 'expire'), duracion)
-    entradas.current.set(id, { onUndo, onExpire, timer })
-    setToasts((prev) => [...prev, { id, mensaje, duracion, deshacer: Boolean(onUndo) }])
+    entradas.current.set(id, { onUndo, onExpire, onDiscard, timer })
+    setToasts((prev) => [...prev, { id, mensaje, duracion, labelCerrar, deshacer: Boolean(onUndo) }])
     const activos = [...entradas.current.keys()]
-    while (activos.length > max) cerrar(activos.shift(), 'expire')
+    while (activos.length > max) cerrar(activos.shift(), 'discard')
     return id
   }, [cerrar, max])
 
   useEffect(() => {
-    const confirmarPendientes = () => [...entradas.current.keys()].forEach((id) => cerrar(id, 'expire'))
-    window.addEventListener('pagehide', confirmarPendientes)
-    return () => {
-      window.removeEventListener('pagehide', confirmarPendientes)
-      confirmarPendientes()
+    montado.current = true
+    setToasts([])
+    const timersSalida = salidas.current
+    const descartarPendientes = () => {
+      for (const id of [...entradas.current.keys()]) cerrar(id, 'discard')
+      for (const timer of timersSalida) clearTimeout(timer)
+      timersSalida.clear()
+      if (montado.current) setToasts([])
     }
-  }, [cerrar])
+    window.addEventListener('pagehide', descartarPendientes)
+    return () => {
+      window.removeEventListener('pagehide', descartarPendientes)
+      montado.current = false
+      descartarPendientes()
+    }
+  }, [cerrar, contexto])
 
   return { toasts, mostrar, cerrar }
 }
