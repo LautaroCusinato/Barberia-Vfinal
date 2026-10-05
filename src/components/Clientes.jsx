@@ -7,7 +7,7 @@ import EditClientModal from './EditClientModal'
 import NewClientModal from './NewClientModal'
 import { EmptyState } from './ui'
 
-export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente }) {
+export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente, onStartChat, clientesConMensajes }) {
   const [query, setQuery] = useState('')
   const [detalle, setDetalle] = useState(null)
   const [editando, setEditando] = useState(null)
@@ -205,6 +205,8 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
         turnos={turnos || []}
         notas={notas || []}
         onClose={() => setDetalle(null)}
+        tieneMensajes={detalle ? Boolean(clientesConMensajes?.has(detalle.id)) : false}
+        onStartChat={onStartChat ? (clienteId) => { setDetalle(null); onStartChat(clienteId) } : undefined}
       />
 
       <NewClientModal

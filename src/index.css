@@ -1012,6 +1012,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   flex-shrink: 0;
 }
 .thread-composer .btn { flex-shrink: 0; padding: 9px 11px; }
+.thread-composer-notice { margin: 0.6rem 0 0; font-size: 12px; color: var(--ink-soft); }
 
 
 .table-scroll { width: 100%; overflow-x: auto; }

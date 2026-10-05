@@ -1,10 +1,10 @@
-import { X, Phone, CalendarDays, StickyNote } from 'lucide-react'
+import { X, Phone, CalendarDays, StickyNote, MessageCircle } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { statusMeta } from './StatusSelect'
 import { formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
 import { conPresencia } from '../lib/presencia'
 
-function ClientDetailModal({ paciente, turnos, notas, onClose }) {
+function ClientDetailModal({ paciente, turnos, notas, onClose, onStartChat, tieneMensajes = false }) {
   if (!paciente) return null
 
   const esDelPaciente = (item) =>
@@ -36,6 +36,16 @@ function ClientDetailModal({ paciente, turnos, notas, onClose }) {
           <p style={{ fontSize: 12.5, color: 'var(--ink-faint)', display: 'flex', alignItems: 'center', gap: 6, marginTop: -6, marginBottom: 16 }}>
             <Phone size={13} /> {formatTelefonoDisplay(paciente.telefono)}
           </p>
+        )}
+
+        {onStartChat && (
+          <div style={{ marginBottom: 16 }}>
+            {/* Abre (o crea vacío) el hilo de este cliente en Mensajes; no envía nada. */}
+            <button type="button" className="btn btn-primary" onClick={() => onStartChat(paciente.id)}>
+              <MessageCircle size={14} aria-hidden="true" />
+              {tieneMensajes ? 'Abrir chat' : 'Iniciar chat'}
+            </button>
+          </div>
         )}
 
         <div className="detail-section">

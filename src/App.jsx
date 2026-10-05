@@ -51,6 +51,7 @@ import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './li
 import { enqueueLatest } from './lib/latestIntentQueue.js'
 import { useTurnoMoves } from './lib/useTurnoMoves.js'
 import { persistirMovimiento, TURNO_CAMBIO, TURNO_SIN_PERMISO } from './lib/turnoMoves.js'
+import { agruparConversaciones, asegurarHiloCliente, claveHiloCliente, conservarHiloIniciado, leerErrorFuncion } from './lib/conversaciones.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
@@ -184,6 +185,13 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [loadedForTenant, setLoadedForTenant] = useState(null)
   const [selectedConversationId, setSelectedConversationId] = useState(null)
+  // "Iniciar chat" desde Clientes: hilo que el operador abrió (se conserva
+  // vacío ante recargas), pedido de foco del compositor y validación del
+  // servidor por cliente (conexión, plan, teléfono) para explicar bloqueos.
+  const hiloIniciadoRef = useRef(null)
+  const [chatFocusRequest, setChatFocusRequest] = useState(null)
+  const consumirFocoChat = useCallback(() => setChatFocusRequest(null), [])
+  const [estadoChatPorCliente, setEstadoChatPorCliente] = useState({})
   const [theme, setTheme] = useState(() => initialTheme(barberiaId, demoMode ? 'austral-demo-theme' : null))
   const [newTurnoOpen, setNewTurnoOpen] = useState(false)
   const [editingTurno, setEditingTurno] = useState(null)
@@ -391,6 +399,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
     setLoading(true)
     setLoadedForTenant(null)
+    // Un hilo iniciado pertenece al negocio anterior: nunca se conserva al cambiar.
+    hiloIniciadoRef.current = null
+    setEstadoChatPorCliente({})
 
     async function cargarTurnos() {
       const { data, error } = await supabase
@@ -580,53 +591,10 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       const { data, error } = mensajesResult
       if (error) { reportError('No se pudieron cargar los mensajes', error); return }
 
-      // Agrupamos por cliente_id, NO por nombre. Si agrupáramos por nombre,
-      // un mismo cliente puede aparecer duplicado apenas el texto no calza
-      // exacto (ej: se cargó "Lauta" desde Agendar o desde el bot, y en el
-      // mensaje quedó guardado "Lauta Gómez" — dos claves distintas, mismo
-      // cliente). El cliente_id no cambia nunca, así que es la clave correcta.
-      const nombrePorClienteId = Object.fromEntries((clientesData ?? []).map((c) => [c.id, c.nombre]))
-      const agrupados = {}
-      for (const m of data ?? []) {
-        const key = m.cliente_id != null ? `id-${m.cliente_id}` : `sin-id-${m.paciente}`
-        if (!agrupados[key]) {
-          agrupados[key] = { id: key, paciente: m.paciente, clienteId: m.cliente_id ?? null, ultimaHora: m.hora, ultimoCreatedAt: m.created_at, noLeido: false, mensajes: [] }
-        }
-        agrupados[key].mensajes.push(m)
-        agrupados[key].ultimaHora = m.hora
-        agrupados[key].ultimoCreatedAt = m.created_at
-        // OJO: el nombre a mostrar NO sale de m.paciente (eso queda
-        // congelado con el nombre/apodo de WhatsApp de cuando se guardó
-        // ese mensaje puntual). Mostramos siempre el nombre ACTUAL de la
-        // ficha del cliente, que es el que el bot corrige cuando confirma
-        // el nombre y apellido real. Si el cliente no tiene ficha (caso
-        // raro), usamos el de m.paciente como respaldo.
-        if (m.cliente_id) agrupados[key].clienteId = m.cliente_id
-        agrupados[key].paciente = nombrePorClienteId[agrupados[key].clienteId] ?? m.paciente
-        if (!m.leido) agrupados[key].noLeido = true
-      }
-
-      // Clientes que todavia no le escribieron nunca a la barberia: se agregan
-      // igual, con el chat vacio, y quedan siempre al final de la lista.
-      // Se chequea por id de cliente (no por nombre) para no duplicar chats.
-      for (const c of clientesData ?? []) {
-        const key = `id-${c.id}`
-        if (agrupados[key]) continue
-        agrupados[key] = {
-          id: key,
-          paciente: c.nombre,
-          clienteId: c.id,
-          ultimaHora: null,
-          ultimoCreatedAt: new Date(0).toISOString(),
-          noLeido: false,
-          mensajes: [],
-        }
-      }
-
-      const lista = Object.values(agrupados).sort(
-        (a, b) => new Date(b.ultimoCreatedAt) - new Date(a.ultimoCreatedAt)
-      )
-      setConversaciones(lista)
+      // Agrupación por cliente_id (ver lib/conversaciones.js). El hilo abierto
+      // con "Iniciar chat" se conserva si no se pudieron leer los clientes.
+      const lista = agruparConversaciones(data, clientesData)
+      setConversaciones((prev) => conservarHiloIniciado(lista, prev, hiloIniciadoRef.current, clientesData))
     }
 
     let channel = null
@@ -873,6 +841,47 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         : await base.eq('paciente', conv.paciente)
       if (error) reportError('No se pudo marcar la conversación como leída', error)
     }
+  }
+
+  // "Iniciar chat" desde la ficha del cliente. Abre su hilo (o lo crea vacío,
+  // sólo en el panel), lo enfoca en Mensajes y valida en el servidor si se le
+  // puede escribir. No escribe en la base ni envía nada: el primer mensaje
+  // requiere que el operador lo escriba y lo envíe.
+  const iniciarChatCliente = async (clienteId) => {
+    const cliente = pacientes.find((p) => p.id === clienteId)
+    if (!cliente) {
+      mostrarValidacion('No encontramos la ficha de este cliente. Actualizá la página e intentá de nuevo.')
+      return
+    }
+    const existente = conversaciones.find((c) => c.clienteId === clienteId)
+    const convId = existente?.id ?? claveHiloCliente(clienteId)
+    hiloIniciadoRef.current = clienteId
+    setConversaciones((prev) => asegurarHiloCliente(prev, cliente))
+    setSelectedConversationId(convId)
+    setChatFocusRequest((prev) => ({ id: convId, n: (prev?.n ?? 0) + 1 }))
+    navigateFromMenu('mensajes')
+    if (existente?.noLeido) openConversation(convId)
+    // El foco va al compositor del hilo (lo pone Messages), no al inicio de la vista.
+    routeFocusPendingRef.current = false
+
+    if (demoMode || !isSupabaseConfigured) {
+      setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: { estado: 'demo', mensaje: 'Modo demostración: este chat no envía mensajes por WhatsApp.' } }))
+      return
+    }
+    if (estadoChatPorCliente[clienteId]?.estado === 'verificando') return
+    setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: { estado: 'verificando', mensaje: '' } }))
+    let resultado
+    try {
+      const { error } = await supabase.functions.invoke(WHATSAPP_PANEL_SEND_FUNCTION, {
+        body: { action: 'preflight', tenant_id: barberiaId, cliente_id: clienteId },
+      })
+      resultado = error
+        ? { estado: 'bloqueado', mensaje: (await leerErrorFuncion(error, 'No pudimos verificar si se puede escribir a este cliente. Podés redactar el mensaje e intentar enviarlo.')).message }
+        : { estado: 'listo', mensaje: '' }
+    } catch {
+      resultado = { estado: 'bloqueado', mensaje: 'No pudimos verificar si se puede escribir a este cliente. Podés redactar el mensaje e intentar enviarlo.' }
+    }
+    setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: resultado }))
   }
 
   const updateTurnoEstado = async (turnoId, nuevoEstado) => {
@@ -1143,59 +1152,49 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const sendMensaje = async (paciente, texto, clienteId) => {
     const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: zonaHoraria || TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
-    const nuevoMensaje = { paciente, texto, de: 'clinica', hora: horaActual, leido: true, cliente_id: clienteId ?? null }
     const esLaConversacion = (c) => (clienteId != null ? c.clienteId === clienteId : c.paciente === paciente)
-    const conversacionAnterior = conversaciones.find(esLaConversacion)
-    const mensajesAnteriores = conversacionAnterior?.mensajes ?? []
-
-    setConversaciones((prev) => {
-      const actualizadas = prev.map((c) =>
-        esLaConversacion(c) ? { ...c, mensajes: [...c.mensajes, nuevoMensaje], ultimaHora: horaActual, ultimoCreatedAt: new Date().toISOString() } : c
-      )
+    const cliente = clienteId != null ? pacientes.find((p) => p.id === clienteId) : null
+    const agregarAlHilo = (mensaje) => setConversaciones((prev) => {
+      const base = cliente ? asegurarHiloCliente(prev, cliente) : prev
+      const actualizadas = base.map((c) => {
+        if (!esLaConversacion(c)) return c
+        // Realtime puede traer la fila antes que la respuesta: no duplicar por id.
+        if (mensaje.id != null && c.mensajes.some((m) => m.id === mensaje.id)) return c
+        return { ...c, mensajes: [...c.mensajes, mensaje], ultimaHora: mensaje.hora ?? horaActual, ultimoCreatedAt: mensaje.created_at ?? new Date().toISOString() }
+      })
       const idx = actualizadas.findIndex(esLaConversacion)
       if (idx <= 0) return actualizadas
       const [conv] = actualizadas.splice(idx, 1)
       return [conv, ...actualizadas]
     })
 
-    if (isSupabaseConfigured) {
-      try {
-        const { error } = await supabase.from('mensajes').insert({ ...nuevoMensaje, barberia_id: barberiaId })
-        if (error) {
-        setConversaciones((prev) => prev.map((c) => {
-          if (!esLaConversacion(c)) return c
-          return { ...c, mensajes: mensajesAnteriores, ultimaHora: conversacionAnterior?.ultimaHora ?? null, ultimoCreatedAt: conversacionAnterior?.ultimoCreatedAt ?? new Date(0).toISOString() }
-        }))
-        reportError('No se pudo guardar el mensaje', error)
-          // Sin registro en el panel no lo enviamos: el cliente recibiría un
-          // mensaje que nadie del equipo puede ver. El chat conserva el borrador.
-          return false
-        }
-      } catch (error) {
-        setConversaciones((prev) => prev.map((c) => {
-          if (!esLaConversacion(c)) return c
-          return { ...c, mensajes: mensajesAnteriores, ultimaHora: conversacionAnterior?.ultimaHora ?? null, ultimoCreatedAt: conversacionAnterior?.ultimoCreatedAt ?? new Date(0).toISOString() }
-        }))
-        reportError('No se pudo guardar el mensaje', error)
-        return false
+    if (!isSupabaseConfigured) {
+      // Demo o modo local: el mensaje sólo vive en este navegador.
+      agregarAlHilo({ paciente, texto, de: 'clinica', hora: horaActual, leido: true, cliente_id: clienteId ?? null })
+    } else {
+      if (clienteId == null) {
+        return { ok: false, message: 'Esta conversación no está vinculada a una ficha de cliente, así que no se puede enviar por WhatsApp.' }
       }
-    }
-
-    // El envío real pasa por una edge function autenticada: valida la
-    // membresía del usuario y toma el teléfono de la ficha del cliente. El
-    // navegador nunca conoce la URL del webhook de n8n.
-    const telefono = clienteId ? pacientes.find((p) => p.id === clienteId)?.telefono : null
-    if (!telefono) {
-      reportError('No se pudo enviar por WhatsApp', new Error('Este cliente no tiene un teléfono cargado en su ficha'))
-    } else if (isSupabaseConfigured) {
+      // El envío real pasa por una edge function autenticada: valida tenant,
+      // rol, plan, conexión y la ficha del cliente, guarda el mensaje con su
+      // cliente_id y recién entonces lo envía. Hasta que confirma, el mensaje
+      // no se muestra; si falla, el borrador queda intacto en el compositor.
+      // El navegador nunca conoce la URL del webhook de n8n.
+      let guardado
       try {
-        const { error } = await supabase.functions.invoke(WHATSAPP_PANEL_SEND_FUNCTION, {
-          body: { tenant_id: barberiaId, cliente_id: clienteId, texto },
+        const { data, error } = await supabase.functions.invoke(WHATSAPP_PANEL_SEND_FUNCTION, {
+          body: { action: 'send', tenant_id: barberiaId, cliente_id: clienteId, texto, hora: horaActual },
         })
-        if (error) reportError('El mensaje se guardó pero no se pudo enviar por WhatsApp', error)
-      } catch (err) {
-        reportError('El mensaje se guardó pero no se pudo enviar por WhatsApp', err)
+        if (error) {
+          const { message } = await leerErrorFuncion(error, 'No se pudo enviar el mensaje por WhatsApp. El borrador quedó guardado.')
+          return { ok: false, message }
+        }
+        guardado = data?.mensaje
+      } catch {
+        return { ok: false, message: 'No se pudo enviar el mensaje. Revisá tu conexión; el borrador quedó guardado.' }
       }
+      agregarAlHilo(guardado ?? { paciente, texto, de: 'clinica', hora: horaActual, leido: true, cliente_id: clienteId })
+      setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: { estado: 'listo', mensaje: '' } }))
     }
 
     // Traspaso a atención humana: una respuesta manual pausa el bot. Es la
@@ -1480,6 +1479,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const turnosHoy = turnos.filter((t) => t.fecha === todayKey).sort((a, b) => a.hora.localeCompare(b.hora))
   const unreadCount = conversaciones.filter((c) => c.noLeido).length
+  const clientesConMensajes = new Set(conversaciones.filter((c) => c.clienteId != null && c.mensajes.length > 0).map((c) => c.clienteId))
   const hoyLegible = capitalizar(format(new Date(`${todayKey}T12:00:00`), "EEEE d 'de' MMMM", { locale: es }))
 
   return (
@@ -1699,6 +1699,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                 onSelectConversation={openConversation}
                 onSendMessage={sendMensaje}
                 pacientes={pacientes}
+                focusRequest={chatFocusRequest}
+                onFocusRequestHandled={consumirFocoChat}
+                estadoChatPorCliente={estadoChatPorCliente}
               />
             )}
           </div>
@@ -1722,6 +1725,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
                   onAddPaciente={addPaciente}
                   onUpdatePaciente={updatePaciente}
                   onDeletePaciente={deletePaciente}
+                  onStartChat={iniciarChatCliente}
+                  clientesConMensajes={clientesConMensajes}
                 />
               </div>
             )}

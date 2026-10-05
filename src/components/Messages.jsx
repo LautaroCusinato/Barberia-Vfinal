@@ -6,12 +6,18 @@ import { formatTelefonoDisplay, normalizar } from '../lib/text'
 import SafeMarkdown, { stripMarkdown } from './SafeMarkdown'
 import { EmptyState } from './ui'
 
-export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage, pacientes = [] }) {
+const ESTADOS_CON_AVISO = new Set(['verificando', 'bloqueado', 'demo'])
+
+export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage, pacientes = [], focusRequest = null, onFocusRequestHandled, estadoChatPorCliente = {} }) {
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false)
-  const [draft, setDraft] = useState('')
+  // Borrador y error por conversación: cambiar de hilo (o abrir uno desde
+  // Clientes) nunca lleva el texto escrito para otro cliente.
+  const [drafts, setDrafts] = useState({})
+  const [sendErrors, setSendErrors] = useState({})
   const [sending, setSending] = useState(false)
-  const [sendError, setSendError] = useState('')
   const [query, setQuery] = useState('')
+  const composerRef = useRef(null)
+  const handledFocusRef = useRef(null)
   const threadRef = useRef(null)
   const threadPanelRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -35,6 +41,10 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   // El encabezado muestra el número real (antes repetía "WhatsApp" junto al badge).
   const telefonoSeleccionado = selected?.clienteId != null ? pacientes.find((p) => p.id === selected.clienteId)?.telefono : null
   const selectedMessageCount = selected?.mensajes?.length || 0
+  const draft = drafts[selectedConversationId] ?? ''
+  const sendError = sendErrors[selectedConversationId] ?? ''
+  const setDraft = (value) => setDrafts((prev) => ({ ...prev, [selectedConversationId]: value }))
+  const estadoChat = selected?.clienteId != null ? estadoChatPorCliente[selected.clienteId] : null
 
   const scrollToBottom = useCallback((behavior = 'auto') => {
     const thread = threadRef.current
@@ -53,17 +63,21 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
 
   const enviar = async () => {
     if (!draft.trim() || sending || !selected) return
+    // El destinatario se fija al tocar Enviar: si el operador cambia de hilo
+    // mientras se envía, el resultado se aplica a esta conversación.
+    const convId = selected.id
+    const setErrorDe = (message) => setSendErrors((prev) => ({ ...prev, [convId]: message }))
     setSending(true)
-    setSendError('')
+    setErrorDe('')
     pendingOwnMessageRef.current = true
     try {
       const sent = await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
-      if (sent === false) {
+      if (sent === false || sent?.ok === false) {
         pendingOwnMessageRef.current = false
-        setSendError('No se pudo guardar el mensaje. El borrador quedó preservado.')
+        setErrorDe(sent?.message || 'No se pudo guardar el mensaje. El borrador quedó preservado.')
         return
       }
-      setDraft('')
+      setDrafts((prev) => ({ ...prev, [convId]: '' }))
       // El callback puede actualizar el hilo de forma asincrónica. El frame
       // siguiente es el primer momento en que el nuevo mensaje está medido.
       window.requestAnimationFrame(() => {
@@ -74,7 +88,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
       })
     } catch {
       pendingOwnMessageRef.current = false
-      setSendError('No se pudo guardar el mensaje. Revisá tu conexión e intentá de nuevo.')
+      setErrorDe('No se pudo guardar el mensaje. Revisá tu conexión e intentá de nuevo.')
     } finally {
       setSending(false)
     }
@@ -161,6 +175,23 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
       viewport?.removeEventListener('resize', handleViewportResize)
     }
   }, [full, selectedConversationId, scrollToBottom, updateBottomState])
+
+  // "Iniciar chat" desde Clientes: abre el hilo pedido y pone el foco en el
+  // compositor una sola vez por pedido (no al volver a seleccionarlo).
+  useEffect(() => {
+    if (!full || !focusRequest || handledFocusRef.current === focusRequest.n) return undefined
+    if (focusRequest.id !== selectedConversationId) return undefined
+    setMobileThreadOpen(true)
+    // Se marca atendido recién al enfocar: si un re-render cancela el frame,
+    // el efecto lo vuelve a intentar.
+    const frame = window.requestAnimationFrame(() => {
+      handledFocusRef.current = focusRequest.n
+      composerRef.current?.focus({ preventScroll: true })
+      onFocusRequestHandled?.()
+      if (window.matchMedia?.('(max-width: 900px)').matches) threadPanelRef.current?.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [full, focusRequest, selectedConversationId, onFocusRequestHandled])
 
   // En el celular el hilo reemplaza a la lista: lo llevamos al tope de la
   // pantalla para que el campo de respuesta quede visible sobre la barra inferior.
@@ -299,7 +330,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
           <div className="thread" ref={threadRef}>
             {selected.mensajes.length === 0 ? (
               <div style={{ padding: '1rem' }}>
-                <EmptyState icon={<MessageCircleOff size={22} style={{ color: 'var(--border-strong)' }} />} description="Sin mensajes en esta conversación" />
+                <EmptyState icon={<MessageCircleOff size={22} style={{ color: 'var(--border-strong)' }} />} description="Todavía no hay mensajes con este cliente. Nada se envía hasta que toques Enviar." />
               </div>
             ) : (
               selected.mensajes.map((m, i) => (
@@ -333,9 +364,15 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
             </button>
           )}
 
+          {onSendMessage && ESTADOS_CON_AVISO.has(estadoChat?.estado) && (
+            <p className={estadoChat.estado === 'bloqueado' ? 'login-error thread-composer-notice' : 'thread-composer-notice'} role="status">
+              {estadoChat.estado === 'verificando' ? 'Verificando si se puede escribir a este cliente por WhatsApp…' : estadoChat.mensaje}
+            </p>
+          )}
           {onSendMessage && (
             <div className="thread-composer" aria-busy={sending}>
               <textarea
+                ref={composerRef}
                 className="note-input"
                 aria-label={`Mensaje para ${selected.paciente}`}
                 style={{ marginBottom: 0, minHeight: 40, maxHeight: 90 }}

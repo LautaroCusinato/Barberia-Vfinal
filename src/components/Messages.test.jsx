@@ -175,3 +175,96 @@ describe('Messages (resumen)', () => {
     expect(screen.getByText('Sin conversaciones recientes')).toBeInTheDocument()
   })
 })
+
+describe('Messages · Iniciar chat (tarea 38)', () => {
+  const hiloVacio = { id: 'id-300', paciente: 'Carla Nueva', clienteId: 300, ultimaHora: null, noLeido: false, mensajes: [] }
+
+  it('muestra el hilo vacío enfocado y permite escribir el primer mensaje', async () => {
+    const user = userEvent.setup()
+    const onSendMessage = vi.fn().mockResolvedValue(true)
+    render(
+      <Messages
+        full
+        conversaciones={[hiloVacio, ...conversaciones]}
+        selectedId="id-300"
+        onSelectConversation={() => {}}
+        onSendMessage={onSendMessage}
+        focusRequest={{ id: 'id-300', n: 1 }}
+      />,
+    )
+    const composer = screen.getByRole('textbox', { name: 'Mensaje para Carla Nueva' })
+    await vi.waitFor(() => expect(composer).toHaveFocus())
+    expect(screen.getByText(/Nada se envía hasta que toques Enviar/)).toBeInTheDocument()
+    expect(onSendMessage).not.toHaveBeenCalled()
+    await user.type(composer, 'Hola Carla{Enter}')
+    expect(onSendMessage).toHaveBeenCalledWith('Carla Nueva', 'Hola Carla', 300)
+  })
+
+  it('no roba el foco si el pedido es para otro hilo o ya se atendió', () => {
+    const { rerender } = render(
+      <Messages full conversaciones={conversaciones} selectedId={1} onSelectConversation={() => {}} onSendMessage={vi.fn()} focusRequest={{ id: 2, n: 1 }} />,
+    )
+    expect(screen.getByRole('textbox', { name: 'Mensaje para Agustín Molina' })).not.toHaveFocus()
+    rerender(<Messages full conversaciones={conversaciones} selectedId={1} onSelectConversation={() => {}} onSendMessage={vi.fn()} focusRequest={{ id: 2, n: 1 }} />)
+    expect(screen.getByRole('textbox', { name: 'Mensaje para Agustín Molina' })).not.toHaveFocus()
+  })
+
+  it('explica por qué no se puede enviar (desconectado, pausado, sin plan o teléfono inválido)', () => {
+    render(
+      <Messages
+        full
+        conversaciones={[hiloVacio]}
+        selectedId="id-300"
+        onSelectConversation={() => {}}
+        onSendMessage={vi.fn()}
+        estadoChatPorCliente={{ 300: { estado: 'bloqueado', mensaje: 'WhatsApp está pausado para este negocio.' } }}
+      />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('WhatsApp está pausado para este negocio.')
+    // El borrador sigue disponible para cuando se resuelva.
+    expect(screen.getByRole('textbox', { name: 'Mensaje para Carla Nueva' })).toBeEnabled()
+  })
+
+  it('muestra la verificación en curso y nada cuando está listo', () => {
+    const props = { full: true, conversaciones: [hiloVacio], selectedId: 'id-300', onSelectConversation: () => {}, onSendMessage: vi.fn() }
+    const { rerender } = render(<Messages {...props} estadoChatPorCliente={{ 300: { estado: 'verificando', mensaje: '' } }} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Verificando')
+    rerender(<Messages {...props} estadoChatPorCliente={{ 300: { estado: 'listo', mensaje: '' } }} />)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('si el envío falla muestra el motivo del servidor y conserva el borrador', async () => {
+    const user = userEvent.setup()
+    const onSendMessage = vi.fn().mockResolvedValue({ ok: false, message: 'El mensaje no se pudo enviar por WhatsApp. El borrador quedó guardado para reintentar.' })
+    render(<Messages full conversaciones={[hiloVacio]} selectedId="id-300" onSelectConversation={() => {}} onSendMessage={onSendMessage} />)
+    const composer = screen.getByRole('textbox', { name: 'Mensaje para Carla Nueva' })
+    await user.type(composer, 'Primer mensaje')
+    await user.click(screen.getByRole('button', { name: 'Enviar' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('no se pudo enviar por WhatsApp')
+    expect(composer).toHaveValue('Primer mensaje')
+  })
+
+  it('el borrador pertenece a su conversación: cambiar de hilo no lo lleva a otro cliente', async () => {
+    const user = userEvent.setup()
+    const onSendMessage = vi.fn().mockResolvedValue(true)
+    const props = { full: true, conversaciones: [hiloVacio, ...conversaciones], onSelectConversation: () => {}, onSendMessage }
+    const { rerender } = render(<Messages {...props} selectedId={1} />)
+    await user.type(screen.getByRole('textbox', { name: 'Mensaje para Agustín Molina' }), 'Sólo para Agustín')
+    rerender(<Messages {...props} selectedId="id-300" focusRequest={{ id: 'id-300', n: 1 }} />)
+    const carla = screen.getByRole('textbox', { name: 'Mensaje para Carla Nueva' })
+    expect(carla).toHaveValue('')
+    await user.type(carla, '{Enter}')
+    expect(onSendMessage).not.toHaveBeenCalled()
+    rerender(<Messages {...props} selectedId={1} />)
+    expect(screen.getByRole('textbox', { name: 'Mensaje para Agustín Molina' })).toHaveValue('Sólo para Agustín')
+  })
+})
+
+describe('Messages · pedido de foco consumido', () => {
+  it('avisa que atendió el pedido para que no se repita al volver a la vista', async () => {
+    const onFocusRequestHandled = vi.fn()
+    render(<Messages full conversaciones={conversaciones} selectedId={1} onSelectConversation={() => {}} onSendMessage={vi.fn()} focusRequest={{ id: 1, n: 3 }} onFocusRequestHandled={onFocusRequestHandled} />)
+    await vi.waitFor(() => expect(onFocusRequestHandled).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole('textbox', { name: 'Mensaje para Agustín Molina' })).toHaveFocus()
+  })
+})
