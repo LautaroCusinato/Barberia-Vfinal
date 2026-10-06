@@ -163,6 +163,32 @@ do $$ begin
 exception when check_violation then raise notice 'ok: estado inválido rechazado';
 end $$;
 
+-- 13. Rechazo del proveedor: el bot queda pausado (decisión del dueño, 05/10:
+-- el operador ya tomó la conversación). Reanudarlo es una acción explícita del
+-- owner; un readonly no puede, y el próximo envío manual vuelve a pausar.
+update public.config set valor = 'true' where barberia_id = 1 and clave = 'bot_activo';
+select public.t_assert((public.t_res(1, '66666666-6666-4666-8666-666666666666', 'Rechazado por WhatsApp')) ->> 'status' = 'reserved', 'reserva antes del rechazo');
+select public.t_assert((public.completar_envio_panel(1, (select id from public.mensajes where client_message_id = '66666666-6666-4666-8666-666666666666'), 'fallido')) ->> 'status' = 'updated', 'rechazo registrado');
+select public.t_assert((select valor from public.config where barberia_id = 1 and clave = 'bot_activo') = 'false', 'un rechazo no reanuda el bot');
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000c', false);
+do $$ begin
+  insert into public.config (barberia_id, clave, valor) values (1, 'bot_activo', 'true')
+  on conflict (barberia_id, clave) do update set valor = 'true';
+  raise exception 'FALLA: readonly reanudó el bot';
+exception when insufficient_privilege then raise notice 'ok: un readonly no reanuda el bot';
+end $$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+-- Misma escritura que reanudarBot en App.jsx (upsert ... select).
+insert into public.config (barberia_id, clave, valor) values (1, 'bot_activo', 'true')
+on conflict (barberia_id, clave) do update set valor = 'true';
+reset role;
+select public.t_assert((select valor from public.config where barberia_id = 1 and clave = 'bot_activo') = 'true', 'el owner reanuda el bot explícitamente');
+set role service_role;
+select public.t_assert((public.t_res(1, '77777777-7777-4777-8777-777777777777', 'Nuevo envío manual')) ->> 'status' = 'reserved', 'otro envío manual');
+select public.t_assert((select valor from public.config where barberia_id = 1 and clave = 'bot_activo') = 'false', 'el siguiente envío manual vuelve a pausar');
+
 -- Limpieza para la etapa de concurrencia.
 delete from public.mensajes where barberia_id = 1;
 delete from public.config;

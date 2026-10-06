@@ -57,6 +57,16 @@ create policy "mensajes_write_staff" on public.mensajes for all to authenticated
 using (public.is_barberia_role(barberia_id, array['owner', 'admin', 'recepcionista', 'barbero', 'empleado']) and public.barberia_operational_access(barberia_id))
 with check (public.is_barberia_role(barberia_id, array['owner', 'admin', 'recepcionista', 'barbero', 'empleado']) and public.barberia_operational_access(barberia_id));
 
+-- public.config: lectura para miembros (20260810171324) y escritura sólo del
+-- owner con acceso operativo (20260831090000). Reanudar el bot es esa escritura.
+create function public.is_barberia_member(p bigint) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.barberia_members m where m.barberia_id = p and m.user_id = auth.uid()) $$;
+alter table public.config enable row level security;
+create policy "config_select_member" on public.config for select using (public.is_barberia_member(barberia_id));
+create policy "config_write_owner" on public.config for all
+using (public.is_barberia_role(barberia_id, array['owner']) and public.barberia_operational_access(barberia_id))
+with check (public.is_barberia_role(barberia_id, array['owner']) and public.barberia_operational_access(barberia_id));
+
 -- 20261002091000_tenant_write_boundaries.sql
 create function public.enforce_cliente_same_tenant() returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 begin

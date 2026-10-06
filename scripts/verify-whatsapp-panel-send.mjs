@@ -121,7 +121,7 @@ async function run(ctx, body, userId = 'owner-7', settings = FIXED) {
     return { ok: true, value: await handlePanelSend({ user: { id: userId }, body, store: ctx.store, deliver: ctx.deliver, settings, now: NOW }) }
   } catch (error) {
     const { status, body: errorBody } = panelSendErrorBody(error)
-    return { ok: false, status, code: errorBody.error.code, message: errorBody.error.message, contract: errorBody.contract }
+    return { ok: false, status, code: errorBody.error.code, message: errorBody.error.message, contract: errorBody.contract, botPaused: errorBody.bot_paused }
   }
 }
 
@@ -210,6 +210,22 @@ await test('compatibilidad: el límite del panel anterior cuenta la fila que ya 
   assert.equal((await run(ctx, { tenant_id: TENANT, cliente_id: 100, texto: 'm19' })).ok, true, 'la vigésima pasa')
   ctx.db.mensajes.push({ id: 21, barberia_id: TENANT, cliente_id: 100, de: 'clinica', texto: 'm20', created_at: NOW.toISOString() })
   assert.equal((await run(ctx, { tenant_id: TENANT, cliente_id: 100, texto: 'm20' })).code, 'send_rate_limited')
+})
+
+await test('bloqueos previos al envío no informan pausa; la confirmación de reenvío advierte que pudo haber llegado', async () => {
+  const ctx = createDb()
+  for (let i = 0; i < PANEL_SEND_RATE_LIMIT; i += 1) assert.equal((await run(ctx, send(`m${i}`))).ok, true)
+  const limited = await run(ctx, send('Otro'))
+  assert.equal(limited.code, 'send_rate_limited')
+  assert.equal(limited.botPaused, undefined, 'no se intentó enviar: no hay traspaso que informar')
+  assert.equal(ctx.deliveries.length, PANEL_SEND_RATE_LIMIT, 'el frenado no llega a n8n')
+  const ctx2 = createDb({ outcome: 'uncertain' })
+  await run(ctx2, send('Hola'))
+  const again = await run(ctx2, send('Hola'))
+  assert.equal(again.code, 'panel_send_possible_duplicate')
+  assert.match(again.message, /podría haber llegado/)
+  assert.match(again.message, /dos veces/)
+  assert.equal(ctx2.deliveries.length, 1, 'un incierto nunca se reenvía sin confirmación')
 })
 
 await test('teléfono sin 9 se normaliza al canónico 549', async () => {
@@ -333,6 +349,9 @@ await test('rechazo confirmado: la fila se retira y reintentar es seguro', async
   assert.equal(result.code, 'panel_send_rejected')
   assert.match(result.message, /no salió/)
   assert.match(result.message, /borrador/)
+  // Decisión del dueño (05/10): el bot queda pausado igual. Sin la reserva
+  // atómica el servidor no lo pausó, así que lo informa para que lo haga el panel.
+  assert.equal(result.botPaused, false, 'sin migración el servidor informa que no pausó')
   assert.equal(ctx.db.mensajes.length, 0, 'no queda un mensaje que el cliente nunca recibió')
   ctx.db.outcome = 'received'
   const retry = await run(ctx, send('Hola'))
@@ -503,6 +522,7 @@ await test('atómico: rechazo confirmado deja la fila "fallido" y el mismo ident
   const ctx = atomicDb({ outcome: 'rejected' })
   const rejected = await run(ctx, send('Hola', { client_message_id: KEY_A }))
   assert.equal(rejected.code, 'panel_send_rejected')
+  assert.equal(rejected.botPaused, true, 'la reserva ya pausó el bot y no se revierte ante el rechazo')
   assert.equal(ctx.db.mensajes[0].estado_envio, 'fallido')
   ctx.db.outcome = 'received'
   const retry = await run(ctx, send('Hola', { client_message_id: KEY_A }))

@@ -162,7 +162,15 @@ function SkeletonBlock({ height = 90 }) {
   return <div className="skeleton" style={{ height, width: '100%', marginBottom: 10 }} />
 }
 
-export default function App({ barberiaId, barberiaNombre, vertical: _vertical, demoMode = false, demoSessionId = null }) {
+// Una instancia del panel por negocio: al cambiar de negocio sin desmontar
+// (por ejemplo, la caché inicial difiere de la preferencia confirmada), todo el
+// estado del anterior se descarta y una respuesta tardía suya (envío manual,
+// validación, cobro) no puede tocar el hilo, el borrador ni el bot del nuevo.
+export default function App(props) {
+  return <PanelNegocio key={`${props.demoMode ? 'demo' : 'negocio'}:${props.barberiaId}`} {...props} />
+}
+
+function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMode = false, demoSessionId = null }) {
   // Demo mode deliberately reuses every local branch of the real panel while
   // making the Supabase adapter unavailable. This keeps the tenant boundary
   // explicit: no demo callback can reach an authenticated or server adapter.
@@ -1152,8 +1160,32 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const deleteNota = (id) => eliminarConDeshacer(notas, setNotas, id, 'notas', 'Nota eliminada', 'No se pudo eliminar la nota')
 
+  // Traspaso a atención humana: una respuesta manual pausa el bot. Es la
+  // única escritura de `bot_activo` desde el navegador y sólo puede apagarlo;
+  // la RPC lo permite a cualquier miembro (la política de `config` es sólo
+  // para owners y dejaba al bot activo si respondía otro rol). Con la reserva
+  // atómica el servidor ya lo pausó antes del envío (`yaPausado`).
+  const pausarBotPorRespuestaManual = async (yaPausado) => {
+    if (yaPausado) {
+      setBotActivo(false)
+      return
+    }
+    if (!botActivo) return
+    setBotActivo(false)
+    if (!isSupabaseConfigured) return
+    let { error } = await supabase.rpc('pause_whatsapp_bot_for_manual_reply', { p_barberia_id: barberiaId })
+    // Compatibilidad mientras la migración no esté aplicada: el owner
+    // todavía puede pausarlo con la escritura directa.
+    if (error?.code === 'PGRST202') {
+      ({ error } = await supabase.from('config').upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: 'false' }))
+    }
+    if (error) {
+      setBotActivo(true)
+      reportError('No se pudo pausar el bot: puede seguir respondiendo este chat', error)
+    }
+  }
+
   const sendMensaje = async (paciente, texto, clienteId, opciones = {}) => {
-    let avisoEnvio = ''
     const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: zonaHoraria || TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
     const esLaConversacion = (c) => (clienteId != null ? c.clienteId === clienteId : c.paciente === paciente)
     const cliente = clienteId != null ? pacientes.find((p) => p.id === clienteId) : null
@@ -1199,39 +1231,26 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
       if (envio.contrato != null) contratoEnvioRef.current = envio.contrato
       if (envio.resultado === 'enviado' || envio.reiniciarClave) olvidarClaveDeEnvio(clavesEnvioRef.current, clienteId, texto)
       if (envio.resultado === 'posible_duplicado') return { ok: false, message: envio.aviso, confirmable: true }
-      if (envio.resultado === 'rechazado' || envio.resultado === 'desconocido') return { ok: false, message: envio.aviso }
+      if (envio.resultado === 'rechazado' || envio.resultado === 'desconocido') {
+        // Se intentó enviar (WhatsApp lo rechazó o no sabemos si salió): el
+        // operador ya tomó la conversación y el bot queda pausado igual.
+        // Reanudarlo es una acción explícita ("Reanudar bot"). Un bloqueo
+        // previo al envío (límite, teléfono, conexión) no pausa.
+        if (envio.intentado) await pausarBotPorRespuestaManual(envio.botPausado === true)
+        return { ok: false, message: envio.aviso }
+      }
       if (envio.mensaje) agregarAlHilo(envio.mensaje)
       setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: { estado: 'listo', mensaje: '' } }))
       // Enviado o incierto: pudo haber salido, así que también corresponde el
       // traspaso a atención humana. Con la reserva atómica ya lo hizo el
       // servidor, antes del envío.
-      avisoEnvio = envio.aviso || ''
-      if (envio.botPausado) {
-        setBotActivo(false)
-        return avisoEnvio ? { ok: true, aviso: avisoEnvio } : true
-      }
+      const avisoEnvio = envio.aviso || ''
+      await pausarBotPorRespuestaManual(envio.botPausado === true)
+      return avisoEnvio ? { ok: true, aviso: avisoEnvio } : true
     }
 
-    // Traspaso a atención humana: una respuesta manual pausa el bot. Es la
-    // única escritura de `bot_activo` desde el navegador y sólo puede apagarlo;
-    // la RPC lo permite a cualquier miembro (la política de `config` es sólo
-    // para owners y dejaba al bot activo si respondía otro rol).
-    if (botActivo) {
-      setBotActivo(false)
-      if (isSupabaseConfigured) {
-        let { error } = await supabase.rpc('pause_whatsapp_bot_for_manual_reply', { p_barberia_id: barberiaId })
-        // Compatibilidad mientras la migración no esté aplicada: el owner
-        // todavía puede pausarlo con la escritura directa.
-        if (error?.code === 'PGRST202') {
-          ({ error } = await supabase.from('config').upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: 'false' }))
-        }
-        if (error) {
-          setBotActivo(true)
-          reportError('No se pudo pausar el bot: puede seguir respondiendo este chat', error)
-        }
-      }
-    }
-    return avisoEnvio ? { ok: true, aviso: avisoEnvio } : true
+    await pausarBotPorRespuestaManual(false)
+    return true
   }
 
   const addServicio = async () => {

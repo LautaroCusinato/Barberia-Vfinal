@@ -91,7 +91,7 @@ export async function leerErrorFuncion(error, respaldo) {
     const body = typeof response?.json === 'function' ? await response.json() : null
     const message = body?.error?.message
     if (typeof message === 'string' && message.trim()) {
-      return { code: String(body.error.code || ''), message: message.trim(), contract: body.contract ?? null, respondio: true }
+      return { code: String(body.error.code || ''), message: message.trim(), contract: body.contract ?? null, respondio: true, botPausado: body.bot_paused === true }
     }
   } catch {
     // Respuesta sin JSON: se usa el respaldo.

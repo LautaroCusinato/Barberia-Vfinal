@@ -52,14 +52,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const ACTIONS = new Set(['preflight', 'send'])
 
 export class PanelSendError extends Error {
-  constructor(message, status, code) {
+  constructor(message, status, code, extra = null) {
     super(message)
     this.status = status
     this.code = code
+    this.extra = extra
   }
 }
 
-const fail = (message, status, code) => { throw new PanelSendError(message, status, code) }
+const fail = (message, status, code, extra = null) => { throw new PanelSendError(message, status, code, extra) }
 
 function positiveInteger(value) {
   const parsed = Number(value)
@@ -223,7 +224,7 @@ async function safeDeliver(deliver, payload) {
 }
 
 const rateLimited = () => fail('Se enviaron demasiados mensajes en el último minuto. Esperá un momento e intentá de nuevo.', 429, 'send_rate_limited')
-const possibleDuplicate = () => fail('Este mismo mensaje se envió o quedó sin confirmar hace instantes. Revisá WhatsApp: si no llegó, confirmá el reenvío.', 409, 'panel_send_possible_duplicate')
+const possibleDuplicate = () => fail('Este mismo mensaje se envió o quedó sin confirmar hace poco y podría haber llegado. Revisá WhatsApp antes de reenviarlo: si lo reenviás, el cliente puede recibirlo dos veces.', 409, 'panel_send_possible_duplicate')
 
 /** Panel anterior a la tarea 38: la fila ya la guardó el navegador. */
 async function handleLegacySend({ context, texto, store, deliver, now, settings }) {
@@ -355,7 +356,10 @@ export async function handlePanelSend({ user, body, store, deliver, settings, no
       const removed = await store.deleteMensaje(context.tenantId, saved.id).then(() => true, () => false)
       if (!removed) await store.updateMensaje(context.tenantId, saved.id, { estado_envio: 'fallido' }).catch(() => null)
     }
-    fail('WhatsApp rechazó el envío. El mensaje no salió y el borrador quedó guardado para reintentar.', 502, 'panel_send_rejected')
+    // Se intentó enviar: el operador ya tomó la conversación y el bot queda
+    // pausado aunque WhatsApp lo rechace (decisión del dueño, 05/10). Con la
+    // reserva atómica la base ya lo pausó; si no, lo pausa el panel.
+    fail('WhatsApp rechazó el envío. El mensaje no salió y el borrador quedó guardado para reintentar.', 502, 'panel_send_rejected', { bot_paused: atomic })
   }
 
   const patch = { estado_envio: estado, enviado_wsp: outcome !== 'uncertain', ...(providerMessageId ? { whatsapp_id: providerMessageId } : {}) }
@@ -377,7 +381,7 @@ export async function handlePanelSend({ user, body, store, deliver, settings, no
 
 /** Respuesta de error sin detalles internos. */
 export function panelSendErrorBody(error) {
-  if (error instanceof PanelSendError) return { status: error.status, body: { error: { code: error.code, message: error.message }, contract: PANEL_SEND_CONTRACT } }
+  if (error instanceof PanelSendError) return { status: error.status, body: { error: { code: error.code, message: error.message }, contract: PANEL_SEND_CONTRACT, ...(error.extra || {}) } }
   const status = Number(error?.status) || 500
   const code = String(error?.code || 'panel_send_error').replace(/[^a-z0-9_:-]/gi, '').slice(0, 80)
   const message = status >= 500 ? 'No se pudo enviar el mensaje.' : String(error?.message || 'Solicitud inválida.').slice(0, 240)

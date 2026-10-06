@@ -91,7 +91,12 @@ describe('recarga y Realtime', () => {
 describe('leerErrorFuncion', () => {
   it('usa el mensaje del servidor', async () => {
     const error = { context: new Response(JSON.stringify({ error: { code: 'whatsapp_paused', message: 'WhatsApp está pausado.' } }), { status: 409 }) }
-    await expect(leerErrorFuncion(error, 'respaldo')).resolves.toEqual({ code: 'whatsapp_paused', message: 'WhatsApp está pausado.', contract: null, respondio: true })
+    await expect(leerErrorFuncion(error, 'respaldo')).resolves.toEqual({ code: 'whatsapp_paused', message: 'WhatsApp está pausado.', contract: null, respondio: true, botPausado: false })
+  })
+
+  it('informa si el servidor ya pausó el bot (rechazo después de intentar el envío)', async () => {
+    const error = { context: new Response(JSON.stringify({ error: { code: 'panel_send_rejected', message: 'WhatsApp rechazó el envío.' }, contract: 2, bot_paused: true }), { status: 502 }) }
+    await expect(leerErrorFuncion(error, 'respaldo')).resolves.toMatchObject({ code: 'panel_send_rejected', contract: 2, botPausado: true })
   })
 
   it('usa el respaldo si la respuesta no es JSON o no hay contexto', async () => {

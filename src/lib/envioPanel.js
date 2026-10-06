@@ -13,7 +13,8 @@
 // Resultados de enviarMensajePanel:
 //   * enviado: n8n lo aceptó (`mensaje` es la fila guardada).
 //   * incierto: pudo haber salido; la fila queda visible como "Sin confirmar".
-//   * rechazado: confirmado que no salió; el borrador se conserva.
+//   * rechazado: confirmado que no salió; el borrador se conserva. Con
+//     `intentado` (WhatsApp lo rechazó) el bot queda pausado igual.
 //   * posible_duplicado: el mismo texto se envió o quedó incierto hace poco;
 //     sólo se reenvía con confirmación explícita.
 //   * desconocido: se perdió la respuesta; no se sabe si salió. El borrador se
@@ -29,8 +30,10 @@ export const CONTRATO_ENVIO = 2
 const SIN_VERIFICAR = 'No pudimos verificar si se puede escribir a este cliente. Podés redactar el mensaje e intentar enviarlo.'
 const SIN_SERVIDOR = 'No pudimos comunicarnos con el servidor. El mensaje no se envió y el borrador quedó guardado.'
 export const AVISO_INCIERTO = 'WhatsApp no confirmó el envío: puede haber llegado. Revisá WhatsApp antes de reenviarlo.'
-export const AVISO_REPETIR_INCIERTO = 'Este mismo mensaje quedó sin confirmar. Revisá WhatsApp: si no llegó, confirmá el reenvío.'
-export const AVISO_YA_ENVIADO ='Este mensaje ya se había enviado: no se volvió a enviar.'
+// Confirmación manual de un reenvío: nunca se reenvía solo, y quien confirma
+// tiene que saber que el anterior pudo haber llegado.
+export const AVISO_CONFIRMAR_REENVIO = 'Este mismo mensaje se envió o quedó sin confirmar hace poco y podría haber llegado. Revisá WhatsApp antes de reenviarlo: si lo reenviás, el cliente puede recibirlo dos veces.'
+export const AVISO_YA_ENVIADO = 'Este mensaje ya se había enviado: no se volvió a enviar.'
 export const AVISO_DESCONOCIDO = 'No sabemos si el mensaje se envió (se perdió la respuesta). Revisá el hilo y WhatsApp antes de reintentar: si reenviás el mismo texto te vamos a pedir confirmación.'
 
 /**
@@ -109,7 +112,7 @@ export async function enviarMensajePanel({ invoke, insertarLegacy, contrato = nu
   try {
     respuesta = await invoke({ action: 'send', tenant_id: tenantId, cliente_id: clienteId, texto, hora, ...(clientMessageId ? { client_message_id: clientMessageId } : {}), ...(confirmarReenvio ? { confirm_resend: true } : {}) })
   } catch {
-    return { resultado: 'desconocido', aviso: AVISO_DESCONOCIDO, contrato: actual }
+    return { resultado: 'desconocido', aviso: AVISO_DESCONOCIDO, contrato: actual, intentado: true, botPausado: false }
   }
   const { data, error } = respuesta || {}
   if (!error) {
@@ -130,22 +133,26 @@ export async function enviarMensajePanel({ invoke, insertarLegacy, contrato = nu
       // Quedó sin confirmar: el servidor sólo lo reenvía con confirmación
       // explícita sobre el mismo registro. Se conserva el borrador y se ofrece
       // "Enviar de todos modos" (si no, ese texto no podría reenviarse nunca).
-      if (data.estado_envio === 'incierto' && !confirmarReenvio) return { resultado: 'posible_duplicado', aviso: AVISO_REPETIR_INCIERTO, contrato: CONTRATO_ENVIO }
+      if (data.estado_envio === 'incierto' && !confirmarReenvio) return { resultado: 'posible_duplicado', aviso: AVISO_CONFIRMAR_REENVIO, contrato: CONTRATO_ENVIO }
       // `pendiente`: otro intento todavía está en curso; no se ofrece reenviar.
       return { resultado: 'incierto', mensaje: data.mensaje ?? null, aviso: AVISO_INCIERTO, contrato: CONTRATO_ENVIO, botPausado: false }
     }
     const botPausado = data?.bot_paused === true
     if (data?.sent === true) return { resultado: 'enviado', mensaje: data.mensaje ?? null, contrato: CONTRATO_ENVIO, botPausado }
     if (data?.uncertain === true) return { resultado: 'incierto', mensaje: data.mensaje ?? null, aviso: AVISO_INCIERTO, contrato: CONTRATO_ENVIO, botPausado }
-    return { resultado: 'desconocido', aviso: AVISO_DESCONOCIDO, contrato: actual }
+    return { resultado: 'desconocido', aviso: AVISO_DESCONOCIDO, contrato: actual, intentado: true, botPausado: false }
   }
   const detalle = await leerErrorFuncion(error, AVISO_DESCONOCIDO)
   // Sin error propio de la función (red, gateway, timeout) o error interno
   // inesperado: no se puede afirmar que no salió.
   if (!detalle.respondio || detalle.code === 'panel_send_error' || detalle.code === 'panel_send_uncertain') {
-    return { resultado: 'desconocido', aviso: detalle.respondio ? AVISO_DESCONOCIDO : detalle.message, contrato: actual }
+    return { resultado: 'desconocido', aviso: detalle.respondio ? AVISO_DESCONOCIDO : detalle.message, contrato: actual, intentado: true, botPausado: false }
   }
-  if (detalle.code === 'panel_send_possible_duplicate') return { resultado: 'posible_duplicado', aviso: detalle.message, contrato: CONTRATO_ENVIO }
+  if (detalle.code === 'panel_send_possible_duplicate') return { resultado: 'posible_duplicado', aviso: AVISO_CONFIRMAR_REENVIO, contrato: CONTRATO_ENVIO }
+  // Rechazo del proveedor después de intentar el envío: el operador ya tomó la
+  // conversación, así que el bot queda pausado igual (el servidor informa si
+  // ya lo hizo). Un bloqueo previo (límite, teléfono, conexión) no pausa.
+  if (detalle.code === 'panel_send_rejected') return { resultado: 'rechazado', aviso: detalle.message, contrato: CONTRATO_ENVIO, intentado: true, botPausado: detalle.botPausado === true }
   // El identificador quedó asociado a otro texto: el próximo intento usa uno nuevo.
   if (detalle.code === 'idempotency_conflict') return { resultado: 'rechazado', aviso: detalle.message, contrato: CONTRATO_ENVIO, reiniciarClave: true }
   return { resultado: 'rechazado', aviso: detalle.message, contrato: detalle.contract === CONTRATO_ENVIO ? CONTRATO_ENVIO : actual }
