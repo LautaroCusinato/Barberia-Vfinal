@@ -33,7 +33,7 @@ cambios remotos. Las ramas originales no se modificaron.
 | 08 redirects QA | `2d65bc5` | **Pendiente** (lista de orígenes) | Demo: `4cec0d7` |
 | 37 reserva pública | `6e559fd` | **Pendiente** de revisión independiente; QA real (13) | Demo: `8cd155c` |
 | 09 catálogo reserva | `5298537` | **Pendiente** | Demo: `62633cf` |
-| 20 moneda | `fcb00e8` | **Pendiente** (SQL/rollback; migración sin aplicar) | Demo: `91090eb` |
+| 20 moneda | `fcb00e8` | **Postergada por decisión del dueño (05/10): sólo ARS.** Se conserva el commit sin más trabajo; no es requisito para publicar | Demo: `91090eb` |
 | 39 facturación | `7321b42` | **Pendiente** | Demo: `0d85a08` |
 | 40 recorte listas | `00575e8` | **Pendiente** | Demo: `d38c5a6` |
 
@@ -78,8 +78,7 @@ Probado **sólo con datos de demo**:
 
 - Reserva pública (37/09/20) contra `scripts/demo-local/mock-reserva-publica.mjs`
   (simula las 3 RPC públicas en `127.0.0.1:54399`): 3 pasos completos hasta
-  "¡Turno reservado!"; validación de campos vacíos; negocio en USD muestra
-  `US$`; slug inexistente muestra el error recuperable; 375 px sin scroll
+  "¡Turno reservado!"; validación de campos vacíos; (un slug en USD también renderiza, pero la tarea 20 está postergada y no se evaluó); slug inexistente muestra el error recuperable; 375 px sin scroll
   horizontal; sin errores de consola.
 - Panel `/demo`: cobro al marcar Atendido (05) con aviso "Cobro registrado" (21);
   doble clic con eventos separados → un solo cobro; eliminar turno muestra
@@ -101,7 +100,7 @@ reproduce. Con Supabase el `await` y la clave idempotente lo evitan.
 
 - RPC reales de reserva, RLS, cliente único web/WhatsApp y que el turno aparezca
   en la agenda (13). El mock no valida nada del servidor.
-- Migración de moneda `20261005220000` (20) y de cobro `20261004090000` (05):
+- Migración de cobro `20261004090000` (05); la de moneda `20261005220000` (20) está postergada:
   sin aplicar en QA/producción.
 - Concurrencia real de movimientos/Deshacer entre operadores, permisos por rol,
   Realtime (06/07, tarea 14).
@@ -124,8 +123,8 @@ Con `.env.local` (ignorado por Git) que apunta sólo al mock:
 `barberia/.env`: apunta a producción.**
 
 - Panel: `http://127.0.0.1:5195/demo`
-- Reserva: `http://127.0.0.1:5195/reservar/austral-demo` (ARS) y
-  `/reservar/austral-demo-usd` (USD)
+- Reserva (recorrido en pesos): `http://127.0.0.1:5195/reservar/austral-demo`
+  (el mock conserva un slug en USD sólo por la tarea 20 postergada; no forma parte de la revisión)
 
 Con `.env.local` presente, `/ingresar` y el resto de rutas autenticadas intentan
 hablar con el mock y fallan: para el panel usar `/demo`.
