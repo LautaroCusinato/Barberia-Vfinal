@@ -1,8 +1,11 @@
 -- Rollback de 20261005120000_whatsapp_panel_send_atomic.sql (tarea 38).
 --
--- Antes de ejecutarlo, volver la Edge Function whatsapp-panel-send a una
--- versión que no llame a reservar_envio_panel / completar_envio_panel (la
--- versión 7fba130 detecta la RPC ausente y usa su camino sin migración).
+-- Antes de ejecutarlo, conviene volver la Edge Function whatsapp-panel-send a
+-- 7fba130 (no usa estas RPC). La versión dc80b5b o posterior también tolera
+-- el rollback: ante la RPC ausente (PGRST202) usa el camino sin migración;
+-- hasta que PostgREST recargue su caché de esquema, un envío puede fallar con
+-- "No se pudo guardar el mensaje" (no se envía nada y el panel conserva el
+-- borrador).
 --
 -- Conserva todas las filas de mensajes. Pierde sólo client_message_id y
 -- envio_actualizado_at; los estados nuevos (pendiente, recibido_n8n, aceptado,

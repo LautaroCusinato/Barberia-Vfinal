@@ -221,18 +221,48 @@ describe('identificador de envío (reserva atómica)', () => {
     expect(e.db.mensajes).toHaveLength(1)
   })
 
-  it('incierto con el mismo identificador: repetición incierta; con confirmación, mismo registro', async () => {
+  it('incierto con el mismo identificador: el reintento pide confirmación; con confirmación, mismo registro', async () => {
     const e = crearEntorno({ atomic: true })
     const clave = '22222222-2222-4222-8222-222222222222'
     e.db.resultado = 'throw'
     expect((await e.frontendNuevo(e.funcionNueva, 'Hola', { contrato: 2, clientMessageId: clave })).resultado).toBe('incierto')
     e.db.resultado = 'received'
-    expect((await e.frontendNuevo(e.funcionNueva, 'Hola', { contrato: 2, clientMessageId: clave })).resultado).toBe('incierto')
+    // Revisión independiente: antes devolvía 'incierto' (repetición) y el panel
+    // limpiaba el borrador sin ofrecer "Enviar de todos modos": el operador no
+    // podía reenviar nunca ese texto a ese cliente en la sesión.
+    const retry = await e.frontendNuevo(e.funcionNueva, 'Hola', { contrato: 2, clientMessageId: clave })
+    expect(retry.resultado).toBe('posible_duplicado')
+    expect(retry.aviso).toMatch(/sin confirmar/i)
     expect(e.db.entregas).toHaveLength(1)
     const confirmado = await e.frontendNuevo(e.funcionNueva, 'Hola', { contrato: 2, clientMessageId: clave, confirmarReenvio: true })
     expect(confirmado.resultado).toBe('enviado')
     expect(e.db.mensajes).toHaveLength(1)
     expect(e.db.entregas).toHaveLength(2)
+  })
+
+  it('recorrido del operador con las claves por borrador: incierto → reescribe el texto → confirma → un registro, dos intentos', async () => {
+    const e = crearEntorno({ atomic: true })
+    const claves = new Map()
+    const enviar = (extra = {}) => e.frontendNuevo(e.funcionNueva, 'Hola', { contrato: 2, clientMessageId: claveDeEnvio(claves, 100, 'Hola'), ...extra })
+    e.db.resultado = 'throw'
+    expect((await enviar()).resultado).toBe('incierto')
+    e.db.resultado = 'received'
+    // El panel conserva el borrador y ofrece "Enviar de todos modos" (confirmable).
+    expect((await enviar()).resultado).toBe('posible_duplicado')
+    expect(e.db.entregas).toHaveLength(1)
+    const confirmado = await enviar({ confirmarReenvio: true })
+    expect(confirmado.resultado).toBe('enviado')
+    expect(e.db.mensajes).toHaveLength(1)
+    expect(e.db.entregas).toHaveLength(2)
+  })
+
+  it('una repetición todavía pendiente no se ofrece para reenviar', async () => {
+    const e = crearEntorno({ atomic: true })
+    const clave = '44444444-4444-4444-8444-444444444444'
+    e.db.mensajes.push({ id: 90, created_at: NOW.toISOString(), barberia_id: TENANT, cliente_id: 100, texto: 'Hola', de: 'clinica', estado_envio: 'pendiente', client_message_id: clave })
+    const r = await e.frontendNuevo(e.funcionNueva, 'Hola', { contrato: 2, clientMessageId: clave })
+    expect(r.resultado).toBe('incierto')
+    expect(e.db.entregas).toHaveLength(0)
   })
 
   it('la reserva atómica informa que el bot ya quedó pausado', async () => {

@@ -29,7 +29,8 @@ export const CONTRATO_ENVIO = 2
 const SIN_VERIFICAR = 'No pudimos verificar si se puede escribir a este cliente. Podés redactar el mensaje e intentar enviarlo.'
 const SIN_SERVIDOR = 'No pudimos comunicarnos con el servidor. El mensaje no se envió y el borrador quedó guardado.'
 export const AVISO_INCIERTO = 'WhatsApp no confirmó el envío: puede haber llegado. Revisá WhatsApp antes de reenviarlo.'
-export const AVISO_YA_ENVIADO = 'Este mensaje ya se había enviado: no se volvió a enviar.'
+export const AVISO_REPETIR_INCIERTO = 'Este mismo mensaje quedó sin confirmar. Revisá WhatsApp: si no llegó, confirmá el reenvío.'
+export const AVISO_YA_ENVIADO ='Este mensaje ya se había enviado: no se volvió a enviar.'
 export const AVISO_DESCONOCIDO = 'No sabemos si el mensaje se envió (se perdió la respuesta). Revisá el hilo y WhatsApp antes de reintentar: si reenviás el mismo texto te vamos a pedir confirmación.'
 
 /**
@@ -126,6 +127,11 @@ export async function enviarMensajePanel({ invoke, insertarLegacy, contrato = nu
     // Repetición: el mismo identificador ya estaba registrado; no se reenvió.
     if (data?.replay === true) {
       if (data.sent === true) return { resultado: 'enviado', mensaje: data.mensaje ?? null, aviso: AVISO_YA_ENVIADO, contrato: CONTRATO_ENVIO, botPausado: false }
+      // Quedó sin confirmar: el servidor sólo lo reenvía con confirmación
+      // explícita sobre el mismo registro. Se conserva el borrador y se ofrece
+      // "Enviar de todos modos" (si no, ese texto no podría reenviarse nunca).
+      if (data.estado_envio === 'incierto' && !confirmarReenvio) return { resultado: 'posible_duplicado', aviso: AVISO_REPETIR_INCIERTO, contrato: CONTRATO_ENVIO }
+      // `pendiente`: otro intento todavía está en curso; no se ofrece reenviar.
       return { resultado: 'incierto', mensaje: data.mensaje ?? null, aviso: AVISO_INCIERTO, contrato: CONTRATO_ENVIO, botPausado: false }
     }
     const botPausado = data?.bot_paused === true

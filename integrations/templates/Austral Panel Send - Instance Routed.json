@@ -82,6 +82,10 @@
               "value": "eq.evolution"
             },
             {
+              "name": "integration_type",
+              "value": "eq.whatsapp"
+            },
+            {
               "name": "select",
               "value": "external_instance_id,estado"
             },

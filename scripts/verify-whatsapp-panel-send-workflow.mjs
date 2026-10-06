@@ -36,6 +36,9 @@ const query = Object.fromEntries(lookup.parameters.queryParameters.parameters.ma
 assert.match(lookup.parameters.url, /\$env\.PANEL_SEND_SUPABASE_URL \+ '\/rest\/v1\/saas_integraciones'/)
 assert.equal(query.barberia_id, "={{ 'eq.' + $('Validar solicitud').first().json.tenantId }}")
 assert.equal(query.proveedor, 'eq.evolution')
+// Igual que la función: sólo la integración de WhatsApp (el índice único de
+// instancia cubre sólo integration_type = 'whatsapp').
+assert.equal(query.integration_type, 'eq.whatsapp', 'sólo la integración de WhatsApp del negocio')
 assert.equal(lookup.onError, 'continueErrorOutput')
 assert.notEqual(lookup.retryOnFail, true)
 
@@ -46,6 +49,17 @@ assert.equal(evolution.onError, 'continueErrorOutput', 'un timeout se responde c
 assert.notEqual(evolution.retryOnFail, true, 'sin reintento automático (pudo haber salido)')
 assert.equal(evolution.parameters.options.response.response.neverError, true)
 assert.equal(evolution.parameters.options.response.response.fullResponse, true)
+
+// Revisión independiente: la función no debe cortar antes de que n8n pueda
+// responder. Si espera menos que la lectura de Supabase + Evolution, un envío
+// lento pero aceptado queda "incierto" (o el operador reenvía algo que salió).
+const functionSource = readFileSync('supabase/functions/whatsapp-panel-send/index.ts', 'utf8')
+const functionTimeout = Number(/AbortSignal\.timeout\(([\d_]+)\)/.exec(functionSource)?.[1]?.replaceAll('_', ''))
+const n8nWorst = Number(lookup.parameters.options.timeout) + Number(evolution.parameters.options.timeout)
+assert.ok(functionTimeout > n8nWorst + 2_000, `la función espera ${functionTimeout} ms y n8n puede tardar ${n8nWorst} ms en responder`)
+assert.ok(functionTimeout < Number(workflow.settings.executionTimeout) * 1000 + 10_000, 'sin esperar mucho más que el límite de la ejecución de n8n')
+// La función elige la instancia con el mismo filtro que n8n vuelve a verificar.
+assert.match(functionSource, /\.eq\('proveedor', 'evolution'\)[\s\S]{0,300}\.eq\('integration_type', 'whatsapp'\)/, 'la función lee sólo la integración de WhatsApp')
 
 // Rutas: Evolution sólo después de validar y autorizar; todo termina respondiendo.
 assert.deepEqual(targets('Recibir envío del panel'), ['Validar solicitud'])

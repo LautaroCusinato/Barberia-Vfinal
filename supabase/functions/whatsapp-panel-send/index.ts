@@ -64,6 +64,9 @@ Deno.serve(async (request) => {
           .select('estado, external_instance_id')
           .eq('barberia_id', tenantId)
           .eq('proveedor', 'evolution')
+          // Como whatsapp-booking-mutation y la plantilla de n8n: sólo la
+          // integración de WhatsApp (la unicidad de instancia cubre sólo ese tipo).
+          .eq('integration_type', 'whatsapp')
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
@@ -147,7 +150,10 @@ Deno.serve(async (request) => {
         method: 'POST',
         headers: { 'content-type': 'application/json', [SECRET_HEADER]: webhookSecret },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15_000),
+        // Más que lo que n8n puede tardar en responder (lectura de Supabase 10 s
+        // + Evolution 15 s en la plantilla nueva): cortar antes deja "incierto"
+        // un envío que salió. Lo comprueba verify-whatsapp-panel-send-workflow.
+        signal: AbortSignal.timeout(30_000),
       })
       let parsed: unknown = null
       try { parsed = await response.json() } catch { parsed = null }
