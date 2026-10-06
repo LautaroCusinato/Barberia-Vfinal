@@ -3,3 +3,5 @@
 scripts/sql/cobro-atomico/run.sh text eol=lf
 scripts/sql/whatsapp-cliente-unico/run.sh text eol=lf
 scripts/sql/whatsapp-panel-send/run.sh text eol=lf
+# Prueba SQL local de bloqueos (tarea 41): mismo motivo que la anterior.
+scripts/sql/bloqueos-agenda/run.sh text eol=lf

@@ -21,6 +21,7 @@ import { capitalizar, slotsOcupados, parseHorarioBarbero, barberoDisponible, tur
 import TurnoRow from './TurnoRow'
 import { statusMeta } from './StatusSelect'
 import { EmptyState } from './ui'
+import { esBloqueoDiaCompleto } from '../lib/bloqueosAgenda.js'
 import './calendar-polish.css'
 
 const DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -30,7 +31,8 @@ function turnosLabel(count) {
 }
 
 function dayAriaLabel(day, count, bloqueado) {
-  return `${format(day, "EEEE d 'de' MMMM", { locale: es })}, ${count ? turnosLabel(count) : 'sin turnos'}${bloqueado ? ', bloqueado' : ''}`
+  const estadoBloqueo = bloqueado === 'parcial' ? ', bloqueo parcial' : bloqueado ? ', bloqueado' : ''
+  return `${format(day, "EEEE d 'de' MMMM", { locale: es })}, ${count ? turnosLabel(count) : 'sin turnos'}${estadoBloqueo}`
 }
 
 function timeSlots(startHour = 9, endHour = 18, stepMin = 30) {
@@ -395,7 +397,7 @@ function useArrastreSemana({ habilitado, validar, alSoltar }) {
   return [vista, arrastre]
 }
 
-export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, onNewTurno, onMoverTurno, barberos = [], bloqueos = [] }) {
+export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, onNewTurno, onMoverTurno, onSelectDate, barberos = [], bloqueos = [] }) {
   const initial = parseISO(todayKey)
   const [month, setMonth] = useState(initial)
   const [selected, setSelected] = useState(initial)
@@ -520,9 +522,30 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   )
 
   const selectedKey = format(selected, 'yyyy-MM-dd')
+  // La cabecera de Agenda abre «Bloquear» con el día elegido como valor inicial.
+  useEffect(() => { onSelectDate?.(selectedKey) }, [selectedKey, onSelectDate])
   const barberoNombre = (id) => barberos.find((b) => String(b.id) === String(id))?.nombre || 'Sin barbero'
   const bloqueosDelDia = (fecha) => bloqueos.filter((b) => b.fecha === fecha && (b.barbero_id == null || !barberoFiltro || String(b.barbero_id) === barberoFiltro))
+  // 'completo' si algún bloqueo visible cubre el día; 'parcial' si sólo hay franjas.
+  const estadoBloqueoDia = (fecha) => {
+    const delDia = bloqueosDelDia(fecha)
+    if (!delDia.length) return ''
+    return delDia.some(esBloqueoDiaCompleto) ? 'completo' : 'parcial'
+  }
+  const slotBloqueado = (fecha, minutosSlot) => bloqueosDelDia(fecha).some((b) => {
+    const [hi, mi] = String(b.start_time || '00:00').slice(0, 5).split(':').map(Number)
+    const [hf, mf] = String(b.end_time || '23:59').slice(0, 5).split(':').map(Number)
+    return minutosSlot < hf * 60 + mf && minutosSlot + 30 > hi * 60 + mi
+  })
   const bloqueoSeleccionado = bloqueosDelDia(selectedKey)
+  const bloqueoDiaCompleto = bloqueoSeleccionado.some(esBloqueoDiaCompleto)
+  // El estado del día por profesional distingue el bloqueo de día completo
+  // del parcial: un parcial no lo saca del día, sólo de esas horas.
+  const estadoBloqueoBarbero = (barberoId) => {
+    const propios = bloqueos.filter((b) => b.fecha === selectedKey && (b.barbero_id == null || String(b.barbero_id) === String(barberoId)))
+    if (propios.some(esBloqueoDiaCompleto)) return 'completo'
+    return propios.length ? 'parcial' : ''
+  }
   const mapaBarberoSeleccionado = barberosVisibles.length === 1 ? parseHorarioBarbero(barberosVisibles[0]?.horario) : null
   const breakBlocksForDay = (day) => {
     if (!mapaBarberoSeleccionado) return []
@@ -771,7 +794,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               const key = format(day, 'yyyy-MM-dd')
               const outside = !isSameMonth(day, month)
               const eventos = byDate[key] || []
-              const bloqueado = bloqueosDelDia(key).length > 0
+              const bloqueado = estadoBloqueoDia(key)
 
               return (
                 <div
@@ -800,7 +823,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                   )}
                   {(bloqueado || (!outside && eventos.length > 0)) && (
                     <div className={`calendar-day-badges ${bloqueado && !outside && eventos.length > 0 ? 'is-stacked' : ''}`} aria-hidden="true">
-                      {bloqueado && <span className="calendar-day-state" title="Bloqueado"><Ban size={11} aria-hidden="true" /> <span className="calendar-day-state-label">Bloqueado</span></span>}
+                      {bloqueado && <span className="calendar-day-state" title={bloqueado === 'parcial' ? 'Bloqueo parcial' : 'Bloqueado'}><Ban size={11} aria-hidden="true" /> <span className="calendar-day-state-label">{bloqueado === 'parcial' ? 'Parcial' : 'Bloqueado'}</span></span>}
                       {/* El texto va por CSS (data-label) para que el contenido de la celda siga siendo solo el número del día; el aria-label de la celda ya informa la cantidad. */}
                       {!outside && eventos.length > 0 && (
                         <span className="calendar-day-pill" data-label={turnosLabel(eventos.length)} data-short={eventos.length} title={turnosLabel(eventos.length)} />
@@ -815,7 +838,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
             {days.filter((day) => isSameMonth(day, month)).map((day) => {
               const key = format(day, 'yyyy-MM-dd')
               const eventos = byDate[key] || []
-              const bloqueado = bloqueosDelDia(key).length > 0
+              const bloqueado = estadoBloqueoDia(key)
               const selectedDay = isSameDay(day, selected)
               return (
                 <div
@@ -842,7 +865,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                   </div>
                   {(bloqueado || eventos.length > 0) && (
                     <div className="calendar-mobile-day-meta" aria-hidden="true">
-                      {bloqueado && <span className="calendar-mobile-day-state"><Ban size={13} /> Bloqueado</span>}
+                      {bloqueado && <span className="calendar-mobile-day-state"><Ban size={13} /> {bloqueado === 'parcial' ? 'Parcial' : 'Bloqueado'}</span>}
                       {eventos.length > 0 && <span className="calendar-day-pill calendar-day-pill--mobile">{turnosLabel(eventos.length)}</span>}
                     </div>
                   )}
@@ -859,20 +882,20 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                 const key = format(day, 'yyyy-MM-dd')
                 const barberoUnico = barberoFiltro ? barberosVisibles[0] : null
                 const noAtiende = barberoUnico && !parseHorarioBarbero(barberoUnico.horario)?.[day.getDay()]
-                const bloqueado = bloqueosDelDia(key).length > 0
+                const bloqueado = estadoBloqueoDia(key)
                 return (
                   <div
                     key={key}
                     data-fecha={key}
                     className={`week-cell week-day-header ${key === todayKey ? 'today' : ''} ${noAtiende ? 'week-day-off' : ''} ${bloqueado ? 'week-day-blocked' : ''}`}
                     onClick={() => setSelected(day)}
-                    title={bloqueado ? 'Día bloqueado' : noAtiende ? `${barberoUnico.nombre} no atiende este día` : undefined}
+                    title={bloqueado === 'parcial' ? 'Bloqueo parcial' : bloqueado ? 'Día bloqueado' : noAtiende ? `${barberoUnico.nombre} no atiende este día` : undefined}
                   >
                     <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
                       {format(day, 'EEE', { locale: es })}
                     </span>
                     {format(day, 'd')}
-                    {bloqueado && <Ban size={13} aria-label="Día bloqueado" />}
+                    {bloqueado && <Ban size={13} aria-label={bloqueado === 'parcial' ? 'Bloqueo parcial' : 'Día bloqueado'} />}
                   </div>
                 )
               })}
@@ -883,7 +906,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                   {weekDays.map((day) => {
                     const key = format(day, 'yyyy-MM-dd')
                     const eventos = byDate[key] || []
-                    const bloqueado = bloqueosDelDia(key).length > 0
+                    const bloqueado = Boolean(slotBloqueado(key, toMinutes(slot)))
                     const breaks = breakBlocksForDay(day)
                     const slotMinutes = toMinutes(slot)
                     const breakActive = breaks.some((block) => slotMinutes >= block.ini && slotMinutes < block.fin)
@@ -1107,7 +1130,7 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
           <div className="day-panel-metrics" aria-label="Resumen del día">
             <span><strong>{turnosDelDia.length}</strong><small>turnos</small></span>
             <span><strong>{barberos.length}</strong><small>profesionales</small></span>
-            <span className={bloqueoSeleccionado.length ? 'is-blocked' : ''}><strong>{bloqueoSeleccionado.length ? 'Sí' : 'No'}</strong><small>bloqueo</small></span>
+            <span className={bloqueoSeleccionado.length ? 'is-blocked' : ''}><strong>{bloqueoDiaCompleto ? 'Sí' : bloqueoSeleccionado.length ? 'Parcial' : 'No'}</strong><small>bloqueo</small></span>
           </div>
 
           {barberos.length > 0 && (
@@ -1115,8 +1138,10 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
               <span className="day-panel-eyebrow"><UserRound size={12} /> Equipo</span>
               <div className="day-panel-team-list">
                 {barberos.map((barbero) => {
-                  const trabaja = Boolean(parseHorarioBarbero(barbero.horario)?.[selected.getDay()]) && !bloqueos.some((b) => b.fecha === selectedKey && (b.barbero_id == null || String(b.barbero_id) === String(barbero.id)))
-                  return <span className={`day-panel-team-chip ${trabaja ? 'is-working' : 'is-off'}`} key={barbero.id}><i style={{ background: barbero.color }} aria-hidden="true" /><span className="day-panel-team-name">{barbero.nombre}</span><small>{trabaja ? 'Trabaja' : 'No disponible'}</small></span>
+                  const bloqueoBarbero = estadoBloqueoBarbero(barbero.id)
+                  const trabaja = Boolean(parseHorarioBarbero(barbero.horario)?.[selected.getDay()]) && bloqueoBarbero !== 'completo'
+                  const etiqueta = !trabaja ? 'No disponible' : bloqueoBarbero === 'parcial' ? 'Bloqueo parcial' : 'Trabaja'
+                  return <span className={`day-panel-team-chip ${trabaja ? 'is-working' : 'is-off'}`} key={barbero.id}><i style={{ background: barbero.color }} aria-hidden="true" /><span className="day-panel-team-name">{barbero.nombre}</span><small>{etiqueta}</small></span>
                 })}
               </div>
             </div>

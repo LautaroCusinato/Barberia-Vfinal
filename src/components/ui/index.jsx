@@ -89,7 +89,8 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const focusFirst = () => {
-      const target = container.querySelector('[data-autofocus], ' + FOCUSABLE_SELECTOR)
+      // [data-autofocus] tiene prioridad aunque no sea el primero del DOM.
+      const target = container.querySelector('[data-autofocus]') || container.querySelector(FOCUSABLE_SELECTOR)
       target?.focus()
     }
     const frame = window.requestAnimationFrame(focusFirst)

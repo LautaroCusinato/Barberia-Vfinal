@@ -122,6 +122,9 @@ const KNOWN_BOOKING_ERRORS = [
   { prefix: 'ese horario no está disponible' },
   { prefix: 'ese horario ya pasó' },
   { prefix: 'ese horario fue bloqueado' },
+  // Mismo rechazo emitido por el trigger de turnos si el bloqueo se guardó
+  // entre el chequeo de la RPC y la inserción (tarea 41).
+  { prefix: 'el horario está bloqueado' },
   { prefix: 'ese horario acaba de ocuparse' },
   { prefix: 'el email no es válido', field: 'email' },
   { prefix: 'el nombre es demasiado largo', field: 'nombre' },

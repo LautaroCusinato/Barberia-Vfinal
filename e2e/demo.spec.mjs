@@ -53,7 +53,8 @@ async function selectFirstAvailableTime(page) {
 
 async function createDemoTurn(page, name = 'Cliente E2E Demo') {
   await openDemo(page, 'Agenda')
-  await page.getByRole('button', { name: 'Nuevo turno', exact: true }).click()
+  // Tarea 41: la cabecera ofrece «Bloquear»; los turnos se crean con Agendar del detalle del día.
+  await page.getByRole('button', { name: /^Agendar turno el / }).click()
   await page.getByRole('dialog').getByRole('button', { name: /Corte clásico 35 min/i }).click()
   await selectFirstAvailableTime(page)
   await page.getByPlaceholder('Buscar por nombre o teléfono…').fill(name)

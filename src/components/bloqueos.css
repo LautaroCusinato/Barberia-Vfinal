@@ -1,0 +1,91 @@
+/* Tarea 41 · Bloquear fechas desde Agenda. Sólo tokens de index.css. */
+
+.agenda-page-header .agenda-block-btn {
+  background: var(--rose-soft);
+  color: var(--rose-text);
+  border-color: color-mix(in srgb, var(--rose-text) 28%, var(--border));
+}
+.agenda-page-header .agenda-block-btn:hover {
+  background: var(--rose);
+  color: var(--on-danger);
+  border-color: var(--rose);
+}
+.agenda-page-header .agenda-block-btn:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.bloqueos-modal { width: min(100%, 36rem); }
+.bloqueos-form { display: grid; gap: var(--space-3); }
+.bloqueos-intro { margin: 0; color: var(--ink-soft); font-size: .9rem; line-height: 1.5; }
+.bloqueos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.bloqueos-grid > :only-child { grid-column: 1 / -1; }
+.bloqueos-form .ui-form-field { display: grid; gap: var(--space-1); min-width: 0; }
+.bloqueos-form .ui-form-field > label { font-size: .85rem; font-weight: 600; color: var(--ink); }
+.bloqueos-form .ui-field-hint { font-size: .78rem; color: var(--ink-faint); }
+.bloqueos-form .ui-check { min-height: var(--control-md); }
+
+.bloqueos-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); }
+.bloqueos-actions .ui-button { min-height: var(--control-md); }
+.ui-button[aria-disabled="true"] { opacity: .6; cursor: wait; }
+
+.bloqueos-error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--rose-soft);
+  color: var(--rose-text);
+  font-size: .875rem;
+}
+.bloqueos-aviso:empty { display: none; }
+.bloqueos-aviso {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--green-soft);
+  color: var(--green-text);
+  font-size: .875rem;
+}
+
+.bloqueos-confirm {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--amber-text) 30%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--amber-soft);
+  color: var(--amber-text);
+}
+.bloqueos-confirm-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-weight: 700; }
+.bloqueos-confirm-list { margin: 0; padding-left: var(--space-5); display: grid; gap: 2px; font-size: .875rem; }
+.bloqueos-confirm-note { margin: 0; font-size: .82rem; line-height: 1.45; }
+
+.bloqueos-lista { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.bloqueos-lista-titulo { margin: 0 0 var(--space-3); font-size: .95rem; }
+.bloqueos-lista-titulo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.bloqueos-vacio { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--ink-faint); font-size: .875rem; }
+.bloqueos-items,
+.bloqueos-dia > ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.bloqueos-items { gap: var(--space-3); }
+.bloqueos-dia { display: grid; gap: var(--space-2); }
+.bloqueos-dia-fecha { font-size: .8rem; font-weight: 700; color: var(--ink-soft); text-transform: none; }
+.bloqueos-dia.is-current .bloqueos-dia-fecha { color: var(--rose-text); }
+.bloqueos-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+.bloqueos-item-info { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--space-2); min-width: 0; font-size: .875rem; }
+.bloqueos-item-info > span:not(.ui-badge) { color: var(--ink-soft); overflow-wrap: anywhere; }
+.bloqueos-unblock { flex: 0 0 auto; min-height: var(--control-md); }
+
+@media (max-width: 600px) {
+  .bloqueos-grid { grid-template-columns: minmax(0, 1fr); }
+  .bloqueos-actions .ui-button { flex: 1 1 auto; }
+  .bloqueos-item { flex-direction: column; align-items: stretch; }
+  .bloqueos-unblock { width: 100%; }
+}

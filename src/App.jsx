@@ -3,8 +3,9 @@ import './components/agenda.css'
 import './components/management.css'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Info, CalendarCheck, MessageCircle, Plus, Bot, Download, AlertTriangle, X } from 'lucide-react'
+import { Info, CalendarCheck, MessageCircle, Plus, Bot, Download, AlertTriangle, X, Ban } from 'lucide-react'
 import NewTurnoModal from './components/NewTurnoModal'
+import BloqueosModal from './components/BloqueosModal'
 import { statusMeta } from './components/StatusSelect'
 import CobroModal from './components/CobroModal'
 import Toaster from './components/Toaster'
@@ -46,6 +47,7 @@ import {
 } from './data/mockData'
 import { getDemoSnapshot, resetDemoSession, saveDemoSnapshot } from './lib/demoStore.js'
 import { reportClientError } from './lib/observability.js'
+import { copiaParaRestaurar, eliminarBloqueo, filasBloqueo, insertarBloqueos } from './lib/bloqueosAgenda.js'
 import { initialWorkspaceCollection } from './lib/runtimeStability.js'
 import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './lib/whatsappProvisioning.js'
 import { enqueueLatest } from './lib/latestIntentQueue.js'
@@ -208,6 +210,8 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   const clavesEnvioRef = useRef(new Map())
   const [theme, setTheme] = useState(() => initialTheme(barberiaId, demoMode ? 'austral-demo-theme' : null))
   const [newTurnoOpen, setNewTurnoOpen] = useState(false)
+  const [bloqueosOpen, setBloqueosOpen] = useState(false)
+  const [agendaFecha, setAgendaFecha] = useState(null)
   const [editingTurno, setEditingTurno] = useState(null)
   const [turnoFechaPrefijada, setTurnoFechaPrefijada] = useState(null)
   const [notasFiltro, setNotasFiltro] = useState('')
@@ -1511,6 +1515,66 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
 
   const deleteBloqueo = (id) => eliminarConDeshacer(bloqueos, setBloqueos, id, 'bloqueos_agenda', 'Día libre eliminado', 'No se pudo eliminar el día libre')
 
+  // Tarea 41: bloquear y desbloquear fechas desde Agenda. A diferencia del
+  // borrado diferido con Deshacer, acá el servidor confirma primero: un
+  // bloqueo nunca desaparece de la pantalla mientras sigue vigente en la base
+  // (y por lo tanto en la reserva web y WhatsApp). Deshacer lo vuelve a crear.
+  const agregarBloqueosSinDuplicar = (filas) => setBloqueos((prev) => {
+    const ids = new Set(prev.map((b) => String(b.id)))
+    const nuevas = filas.filter((b) => !ids.has(String(b.id)))
+    return nuevas.length ? [...prev, ...nuevas] : prev
+  })
+  const MENSAJE_SIN_PERMISO_BLOQUEO = 'Sólo el dueño o un administrador del negocio pueden bloquear o desbloquear fechas.'
+
+  const bloquearFechas = async ({ fechas, barberoId, tipo, detalle }) => {
+    const filas = filasBloqueo({ fechas, barberoId, tipo, detalle, barberiaId })
+    if (!filas.length) return { ok: false, mensaje: 'Elegí al menos una fecha.' }
+    if (!isSupabaseConfigured) {
+      setBloqueos((prev) => {
+        const base = nextLocalId(prev)
+        return [...prev, ...filas.map((fila, i) => ({ id: base + i, ...fila }))]
+      })
+      return { ok: true }
+    }
+    const resultado = await insertarBloqueos(supabase, filas)
+    if (resultado.ok) {
+      agregarBloqueosSinDuplicar(resultado.data)
+      return { ok: true }
+    }
+    if (resultado.motivo === 'permiso') return { ok: false, mensaje: MENSAJE_SIN_PERMISO_BLOQUEO }
+    reportClientError(resultado.error, { source: 'workspace', tenant_id: barberiaId, user_message: 'No se pudo guardar el bloqueo' })
+    return { ok: false, mensaje: 'No se pudo guardar el bloqueo y no se bloqueó ninguna fecha. Revisá la conexión e intentá de nuevo.' }
+  }
+
+  const restaurarBloqueo = async (bloqueo) => {
+    const fila = copiaParaRestaurar(bloqueo)
+    if (!isSupabaseConfigured) {
+      setBloqueos((prev) => [...prev, { id: nextLocalId(prev), ...fila }])
+      return
+    }
+    const resultado = await insertarBloqueos(supabase, [fila])
+    if (resultado.ok) {
+      agregarBloqueosSinDuplicar(resultado.data)
+      mostrarToast({ mensaje: 'Bloqueo restaurado', duracion: DURACION_AVISO_MS })
+    } else if (resultado.motivo === 'permiso') mostrarValidacion(MENSAJE_SIN_PERMISO_BLOQUEO)
+    else reportError('No se pudo restaurar el bloqueo. La fecha sigue desbloqueada.', resultado.error)
+  }
+
+  const desbloquearFecha = async (bloqueo) => {
+    if (isSupabaseConfigured) {
+      const resultado = await eliminarBloqueo(supabase, bloqueo.id, barberiaId)
+      if (!resultado.ok) {
+        if (resultado.motivo === 'permiso') return { ok: false, mensaje: MENSAJE_SIN_PERMISO_BLOQUEO }
+        reportClientError(resultado.error, { source: 'workspace', tenant_id: barberiaId, user_message: 'No se pudo desbloquear la fecha' })
+        return { ok: false, mensaje: 'No se pudo desbloquear. La fecha sigue bloqueada; revisá la conexión e intentá de nuevo.' }
+      }
+    }
+    // Recién ahora, con el servidor confirmado, deja de mostrarse.
+    setBloqueos((prev) => prev.filter((b) => b.id !== bloqueo.id))
+    mostrarToast({ mensaje: 'Fecha desbloqueada', duracion: 5000, onUndo: () => { restaurarBloqueo(bloqueo) } })
+    return { ok: true }
+  }
+
   const turnosHoy = turnos.filter((t) => t.fecha === todayKey).sort((a, b) => a.hora.localeCompare(b.hora))
   const unreadCount = conversaciones.filter((c) => c.noLeido).length
   const clientesConMensajes = new Set(conversaciones.filter((c) => c.clienteId != null && c.mensajes.length > 0).map((c) => c.clienteId))
@@ -1669,9 +1733,9 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
                   <Download size={14} aria-hidden="true" />
                   <span className="btn-label">Exportar</span>
                 </button>
-                <button className="btn btn-primary" onClick={openNewTurno}>
-                  <Plus size={15} strokeWidth={2.5} />
-                  Nuevo turno
+                <button className="btn agenda-block-btn" onClick={() => setBloqueosOpen(true)} aria-haspopup="dialog" title="Bloquear o desbloquear fechas">
+                  <Ban size={15} strokeWidth={2.25} aria-hidden="true" />
+                  Bloquear
                 </button>
               </div>
             </div>
@@ -1686,6 +1750,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
                 notas={notas}
                 onAddNota={addNota}
                 onNewTurno={openNewTurnoConFecha}
+                onSelectDate={setAgendaFecha}
                 barberos={barberos}
                 bloqueos={bloqueos}
               />
@@ -1835,6 +1900,18 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
 
         {view === 'facturacion' && <Billing barberiaId={barberiaId} demoMode={demoMode} />}
       </main>
+
+      <BloqueosModal
+        open={bloqueosOpen}
+        onClose={() => setBloqueosOpen(false)}
+        fechaInicial={agendaFecha || todayKey}
+        todayKey={todayKey}
+        barberos={barberos}
+        bloqueos={bloqueos}
+        turnos={turnos}
+        onBloquear={bloquearFechas}
+        onDesbloquear={desbloquearFecha}
+      />
 
       <NewTurnoModal
         open={newTurnoOpen}
