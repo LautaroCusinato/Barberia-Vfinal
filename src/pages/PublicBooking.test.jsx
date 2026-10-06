@@ -48,6 +48,29 @@ const confirmar = () => fireEvent.click(screen.getByRole('button', { name: 'Conf
 const resumen = () => within(screen.getByRole('complementary', { name: 'Tu reserva' }))
 
 describe('catálogo y recuperación de reserva pública', () => {
+  it.each(['ARS', 'USD', undefined])('usa moneda %s del negocio en selección, resumen y éxito sin convertir importes', async (moneda) => {
+    catalogo = { ...catalogo, barberia: { ...catalogo.barberia, moneda } }
+    const expected = (10000).toLocaleString('es-AR', { style: 'currency', currency: moneda || 'ARS', maximumFractionDigits: 0 }).replace(/\s+/g, ' ')
+    await formulario()
+    expect(resumen().getByText(expected, { exact: true })).toBeVisible()
+    confirmar()
+    await screen.findByRole('heading', { name: '¡Turno reservado!' })
+    expect(screen.getByText(expected, { exact: true })).toBeVisible()
+    expect(crear.mock.calls[0][0]).not.toHaveProperty('p_moneda')
+    expect(crear.mock.calls[0][0]).not.toHaveProperty('p_precio')
+  })
+
+  it('pide revisar un cambio de moneda antes de crear la reserva', async () => {
+    await formulario()
+    catalogo = { ...catalogo, barberia: { ...catalogo.barberia, moneda: 'USD' } }
+    confirmar()
+    await screen.findByText('El servicio cambió. Revisá el resumen antes de confirmar otra vez.')
+    expect(crear).not.toHaveBeenCalled()
+    confirmar()
+    await screen.findByRole('heading', { name: '¡Turno reservado!' })
+    expect(crear).toHaveBeenCalledTimes(1)
+  })
+
   it('actualiza precio, nombre y duración del mismo servicio al recuperar el foco', async () => {
     await abrir()
     catalogo = { ...catalogo, servicios: [{ ...servicio, nombre: 'Corte actualizado', precio: 17000, duracion_min: 45 }] }
