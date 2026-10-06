@@ -51,7 +51,8 @@ import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './li
 import { enqueueLatest } from './lib/latestIntentQueue.js'
 import { useTurnoMoves } from './lib/useTurnoMoves.js'
 import { persistirMovimiento, TURNO_CAMBIO, TURNO_SIN_PERMISO } from './lib/turnoMoves.js'
-import { agruparConversaciones, asegurarHiloCliente, claveHiloCliente, conservarHiloIniciado, leerErrorFuncion } from './lib/conversaciones.js'
+import { enviarMensajePanel, verificarChatCliente } from './lib/envioPanel.js'
+import { agruparConversaciones, asegurarHiloCliente, claveHiloCliente, conservarHiloIniciado } from './lib/conversaciones.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
@@ -192,6 +193,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [chatFocusRequest, setChatFocusRequest] = useState(null)
   const consumirFocoChat = useCallback(() => setChatFocusRequest(null), [])
   const [estadoChatPorCliente, setEstadoChatPorCliente] = useState({})
+  // Contrato detectado de whatsapp-panel-send (2 o 'legacy'); null = sin saber.
+  const contratoEnvioRef = useRef(null)
   const [theme, setTheme] = useState(() => initialTheme(barberiaId, demoMode ? 'austral-demo-theme' : null))
   const [newTurnoOpen, setNewTurnoOpen] = useState(false)
   const [editingTurno, setEditingTurno] = useState(null)
@@ -401,6 +404,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     setLoadedForTenant(null)
     // Un hilo iniciado pertenece al negocio anterior: nunca se conserva al cambiar.
     hiloIniciadoRef.current = null
+    contratoEnvioRef.current = null
     setEstadoChatPorCliente({})
 
     async function cargarTurnos() {
@@ -843,6 +847,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
   }
 
+  const invocarEnvioPanel = (body) => supabase.functions.invoke(WHATSAPP_PANEL_SEND_FUNCTION, { body })
+
   // "Iniciar chat" desde la ficha del cliente. Abre su hilo (o lo crea vacío,
   // sólo en el panel), lo enfoca en Mensajes y valida en el servidor si se le
   // puede escribir. No escribe en la base ni envía nada: el primer mensaje
@@ -870,17 +876,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     }
     if (estadoChatPorCliente[clienteId]?.estado === 'verificando') return
     setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: { estado: 'verificando', mensaje: '' } }))
-    let resultado
-    try {
-      const { error } = await supabase.functions.invoke(WHATSAPP_PANEL_SEND_FUNCTION, {
-        body: { action: 'preflight', tenant_id: barberiaId, cliente_id: clienteId },
-      })
-      resultado = error
-        ? { estado: 'bloqueado', mensaje: (await leerErrorFuncion(error, 'No pudimos verificar si se puede escribir a este cliente. Podés redactar el mensaje e intentar enviarlo.')).message }
-        : { estado: 'listo', mensaje: '' }
-    } catch {
-      resultado = { estado: 'bloqueado', mensaje: 'No pudimos verificar si se puede escribir a este cliente. Podés redactar el mensaje e intentar enviarlo.' }
-    }
+    const { estado, mensaje, contrato } = await verificarChatCliente({ invoke: invocarEnvioPanel, tenantId: barberiaId, clienteId })
+    if (contrato != null) contratoEnvioRef.current = contrato
+    const resultado = { estado, mensaje }
     setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: resultado }))
   }
 
@@ -1150,7 +1148,8 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
 
   const deleteNota = (id) => eliminarConDeshacer(notas, setNotas, id, 'notas', 'Nota eliminada', 'No se pudo eliminar la nota')
 
-  const sendMensaje = async (paciente, texto, clienteId) => {
+  const sendMensaje = async (paciente, texto, clienteId, opciones = {}) => {
+    let avisoEnvio = ''
     const horaActual = new Intl.DateTimeFormat('es-AR', { timeZone: zonaHoraria || TZ, hour: '2-digit', minute: '2-digit' }).format(new Date())
     const esLaConversacion = (c) => (clienteId != null ? c.clienteId === clienteId : c.paciente === paciente)
     const cliente = clienteId != null ? pacientes.find((p) => p.id === clienteId) : null
@@ -1176,25 +1175,30 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         return { ok: false, message: 'Esta conversación no está vinculada a una ficha de cliente, así que no se puede enviar por WhatsApp.' }
       }
       // El envío real pasa por una edge function autenticada: valida tenant,
-      // rol, plan, conexión y la ficha del cliente, guarda el mensaje con su
-      // cliente_id y recién entonces lo envía. Hasta que confirma, el mensaje
-      // no se muestra; si falla, el borrador queda intacto en el compositor.
+      // rol, plan, conexión, remitente y la ficha del cliente, guarda el
+      // mensaje con su cliente_id y recién entonces lo envía (ver
+      // lib/envioPanel.js). Con la función anterior a la tarea 38 se usa el
+      // flujo viejo (el navegador guarda la fila) para no perder ni duplicar.
       // El navegador nunca conoce la URL del webhook de n8n.
-      let guardado
-      try {
-        const { data, error } = await supabase.functions.invoke(WHATSAPP_PANEL_SEND_FUNCTION, {
-          body: { action: 'send', tenant_id: barberiaId, cliente_id: clienteId, texto, hora: horaActual },
-        })
-        if (error) {
-          const { message } = await leerErrorFuncion(error, 'No se pudo enviar el mensaje por WhatsApp. El borrador quedó guardado.')
-          return { ok: false, message }
-        }
-        guardado = data?.mensaje
-      } catch {
-        return { ok: false, message: 'No se pudo enviar el mensaje. Revisá tu conexión; el borrador quedó guardado.' }
-      }
-      agregarAlHilo(guardado ?? { paciente, texto, de: 'clinica', hora: horaActual, leido: true, cliente_id: clienteId })
+      const envio = await enviarMensajePanel({
+        invoke: invocarEnvioPanel,
+        // Sólo para la función anterior: la fila la guarda el navegador.
+        insertarLegacy: () => supabase.from('mensajes').insert({ paciente, texto, de: 'clinica', hora: horaActual, leido: true, cliente_id: clienteId, barberia_id: barberiaId }).select().single(),
+        contrato: contratoEnvioRef.current,
+        tenantId: barberiaId,
+        clienteId,
+        texto,
+        hora: horaActual,
+        confirmarReenvio: opciones.confirmarReenvio === true,
+      })
+      if (envio.contrato != null) contratoEnvioRef.current = envio.contrato
+      if (envio.resultado === 'posible_duplicado') return { ok: false, message: envio.aviso, confirmable: true }
+      if (envio.resultado === 'rechazado' || envio.resultado === 'desconocido') return { ok: false, message: envio.aviso }
+      if (envio.mensaje) agregarAlHilo(envio.mensaje)
       setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: { estado: 'listo', mensaje: '' } }))
+      // Enviado o incierto: pudo haber salido, así que también corresponde el
+      // traspaso a atención humana.
+      avisoEnvio = envio.resultado === 'incierto' ? envio.aviso : ''
     }
 
     // Traspaso a atención humana: una respuesta manual pausa el bot. Es la
@@ -1216,7 +1220,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         }
       }
     }
-    return true
+    return avisoEnvio ? { ok: true, aviso: avisoEnvio } : true
   }
 
   const addServicio = async () => {

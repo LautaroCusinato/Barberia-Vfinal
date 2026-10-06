@@ -91,11 +91,11 @@ describe('recarga y Realtime', () => {
 describe('leerErrorFuncion', () => {
   it('usa el mensaje del servidor', async () => {
     const error = { context: new Response(JSON.stringify({ error: { code: 'whatsapp_paused', message: 'WhatsApp está pausado.' } }), { status: 409 }) }
-    await expect(leerErrorFuncion(error, 'respaldo')).resolves.toEqual({ code: 'whatsapp_paused', message: 'WhatsApp está pausado.' })
+    await expect(leerErrorFuncion(error, 'respaldo')).resolves.toEqual({ code: 'whatsapp_paused', message: 'WhatsApp está pausado.', contract: null, respondio: true })
   })
 
   it('usa el respaldo si la respuesta no es JSON o no hay contexto', async () => {
-    await expect(leerErrorFuncion({ context: new Response('<html>', { status: 502 }) }, 'respaldo')).resolves.toEqual({ code: '', message: 'respaldo' })
-    await expect(leerErrorFuncion(new Error('red'), 'respaldo')).resolves.toEqual({ code: '', message: 'respaldo' })
+    await expect(leerErrorFuncion({ context: new Response('<html>', { status: 502 }) }, 'respaldo')).resolves.toEqual({ code: '', message: 'respaldo', contract: null, respondio: false })
+    await expect(leerErrorFuncion(new Error('red'), 'respaldo')).resolves.toEqual({ code: '', message: 'respaldo', contract: null, respondio: false })
   })
 })

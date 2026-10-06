@@ -268,3 +268,57 @@ describe('Messages · pedido de foco consumido', () => {
     expect(screen.getByRole('textbox', { name: 'Mensaje para Agustín Molina' })).toHaveFocus()
   })
 })
+
+describe('Messages · resultados de envío (revisión 38)', () => {
+  const hilo = { id: 'id-300', paciente: 'Carla Nueva', clienteId: 300, ultimaHora: null, noLeido: false, mensajes: [] }
+
+  it('posible duplicado: conserva el borrador y sólo reenvía con confirmación explícita', async () => {
+    const user = userEvent.setup()
+    const onSendMessage = vi.fn()
+      .mockResolvedValueOnce({ ok: false, message: 'Este mismo mensaje se envió o quedó sin confirmar hace instantes.', confirmable: true })
+      .mockResolvedValueOnce(true)
+    render(<Messages full conversaciones={[hilo]} selectedId="id-300" onSelectConversation={() => {}} onSendMessage={onSendMessage} />)
+    const composer = screen.getByRole('textbox', { name: 'Mensaje para Carla Nueva' })
+    await user.type(composer, 'Hola{Enter}')
+    expect(await screen.findByRole('alert')).toHaveTextContent('hace instantes')
+    expect(composer).toHaveValue('Hola')
+    expect(onSendMessage).toHaveBeenLastCalledWith('Carla Nueva', 'Hola', 300)
+    await user.click(screen.getByRole('button', { name: 'Enviar de todos modos' }))
+    expect(onSendMessage).toHaveBeenLastCalledWith('Carla Nueva', 'Hola', 300, { confirmarReenvio: true })
+    await vi.waitFor(() => expect(composer).toHaveValue(''))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('un error común no ofrece reenviar', async () => {
+    const user = userEvent.setup()
+    render(<Messages full conversaciones={[hilo]} selectedId="id-300" onSelectConversation={() => {}} onSendMessage={vi.fn().mockResolvedValue({ ok: false, message: 'WhatsApp rechazó el envío.' })} />)
+    await user.type(screen.getByRole('textbox', { name: 'Mensaje para Carla Nueva' }), 'Hola{Enter}')
+    expect(await screen.findByRole('alert')).toHaveTextContent('rechazó')
+    expect(screen.queryByRole('button', { name: 'Enviar de todos modos' })).toBeNull()
+  })
+
+  it('envío incierto: limpia el borrador (el texto queda en el hilo) y explica qué revisar', async () => {
+    const user = userEvent.setup()
+    render(<Messages full conversaciones={[hilo]} selectedId="id-300" onSelectConversation={() => {}} onSendMessage={vi.fn().mockResolvedValue({ ok: true, aviso: 'WhatsApp no confirmó el envío: puede haber llegado.' })} />)
+    const composer = screen.getByRole('textbox', { name: 'Mensaje para Carla Nueva' })
+    await user.type(composer, 'Hola{Enter}')
+    expect(await screen.findByRole('status')).toHaveTextContent('puede haber llegado')
+    expect(composer).toHaveValue('')
+  })
+
+  it('muestra el estado de envío de los mensajes del equipo', () => {
+    const conEstados = {
+      ...hilo,
+      mensajes: [
+        { id: 1, de: 'clinica', texto: 'Uno', hora: '10:00', estado_envio: 'enviado' },
+        { id: 2, de: 'clinica', texto: 'Dos', hora: '10:01', estado_envio: 'incierto' },
+        { id: 3, de: 'clinica', texto: 'Tres', hora: '10:02', estado_envio: 'pendiente' },
+        { id: 4, de: 'clinica', texto: 'Cuatro', hora: '10:03', estado_envio: 'fallido' },
+        { id: 5, de: 'paciente', texto: 'Cinco', hora: '10:04', estado_envio: 'incierto' },
+      ],
+    }
+    const { container } = render(<Messages full conversaciones={[conEstados]} selectedId="id-300" onSelectConversation={() => {}} />)
+    const metas = [...container.querySelectorAll('.bubble-meta')].map((n) => n.textContent)
+    expect(metas).toEqual(['Vos · 10:00', 'Vos · 10:01 · Sin confirmar', 'Vos · 10:02 · Enviando…', 'Vos · 10:03 · No enviado', '10:04'])
+  })
+})

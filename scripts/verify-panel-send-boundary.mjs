@@ -28,21 +28,40 @@ assert.doesNotMatch(panelSend, /body\.telefono/, 'El teléfono nunca se toma del
 // La lógica de validación vive en un módulo puro (probado en
 // verify-whatsapp-panel-send.mjs); index.ts sólo lo conecta con la base y n8n.
 const panelSendLogic = read('supabase', 'functions', '_shared', 'whatsappPanelSend.mjs')
-assert.match(panelSend, /handlePanelSend\(\{ user, body, store, deliver \}\)/, 'La función debe delegar en el módulo validado')
-assert.doesNotMatch(panelSendLogic, /body\??\.(telefono|barberia_id)/, 'El módulo nunca toma teléfono ni negocio del body')
+assert.match(panelSend, /handlePanelSend\(\{ user, body, store, deliver, senderInstance \}\)/, 'La función debe delegar en el módulo validado')
+assert.doesNotMatch(panelSendLogic, /body\??\.(telefono|barberia_id|instance)/, 'El módulo nunca toma teléfono, negocio ni instancia del body')
 const sendRoles = panelSendLogic.match(/export const PANEL_SEND_ROLES = new Set\(\[([^\]]*)\]\)/)?.[1] || ''
 assert.ok(sendRoles, 'El módulo debe declarar los roles que pueden enviar')
 assert.doesNotMatch(sendRoles, /readonly/, 'Un miembro readonly no puede enviar WhatsApp')
-const order = ['PANEL_SEND_ROLES.has(String(membership.role))', 'store.accessState(tenantId)', 'const blocked = integrationBlock(integration)', 'evaluateBotPause(', 'canonicalArgentineMobile(cliente.telefono)', 'store.countRecentPanelSends(', 'store.insertMensaje(row)', 'await deliver(']
+// Orden en el camino normal (contrato 2): validaciones, guardado, controles
+// que dependen de otros envíos y recién después el reenvío a n8n.
+const handler = panelSendLogic.slice(panelSendLogic.indexOf('export async function resolvePanelSendContext'))
+const sendPath = handler.slice(handler.indexOf('export async function handlePanelSend'))
+const order = [
+  [handler, 'PANEL_SEND_ROLES.has(String(membership.role))'],
+  [handler, 'store.accessState(tenantId)'],
+  [handler, 'const blocked = integrationBlock(integration)'],
+  [handler, 'const wrongSender = senderBlock(integration, senderInstance)'],
+  [handler, 'evaluateBotPause('],
+  [handler, 'canonicalArgentineMobile(cliente.telefono)'],
+]
 let previous = -1
-for (const marker of order) {
-  const index = panelSendLogic.indexOf(marker)
+for (const [source, marker] of order) {
+  const index = source.indexOf(marker)
   assert.ok(index > previous, `El módulo debe validar en orden antes de enviar: ${marker}`)
   previous = index
 }
+previous = -1
+for (const marker of ['resolvePanelSendContext(', 'store.insertMensaje(row)', 'store.countEarlierSameText(', 'store.countPanelSendsThrough(', 'await safeDeliver(deliver']) {
+  const index = sendPath.indexOf(marker)
+  assert.ok(index > previous, `El envío debe guardar y controlar antes de reenviar: ${marker}`)
+  previous = index
+}
 assert.match(panelSend, /rpc\('barberia_access_state', \{ p_barberia_id: tenantId \}\)/, 'Un tenant sin plan habilitado no envía')
-assert.match(panelSend, /from\('saas_integraciones'\)[\s\S]*\.eq\('barberia_id', tenantId\)/, 'La conexión se lee del tenant')
-assert.match(panelSend, /deleteMensaje[\s\S]*\.eq\('barberia_id', tenantId\)/, 'El borrado tras un envío fallido queda acotado al tenant')
+assert.match(panelSend, /from\('saas_integraciones'\)[\s\S]*select\('estado, external_instance_id'\)[\s\S]*\.eq\('barberia_id', tenantId\)/, 'La conexión y su instancia se leen del tenant')
+assert.match(panelSend, /Deno\.env\.get\('WHATSAPP_PANEL_SEND_INSTANCE'\)/, 'La instancia del webhook se declara en el servidor')
+assert.match(panelSend, /return classifyWebhookStatus\(response\.status\)/, 'El resultado del webhook distingue rechazo de incierto')
+assert.match(panelSend, /deleteMensaje[\s\S]*\.eq\('barberia_id', tenantId\)/, 'El borrado tras un rechazo queda acotado al tenant')
 
 for (const fn of ['whatsapp-booking-mutation', 'whatsapp-agent-outbound-pilot', 'whatsapp-qa-outbound-one-shot']) {
   assert.match(read('supabase', 'functions', fn, 'index.ts'), /await requireOperator\(request, /, `${fn} debe validar al operador además del header Bearer`)

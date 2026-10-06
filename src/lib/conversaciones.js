@@ -79,16 +79,22 @@ export function conservarHiloIniciado(lista, previas, clienteId, clientes) {
   return [anterior, ...lista]
 }
 
-/** Mensaje legible de un error de `supabase.functions.invoke`. */
+/**
+ * Mensaje legible de un error de `supabase.functions.invoke`. `respondio`
+ * indica si la función devolvió su propio error (JSON); si no, la respuesta se
+ * perdió o vino de la red/gateway y el resultado es desconocido.
+ */
 export async function leerErrorFuncion(error, respaldo) {
   try {
     // FunctionsHttpError deja la respuesta de la función en `context`.
     const response = error?.context
     const body = typeof response?.json === 'function' ? await response.json() : null
     const message = body?.error?.message
-    if (typeof message === 'string' && message.trim()) return { code: String(body.error.code || ''), message: message.trim() }
+    if (typeof message === 'string' && message.trim()) {
+      return { code: String(body.error.code || ''), message: message.trim(), contract: body.contract ?? null, respondio: true }
+    }
   } catch {
     // Respuesta sin JSON: se usa el respaldo.
   }
-  return { code: '', message: respaldo }
+  return { code: '', message: respaldo, contract: null, respondio: false }
 }

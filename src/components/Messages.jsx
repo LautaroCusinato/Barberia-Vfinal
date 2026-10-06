@@ -7,11 +7,13 @@ import SafeMarkdown, { stripMarkdown } from './SafeMarkdown'
 import { EmptyState } from './ui'
 
 const ESTADOS_CON_AVISO = new Set(['verificando', 'bloqueado', 'demo'])
+// Estado de envío de los mensajes del equipo (lo registra whatsapp-panel-send).
+const ETIQUETA_ENVIO = { pendiente: 'Enviando…', incierto: 'Sin confirmar', fallido: 'No enviado' }
 
 export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage, pacientes = [], focusRequest = null, onFocusRequestHandled, estadoChatPorCliente = {} }) {
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false)
-  // Borrador y error por conversación: cambiar de hilo (o abrir uno desde
-  // Clientes) nunca lleva el texto escrito para otro cliente.
+  // Borrador y resultado del último envío por conversación: cambiar de hilo (o
+  // abrir uno desde Clientes) nunca lleva el texto escrito para otro cliente.
   const [drafts, setDrafts] = useState({})
   const [sendErrors, setSendErrors] = useState({})
   const [sending, setSending] = useState(false)
@@ -42,7 +44,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   const telefonoSeleccionado = selected?.clienteId != null ? pacientes.find((p) => p.id === selected.clienteId)?.telefono : null
   const selectedMessageCount = selected?.mensajes?.length || 0
   const draft = drafts[selectedConversationId] ?? ''
-  const sendError = sendErrors[selectedConversationId] ?? ''
+  const sendError = sendErrors[selectedConversationId] ?? null
   const setDraft = (value) => setDrafts((prev) => ({ ...prev, [selectedConversationId]: value }))
   const estadoChat = selected?.clienteId != null ? estadoChatPorCliente[selected.clienteId] : null
 
@@ -61,23 +63,30 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
     if (nearBottom) setShowNewMessages(false)
   }, [])
 
-  const enviar = async () => {
+  // `confirmarReenvio` sólo se usa cuando el servidor avisó que el mismo texto
+  // se envió o quedó sin confirmar hace instantes y el operador decide reenviar.
+  const enviar = async ({ confirmarReenvio = false } = {}) => {
     if (!draft.trim() || sending || !selected) return
     // El destinatario se fija al tocar Enviar: si el operador cambia de hilo
     // mientras se envía, el resultado se aplica a esta conversación.
     const convId = selected.id
-    const setErrorDe = (message) => setSendErrors((prev) => ({ ...prev, [convId]: message }))
+    const setErrorDe = (texto, extra = {}) => setSendErrors((prev) => ({ ...prev, [convId]: texto ? { tipo: 'error', texto, ...extra } : null }))
     setSending(true)
     setErrorDe('')
     pendingOwnMessageRef.current = true
     try {
-      const sent = await onSendMessage?.(selected.paciente, draft.trim(), selected.clienteId)
+      const args = [selected.paciente, draft.trim(), selected.clienteId]
+      if (confirmarReenvio) args.push({ confirmarReenvio: true })
+      const sent = await onSendMessage?.(...args)
       if (sent === false || sent?.ok === false) {
         pendingOwnMessageRef.current = false
-        setErrorDe(sent?.message || 'No se pudo guardar el mensaje. El borrador quedó preservado.')
+        setErrorDe(sent?.message || 'No se pudo guardar el mensaje. El borrador quedó preservado.', { confirmable: sent?.confirmable === true })
         return
       }
       setDrafts((prev) => ({ ...prev, [convId]: '' }))
+      // Enviado sin confirmación de WhatsApp: el mensaje queda en el hilo
+      // marcado "Sin confirmar" y se explica qué hacer antes de reenviar.
+      if (sent?.aviso) setSendErrors((prev) => ({ ...prev, [convId]: { tipo: 'aviso', texto: sent.aviso } }))
       // El callback puede actualizar el hilo de forma asincrónica. El frame
       // siguiente es el primer momento en que el nuevo mensaje está medido.
       window.requestAnimationFrame(() => {
@@ -343,6 +352,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                   <div className="bubble-meta">
                     {m.de === 'bot' ? 'Bot · ' : m.de === 'clinica' ? 'Vos · ' : ''}
                     {m.hora}
+                    {m.de === 'clinica' && ETIQUETA_ENVIO[m.estado_envio] ? ` · ${ETIQUETA_ENVIO[m.estado_envio]}` : ''}
                   </div>
                 </div>
               ))
@@ -385,7 +395,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
               />
               <button
                 className="btn btn-primary"
-                onClick={enviar}
+                onClick={() => enviar()}
                 disabled={!draft.trim() || sending}
                 aria-label="Enviar"
                 title="Enviar (desactiva el bot)"
@@ -394,7 +404,17 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
               </button>
             </div>
           )}
-          {sendError && <p className="login-error" role="alert">{sendError}</p>}
+          {sendError?.tipo === 'error' && (
+            <div className="login-error" role="alert">
+              <span>{sendError.texto}</span>
+              {sendError.confirmable && (
+                <button type="button" className="btn" onClick={() => enviar({ confirmarReenvio: true })} disabled={sending || !draft.trim()}>
+                  Enviar de todos modos
+                </button>
+              )}
+            </div>
+          )}
+          {sendError?.tipo === 'aviso' && <p className="thread-composer-notice" role="status">{sendError.texto}</p>}
         </div>
       )}
     </div>
