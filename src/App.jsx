@@ -51,8 +51,8 @@ import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './li
 import { enqueueLatest } from './lib/latestIntentQueue.js'
 import { useTurnoMoves } from './lib/useTurnoMoves.js'
 import { persistirMovimiento, TURNO_CAMBIO, TURNO_SIN_PERMISO } from './lib/turnoMoves.js'
-import { enviarMensajePanel, verificarChatCliente } from './lib/envioPanel.js'
 import { agruparConversaciones, asegurarHiloCliente, claveHiloCliente, conservarHiloIniciado } from './lib/conversaciones.js'
+import { claveDeEnvio, enviarMensajePanel, olvidarClaveDeEnvio, verificarChatCliente } from './lib/envioPanel.js'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
@@ -195,6 +195,9 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
   const [estadoChatPorCliente, setEstadoChatPorCliente] = useState({})
   // Contrato detectado de whatsapp-panel-send (2 o 'legacy'); null = sin saber.
   const contratoEnvioRef = useRef(null)
+  // Identificador por envío (cliente + texto): un reintento del mismo borrador
+  // reutiliza el identificador y el servidor no vuelve a enviarlo.
+  const clavesEnvioRef = useRef(new Map())
   const [theme, setTheme] = useState(() => initialTheme(barberiaId, demoMode ? 'austral-demo-theme' : null))
   const [newTurnoOpen, setNewTurnoOpen] = useState(false)
   const [editingTurno, setEditingTurno] = useState(null)
@@ -405,6 +408,7 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
     // Un hilo iniciado pertenece al negocio anterior: nunca se conserva al cambiar.
     hiloIniciadoRef.current = null
     contratoEnvioRef.current = null
+    clavesEnvioRef.current = new Map()
     setEstadoChatPorCliente({})
 
     async function cargarTurnos() {
@@ -1190,15 +1194,22 @@ export default function App({ barberiaId, barberiaNombre, vertical: _vertical, d
         texto,
         hora: horaActual,
         confirmarReenvio: opciones.confirmarReenvio === true,
+        clientMessageId: claveDeEnvio(clavesEnvioRef.current, clienteId, texto),
       })
       if (envio.contrato != null) contratoEnvioRef.current = envio.contrato
+      if (envio.resultado === 'enviado' || envio.reiniciarClave) olvidarClaveDeEnvio(clavesEnvioRef.current, clienteId, texto)
       if (envio.resultado === 'posible_duplicado') return { ok: false, message: envio.aviso, confirmable: true }
       if (envio.resultado === 'rechazado' || envio.resultado === 'desconocido') return { ok: false, message: envio.aviso }
       if (envio.mensaje) agregarAlHilo(envio.mensaje)
       setEstadoChatPorCliente((prev) => ({ ...prev, [clienteId]: { estado: 'listo', mensaje: '' } }))
       // Enviado o incierto: pudo haber salido, así que también corresponde el
-      // traspaso a atención humana.
-      avisoEnvio = envio.resultado === 'incierto' ? envio.aviso : ''
+      // traspaso a atención humana. Con la reserva atómica ya lo hizo el
+      // servidor, antes del envío.
+      avisoEnvio = envio.aviso || ''
+      if (envio.botPausado) {
+        setBotActivo(false)
+        return avisoEnvio ? { ok: true, aviso: avisoEnvio } : true
+      }
     }
 
     // Traspaso a atención humana: una respuesta manual pausa el bot. Es la

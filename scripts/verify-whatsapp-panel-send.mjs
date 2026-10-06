@@ -2,21 +2,30 @@
 // Ejercita el handler real de whatsapp-panel-send con una base en memoria y un
 // webhook simulado. No usa red, Supabase ni WhatsApp. Cada acceso a la base
 // cede el turno (setImmediate) para que las carreras sean reproducibles.
+// Dos modos de reserva: sin migración (camino por tablas, atomic: false) y con
+// la RPC (atomic: true, emulada en memoria sin ceder el turno). La atomicidad
+// real de la RPC se prueba en PostgreSQL local:
+// scripts/sql/whatsapp-panel-send/run.sh.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   PANEL_SEND_CONTRACT,
-  PANEL_SEND_RATE_LIMIT,
+  PANEL_SEND_PROPOSED_SETTINGS,
+  classifyWebhookResponse,
   classifyWebhookStatus,
   handlePanelSend,
   integrationBlock,
   panelSendErrorBody,
+  panelSendSettings,
   senderBlock,
 } from '../supabase/functions/_shared/whatsappPanelSend.mjs'
 
+const PANEL_SEND_RATE_LIMIT = PANEL_SEND_PROPOSED_SETTINGS.rateLimit
+const FIXED = panelSendSettings({ WHATSAPP_PANEL_SEND_INSTANCE: 'miwsp' })
+const ROUTED = panelSendSettings({ WHATSAPP_PANEL_SEND_ROUTING: 'instance' })
+
 const TENANT = 7
 const OTHER_TENANT = 9
-const SENDER = 'miwsp'
 const NOW = new Date('2026-10-05T15:00:00.000Z')
 const tick = () => new Promise((resolve) => setImmediate(resolve))
 
@@ -42,7 +51,9 @@ function createDb(overrides = {}) {
     mensajes: [],
     nextId: 1,
     failures: {},
-    outcome: 'accepted',
+    // Plantilla actual de n8n: responde al recibir (sin result).
+    outcome: 'received',
+    atomic: false,
     ...overrides,
   }
   const maybeFail = (name) => { if (db.failures[name]) throw new Error(`${name} failed`) }
@@ -59,20 +70,55 @@ function createDb(overrides = {}) {
     async insertMensaje(row) { await tick(); maybeFail('insert'); const saved = { id: db.nextId++, created_at: NOW.toISOString(), ...row }; db.mensajes.push(saved); return { ...saved } },
     async deleteMensaje(tenantId, id) { await tick(); maybeFail('delete'); db.mensajes = db.mensajes.filter((m) => !(m.id === id && m.barberia_id === tenantId)) },
     async updateMensaje(tenantId, id, patch) { await tick(); const row = db.mensajes.find((m) => m.id === id && m.barberia_id === tenantId); Object.assign(row, patch); return { ...row } },
+    // Emulación de reservar_envio_panel: sin ceder el turno, como bajo el lock.
+    async reserve({ tenantId, clienteId, clientMessageId, texto, hora, confirmResend, settings }) {
+      await tick()
+      if (!db.atomic) return null
+      maybeFail('reserve')
+      const cliente = db.clientes.find((c) => c.id === clienteId && c.barberia_id === tenantId)
+      if (!cliente) return { status: 'customer_not_found' }
+      const existing = db.mensajes.find((m) => m.barberia_id === tenantId && m.client_message_id === clientMessageId)
+      const since = (seconds) => new Date(NOW.getTime() - seconds * 1000).toISOString()
+      const inRate = (m) => m.barberia_id === tenantId && m.de === 'clinica' && m.estado_envio !== 'fallido' && m.created_at >= since(settings.rateWindowSeconds)
+      const pause = () => { db.config = [{ barberia_id: tenantId, clave: 'bot_activo', valor: 'false' }, ...db.config.filter((c) => c.barberia_id !== tenantId)] }
+      if (existing) {
+        if (existing.cliente_id !== clienteId || existing.texto !== texto) return { status: 'idempotency_conflict' }
+        if (!(existing.estado_envio === 'fallido' || (existing.estado_envio === 'incierto' && confirmResend))) return { status: 'replay', mensaje: { ...existing } }
+        if (db.mensajes.filter((m) => inRate(m) && m.id !== existing.id).length >= settings.rateLimit) return { status: 'rate_limited' }
+        Object.assign(existing, { estado_envio: 'pendiente', enviado_wsp: false })
+        pause()
+        return { status: 'reserved', mensaje: { ...existing } }
+      }
+      if (!confirmResend && db.mensajes.some((m) => m.barberia_id === tenantId && m.cliente_id === clienteId && m.de === 'clinica' && m.texto === texto && m.estado_envio !== 'fallido' && m.created_at >= since(settings.duplicateWindowSeconds))) return { status: 'possible_duplicate' }
+      if (db.mensajes.filter(inRate).length >= settings.rateLimit) return { status: 'rate_limited' }
+      const row = { id: db.nextId++, created_at: NOW.toISOString(), barberia_id: tenantId, cliente_id: clienteId, paciente: cliente.nombre, texto, de: 'clinica', hora, leido: true, telefono: '5491122334455', enviado_wsp: false, estado_envio: 'pendiente', client_message_id: clientMessageId }
+      db.mensajes.push(row)
+      pause()
+      return { status: 'reserved', mensaje: { ...row } }
+    },
+    async complete(tenantId, id, estado, providerMessageId) {
+      await tick()
+      if (!['recibido_n8n', 'aceptado', 'incierto', 'fallido'].includes(estado)) throw new Error('invalid_result')
+      const row = db.mensajes.find((m) => m.id === id && m.barberia_id === tenantId && ['pendiente', 'incierto'].includes(m.estado_envio))
+      if (!row) return null
+      Object.assign(row, { estado_envio: estado, enviado_wsp: ['recibido_n8n', 'aceptado'].includes(estado), ...(estado === 'aceptado' && providerMessageId ? { whatsapp_id: providerMessageId } : {}) })
+      return { ...row }
+    },
   }
   const deliveries = []
   const deliver = async (payload) => {
     deliveries.push(payload)
     await tick()
     if (db.outcome === 'throw') throw new Error('timeout')
+    if (db.outcome === 'accepted') return { outcome: 'accepted', providerMessageId: 'EVO-1' }
     return db.outcome
   }
   return { db, store, deliver, deliveries }
 }
 
-async function run(ctx, body, userId = 'owner-7', senderInstance = SENDER) {
+async function run(ctx, body, userId = 'owner-7', settings = FIXED) {
   try {
-    return { ok: true, value: await handlePanelSend({ user: { id: userId }, body, store: ctx.store, deliver: ctx.deliver, senderInstance, now: NOW }) }
+    return { ok: true, value: await handlePanelSend({ user: { id: userId }, body, store: ctx.store, deliver: ctx.deliver, settings, now: NOW }) }
   } catch (error) {
     const { status, body: errorBody } = panelSendErrorBody(error)
     return { ok: false, status, code: errorBody.error.code, message: errorBody.error.message, contract: errorBody.contract }
@@ -121,8 +167,8 @@ await test('primer mensaje: queda asociado al cliente correcto con teléfono can
   assert.equal(row.de, 'clinica')
   assert.equal(row.hora, '12:00')
   assert.equal(row.enviado_wsp, true)
-  assert.equal(row.estado_envio, 'enviado')
-  assert.deepEqual(ctx.deliveries, [{ telefono: '5491122334455', texto: 'Hola Ana', barberia_id: TENANT, instance: 'miwsp' }], 'el body no puede elegir teléfono, negocio ni instancia')
+  assert.equal(row.estado_envio, 'recibido_n8n', 'la plantilla actual sólo confirma la recepción en n8n')
+  assert.deepEqual(ctx.deliveries, [{ telefono: '5491122334455', texto: 'Hola Ana', barberia_id: TENANT, instance: 'miwsp', client_message_id: null }], 'el body no puede elegir teléfono, negocio ni instancia')
   assert.equal(result.value.sent, true)
   assert.equal(result.value.contract, PANEL_SEND_CONTRACT)
   assert.equal(result.value.mensaje.id, row.id)
@@ -215,12 +261,12 @@ await test('remitente: sólo el negocio dueño de la instancia del webhook puede
   assert.equal((await run(ctx, send('Hola'))).code, 'panel_send_sender_mismatch')
   // Sin configuración del servidor, nadie envía (falla cerrada).
   ctx.db.integraciones[TENANT] = { estado: 'conectado', external_instance_id: 'miwsp' }
-  const unconfigured = await run(ctx, send('Hola'), 'owner-7', '')
+  const unconfigured = await run(ctx, send('Hola'), 'owner-7', panelSendSettings({}))
   assert.equal(unconfigured.status, 503)
   assert.equal(unconfigured.code, 'panel_send_not_configured')
   assert.equal(ctx.deliveries.length, 0)
   assert.equal(ctx.db.mensajes.length, 0)
-  assert.equal(senderBlock({ external_instance_id: ' MIWSP ' }, 'miwsp'), null)
+  assert.equal(senderBlock({ external_instance_id: ' MIWSP ' }, FIXED), null)
 })
 
 await test('rol de sólo lectura y sesión ausente', async () => {
@@ -228,7 +274,7 @@ await test('rol de sólo lectura y sesión ausente', async () => {
   const readonly = await run(ctx, { action: 'preflight', tenant_id: TENANT, cliente_id: 100 }, 'lector-7')
   assert.equal(readonly.status, 403)
   assert.equal(readonly.code, 'send_role_required')
-  const anonymous = await handlePanelSend({ user: null, body: { action: 'preflight', tenant_id: TENANT, cliente_id: 100 }, store: ctx.store, deliver: ctx.deliver, senderInstance: SENDER }).catch((error) => error)
+  const anonymous = await handlePanelSend({ user: null, body: { action: 'preflight', tenant_id: TENANT, cliente_id: 100 }, store: ctx.store, deliver: ctx.deliver, settings: FIXED }).catch((error) => error)
   assert.equal(anonymous.status, 401)
 })
 
@@ -288,7 +334,7 @@ await test('rechazo confirmado: la fila se retira y reintentar es seguro', async
   assert.match(result.message, /no salió/)
   assert.match(result.message, /borrador/)
   assert.equal(ctx.db.mensajes.length, 0, 'no queda un mensaje que el cliente nunca recibió')
-  ctx.db.outcome = 'accepted'
+  ctx.db.outcome = 'received'
   const retry = await run(ctx, send('Hola'))
   assert.equal(retry.ok, true, 'después de un rechazo confirmado el reintento no pide confirmación')
   assert.equal(ctx.db.mensajes.length, 1)
@@ -313,7 +359,7 @@ await test('resultado incierto: se conserva la evidencia y el reintento idéntic
     assert.equal(ctx.db.mensajes.length, 1, 'la fila no se borra')
     assert.equal(ctx.db.mensajes[0].estado_envio, 'incierto')
     assert.equal(ctx.db.mensajes[0].enviado_wsp, false)
-    ctx.db.outcome = 'accepted'
+    ctx.db.outcome = 'received'
     const retry = await run(ctx, send('Hola'))
     assert.equal(retry.status, 409)
     assert.equal(retry.code, 'panel_send_possible_duplicate')
@@ -419,6 +465,144 @@ await test('validaciones de entrada', async () => {
   const internal = panelSendErrorBody(Object.assign(new Error('detalle interno con secreto'), { status: 500 }))
   assert.equal(internal.body.error.message, 'No se pudo enviar el mensaje.')
   assert.equal(internal.body.contract, PANEL_SEND_CONTRACT)
+})
+
+const KEY_A = '11111111-1111-4111-8111-111111111111'
+const KEY_B = '22222222-2222-4222-8222-222222222222'
+const atomicDb = (overrides = {}) => createDb({ atomic: true, ...overrides })
+
+await test('atómico: reserva con identificador, pausa del bot en la base antes del envío', async () => {
+  const ctx = atomicDb()
+  let pausedBeforeDelivery = null
+  const deliver = ctx.deliver
+  ctx.deliver = async (payload) => { pausedBeforeDelivery = ctx.db.config.some((c) => c.barberia_id === TENANT && c.valor === 'false'); return deliver(payload) }
+  const result = await run(ctx, send('Hola', { client_message_id: KEY_A }))
+  assert.equal(result.ok, true)
+  assert.equal(pausedBeforeDelivery, true, 'P4: el bot ya estaba pausado cuando se llamó a n8n')
+  assert.equal(result.value.bot_paused, true, 'el panel no necesita pausarlo después')
+  assert.equal(ctx.db.mensajes[0].client_message_id, KEY_A)
+  assert.equal(ctx.deliveries[0].client_message_id, KEY_A)
+  assert.equal(result.value.estado_envio, 'recibido_n8n')
+})
+
+await test('atómico: respuesta perdida y reintento con el mismo identificador = repetición, sin reenvío', async () => {
+  const ctx = atomicDb()
+  assert.equal((await run(ctx, send('Hola', { client_message_id: KEY_A }))).ok, true)
+  const replay = await run(ctx, send('Hola', { client_message_id: KEY_A }))
+  assert.equal(replay.ok, true)
+  assert.equal(replay.value.replay, true)
+  assert.equal(replay.value.sent, true)
+  assert.equal(replay.value.estado_envio, 'recibido_n8n')
+  assert.equal(ctx.deliveries.length, 1, 'la repetición no llega a n8n')
+  assert.equal(ctx.db.mensajes.length, 1)
+  const conflict = await run(ctx, send('Otro texto', { client_message_id: KEY_A }))
+  assert.equal(conflict.code, 'idempotency_conflict')
+})
+
+await test('atómico: rechazo confirmado deja la fila "fallido" y el mismo identificador reintenta sobre ella', async () => {
+  const ctx = atomicDb({ outcome: 'rejected' })
+  const rejected = await run(ctx, send('Hola', { client_message_id: KEY_A }))
+  assert.equal(rejected.code, 'panel_send_rejected')
+  assert.equal(ctx.db.mensajes[0].estado_envio, 'fallido')
+  ctx.db.outcome = 'received'
+  const retry = await run(ctx, send('Hola', { client_message_id: KEY_A }))
+  assert.equal(retry.ok, true)
+  assert.equal(ctx.db.mensajes.length, 1, 'misma fila')
+  assert.equal(ctx.db.mensajes[0].estado_envio, 'recibido_n8n')
+  assert.equal(ctx.deliveries.length, 2)
+})
+
+await test('atómico: incierto no se reenvía sin confirmación; con confirmación usa la misma fila', async () => {
+  const ctx = atomicDb({ outcome: 'throw' })
+  const first = await run(ctx, send('Hola', { client_message_id: KEY_A }))
+  assert.equal(first.value.uncertain, true)
+  assert.equal(ctx.db.mensajes[0].estado_envio, 'incierto')
+  ctx.db.outcome = 'received'
+  const replay = await run(ctx, send('Hola', { client_message_id: KEY_A }))
+  assert.equal(replay.value.replay, true)
+  assert.equal(replay.value.uncertain, true)
+  assert.equal(ctx.deliveries.length, 1)
+  const otherKey = await run(ctx, send('Hola', { client_message_id: KEY_B }))
+  assert.equal(otherKey.code, 'panel_send_possible_duplicate', 'otro identificador, mismo texto')
+  const confirmed = await run(ctx, send('Hola', { client_message_id: KEY_A, confirm_resend: true }))
+  assert.equal(confirmed.ok, true)
+  assert.equal(ctx.db.mensajes.length, 1)
+  assert.equal(ctx.deliveries.length, 2)
+})
+
+await test('evidencia: recepción de n8n, aceptación de Evolution y nunca "entregado" sin evidencia', async () => {
+  assert.deepEqual(classifyWebhookResponse(200, null), { outcome: 'received', providerMessageId: null })
+  assert.deepEqual(classifyWebhookResponse(200, { message: 'Workflow was started' }), { outcome: 'received', providerMessageId: null })
+  assert.deepEqual(classifyWebhookResponse(200, { result: 'accepted', message_id: 'EVO-9' }), { outcome: 'accepted', providerMessageId: 'EVO-9' })
+  assert.deepEqual(classifyWebhookResponse(500, { result: 'accepted' }), { outcome: 'uncertain', providerMessageId: null }, 'aceptado con 5xx no es evidencia')
+  assert.deepEqual(classifyWebhookResponse(422, { result: 'rejected' }), { outcome: 'rejected', providerMessageId: null })
+  assert.deepEqual(classifyWebhookResponse(200, { result: 'rejected' }), { outcome: 'rejected', providerMessageId: null })
+  assert.deepEqual(classifyWebhookResponse(502, { result: 'uncertain' }), { outcome: 'uncertain', providerMessageId: null })
+  assert.deepEqual(classifyWebhookResponse(200, { result: 'delivered' }), { outcome: 'received', providerMessageId: null }, 'un resultado desconocido no sube de nivel')
+  const ctx = atomicDb({ outcome: 'accepted' })
+  const result = await run(ctx, send('Hola', { client_message_id: KEY_A }))
+  assert.equal(result.value.estado_envio, 'aceptado')
+  assert.equal(ctx.db.mensajes[0].whatsapp_id, 'EVO-1')
+  for (const outcome of ['received', 'accepted', 'rejected', 'uncertain', 'throw']) {
+    const each = atomicDb({ outcome })
+    await run(each, send('Hola', { client_message_id: KEY_A }))
+    assert.notEqual(each.db.mensajes[0].estado_envio, 'entregado', outcome)
+  }
+})
+
+await test('atómico: cliente de otro negocio y teléfono inválido según la base', async () => {
+  const ctx = atomicDb()
+  // El handler ya filtra por tenant; si la reserva igual lo reportara, se respeta.
+  ctx.store.cliente = async () => ({ id: 100, barberia_id: TENANT, nombre: 'Ana', telefono: '5491122334455' })
+  ctx.db.clientes = ctx.db.clientes.filter((c) => c.id !== 100)
+  assert.equal((await run(ctx, send('Hola', { client_message_id: KEY_A }))).code, 'customer_not_found')
+  assert.equal(ctx.deliveries.length, 0)
+})
+
+await test('atómico: identificador inválido y fallo de la reserva no envían', async () => {
+  const ctx = atomicDb()
+  assert.equal((await run(ctx, send('Hola', { client_message_id: 'no-es-uuid' }))).code, 'invalid_client_message_id')
+  ctx.db.failures.reserve = true
+  assert.equal((await run(ctx, send('Hola', { client_message_id: KEY_A }))).code, 'message_insert_failed')
+  assert.equal(ctx.deliveries.length, 0)
+})
+
+await test('atómico: límite configurable aplicado por la reserva', async () => {
+  const ctx = atomicDb()
+  const settings = panelSendSettings({ WHATSAPP_PANEL_SEND_INSTANCE: 'miwsp', WHATSAPP_PANEL_SEND_RATE_LIMIT: '2' })
+  const results = []
+  for (let i = 0; i < 3; i += 1) results.push(await run(ctx, send(`m${i}`, { client_message_id: `33333333-3333-4333-8333-00000000000${i}` }), 'owner-7', settings))
+  assert.deepEqual(results.map((r) => r.ok || r.code), [true, true, 'send_rate_limited'])
+})
+
+await test('configuración: valores propuestos por defecto, inválidos fallan cerrado', async () => {
+  assert.deepEqual(PANEL_SEND_PROPOSED_SETTINGS, { rateLimit: 20, rateWindowSeconds: 60, duplicateWindowSeconds: 300, stalePendingSeconds: 120 })
+  const defaults = panelSendSettings({ WHATSAPP_PANEL_SEND_INSTANCE: 'miwsp' })
+  assert.equal(defaults.valid, true)
+  assert.equal(defaults.routing, 'fixed', 'sin variable se mantiene el remitente fijo (plantilla actual)')
+  assert.equal(defaults.rateLimit, 20)
+  const custom = panelSendSettings({ WHATSAPP_PANEL_SEND_RATE_LIMIT: '5', WHATSAPP_PANEL_SEND_DUPLICATE_WINDOW_SECONDS: '0', WHATSAPP_PANEL_SEND_ROUTING: 'instance' })
+  assert.equal(custom.rateLimit, 5)
+  assert.equal(custom.duplicateWindowSeconds, 0)
+  for (const env of [{ WHATSAPP_PANEL_SEND_RATE_LIMIT: '0' }, { WHATSAPP_PANEL_SEND_RATE_LIMIT: 'veinte' }, { WHATSAPP_PANEL_SEND_STALE_PENDING_SECONDS: '5' }, { WHATSAPP_PANEL_SEND_ROUTING: 'body' }]) {
+    const settings = panelSendSettings({ WHATSAPP_PANEL_SEND_INSTANCE: 'miwsp', ...env })
+    assert.equal(settings.valid, false, JSON.stringify(env))
+    const ctx = createDb()
+    const result = await run(ctx, { action: 'preflight', tenant_id: TENANT, cliente_id: 100 }, 'owner-7', settings)
+    assert.equal(result.code, 'panel_send_not_configured', JSON.stringify(env))
+  }
+})
+
+await test('enrutamiento por instancia: cada negocio sale por su instancia, nunca por la del body', async () => {
+  const ctx = atomicDb()
+  const result = await run(ctx, { action: 'send', tenant_id: OTHER_TENANT, cliente_id: 900, texto: 'Hola', instance: 'miwsp', client_message_id: KEY_A }, 'owner-9', ROUTED)
+  assert.equal(result.ok, true)
+  assert.equal(ctx.deliveries[0].instance, 'austral-qa-tenant-9')
+  assert.equal(ctx.deliveries[0].barberia_id, OTHER_TENANT)
+  ctx.db.integraciones[OTHER_TENANT] = { estado: 'conectado', external_instance_id: '' }
+  assert.equal((await run(ctx, { action: 'preflight', tenant_id: OTHER_TENANT, cliente_id: 900 }, 'owner-9', ROUTED)).code, 'panel_send_sender_mismatch')
+  ctx.db.integraciones[OTHER_TENANT] = { estado: 'conectado', external_instance_id: '../miwsp' }
+  assert.equal((await run(ctx, { action: 'preflight', tenant_id: OTHER_TENANT, cliente_id: 900 }, 'owner-9', ROUTED)).code, 'panel_send_sender_mismatch', 'nombre de instancia con caracteres no permitidos')
 })
 
 await test('panel: Iniciar chat no escribe ni envía; el envío pasa sólo por el servidor', async () => {

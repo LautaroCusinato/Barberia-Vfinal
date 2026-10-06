@@ -8,7 +8,18 @@ import { EmptyState } from './ui'
 
 const ESTADOS_CON_AVISO = new Set(['verificando', 'bloqueado', 'demo'])
 // Estado de envío de los mensajes del equipo (lo registra whatsapp-panel-send).
-const ETIQUETA_ENVIO = { pendiente: 'Enviando…', incierto: 'Sin confirmar', fallido: 'No enviado' }
+// Tres niveles de evidencia distintos: recepción en n8n ("En cola de envío"),
+// aceptación de Evolution ("Enviado a WhatsApp") y entrega real ("Entregado",
+// sólo con evidencia del proveedor). 'enviado' es el valor histórico sin
+// detalle y no lleva etiqueta.
+const ETIQUETA_ENVIO = {
+  pendiente: 'Enviando…',
+  recibido_n8n: 'En cola de envío',
+  aceptado: 'Enviado a WhatsApp',
+  entregado: 'Entregado',
+  incierto: 'Sin confirmar',
+  fallido: 'No enviado',
+}
 
 export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage, pacientes = [], focusRequest = null, onFocusRequestHandled, estadoChatPorCliente = {} }) {
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false)

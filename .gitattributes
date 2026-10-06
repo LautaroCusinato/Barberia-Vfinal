@@ -2,3 +2,4 @@
 # en Windows) falla al primer salto de línea. Regla específica de ese archivo.
 scripts/sql/cobro-atomico/run.sh text eol=lf
 scripts/sql/whatsapp-cliente-unico/run.sh text eol=lf
+scripts/sql/whatsapp-panel-send/run.sh text eol=lf

@@ -315,10 +315,24 @@ describe('Messages · resultados de envío (revisión 38)', () => {
         { id: 3, de: 'clinica', texto: 'Tres', hora: '10:02', estado_envio: 'pendiente' },
         { id: 4, de: 'clinica', texto: 'Cuatro', hora: '10:03', estado_envio: 'fallido' },
         { id: 5, de: 'paciente', texto: 'Cinco', hora: '10:04', estado_envio: 'incierto' },
+        { id: 6, de: 'clinica', texto: 'Seis', hora: '10:05', estado_envio: 'recibido_n8n' },
+        { id: 7, de: 'clinica', texto: 'Siete', hora: '10:06', estado_envio: 'aceptado' },
+        { id: 8, de: 'clinica', texto: 'Ocho', hora: '10:07', estado_envio: 'entregado' },
       ],
     }
     const { container } = render(<Messages full conversaciones={[conEstados]} selectedId="id-300" onSelectConversation={() => {}} />)
     const metas = [...container.querySelectorAll('.bubble-meta')].map((n) => n.textContent)
-    expect(metas).toEqual(['Vos · 10:00', 'Vos · 10:01 · Sin confirmar', 'Vos · 10:02 · Enviando…', 'Vos · 10:03 · No enviado', '10:04'])
+    expect(metas).toEqual([
+      'Vos · 10:00',
+      'Vos · 10:01 · Sin confirmar',
+      'Vos · 10:02 · Enviando…',
+      'Vos · 10:03 · No enviado',
+      '10:04',
+      'Vos · 10:05 · En cola de envío',
+      'Vos · 10:06 · Enviado a WhatsApp',
+      'Vos · 10:07 · Entregado',
+    ])
+    // "Entregado" sólo aparece con evidencia de entrega (estado 'entregado').
+    expect(metas.filter((m) => m.includes('Entregado'))).toEqual(['Vos · 10:07 · Entregado'])
   })
 })

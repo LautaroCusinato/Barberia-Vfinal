@@ -17,7 +17,11 @@
 //   * posible_duplicado: el mismo texto se envió o quedó incierto hace poco;
 //     sólo se reenvía con confirmación explícita.
 //   * desconocido: se perdió la respuesta; no se sabe si salió. El borrador se
-//     conserva y un reintento idéntico será frenado por el servidor.
+//     conserva y el reintento usa el mismo identificador de envío: el servidor
+//     responde con el estado registrado en lugar de enviar otra vez.
+//
+// `clientMessageId` identifica el envío (uno por borrador). Con la migración
+// 20261005120000 el servidor lo usa para que reintentar nunca duplique.
 import { leerErrorFuncion } from './conversaciones.js'
 
 export const CONTRATO_ENVIO = 2
@@ -25,7 +29,26 @@ export const CONTRATO_ENVIO = 2
 const SIN_VERIFICAR = 'No pudimos verificar si se puede escribir a este cliente. Podés redactar el mensaje e intentar enviarlo.'
 const SIN_SERVIDOR = 'No pudimos comunicarnos con el servidor. El mensaje no se envió y el borrador quedó guardado.'
 export const AVISO_INCIERTO = 'WhatsApp no confirmó el envío: puede haber llegado. Revisá WhatsApp antes de reenviarlo.'
+export const AVISO_YA_ENVIADO = 'Este mensaje ya se había enviado: no se volvió a enviar.'
 export const AVISO_DESCONOCIDO = 'No sabemos si el mensaje se envió (se perdió la respuesta). Revisá el hilo y WhatsApp antes de reintentar: si reenviás el mismo texto te vamos a pedir confirmación.'
+
+/**
+ * Identificador de envío por cliente y texto: reintentar el mismo borrador
+ * reutiliza el mismo identificador; cambiar el texto usa uno nuevo.
+ */
+export function claveDeEnvio(claves, clienteId, texto) {
+  const clave = JSON.stringify([clienteId, texto])
+  if (!claves.has(clave)) {
+    const id = globalThis.crypto?.randomUUID?.()
+    if (!id) return null
+    claves.set(clave, id)
+  }
+  return claves.get(clave)
+}
+
+export function olvidarClaveDeEnvio(claves, clienteId, texto) {
+  claves.delete(JSON.stringify([clienteId, texto]))
+}
 
 /**
  * Valida sin enviar (Iniciar chat). Devuelve el estado para el compositor y
@@ -70,7 +93,7 @@ async function enviarLegacy({ invoke, insertarLegacy, tenantId, clienteId, texto
   return { resultado: 'incierto', mensaje: fila, aviso: 'El mensaje quedó guardado pero no pudimos confirmar el envío por WhatsApp. Revisá WhatsApp antes de reenviarlo.', contrato: 'legacy' }
 }
 
-export async function enviarMensajePanel({ invoke, insertarLegacy, contrato = null, tenantId, clienteId, texto, hora, confirmarReenvio = false }) {
+export async function enviarMensajePanel({ invoke, insertarLegacy, contrato = null, tenantId, clienteId, texto, hora, confirmarReenvio = false, clientMessageId = null }) {
   let actual = contrato
   if (actual == null) {
     // Contrato desconocido (primer envío de la sesión): se pregunta sin enviar.
@@ -83,7 +106,7 @@ export async function enviarMensajePanel({ invoke, insertarLegacy, contrato = nu
 
   let respuesta
   try {
-    respuesta = await invoke({ action: 'send', tenant_id: tenantId, cliente_id: clienteId, texto, hora, ...(confirmarReenvio ? { confirm_resend: true } : {}) })
+    respuesta = await invoke({ action: 'send', tenant_id: tenantId, cliente_id: clienteId, texto, hora, ...(clientMessageId ? { client_message_id: clientMessageId } : {}), ...(confirmarReenvio ? { confirm_resend: true } : {}) })
   } catch {
     return { resultado: 'desconocido', aviso: AVISO_DESCONOCIDO, contrato: actual }
   }
@@ -100,8 +123,14 @@ export async function enviarMensajePanel({ invoke, insertarLegacy, contrato = nu
       }
       return { resultado: 'incierto', mensaje: null, aviso: 'El mensaje se envió pero no se pudo guardar en el panel.', contrato: 'legacy' }
     }
-    if (data?.sent === true) return { resultado: 'enviado', mensaje: data.mensaje ?? null, contrato: CONTRATO_ENVIO }
-    if (data?.uncertain === true) return { resultado: 'incierto', mensaje: data.mensaje ?? null, aviso: AVISO_INCIERTO, contrato: CONTRATO_ENVIO }
+    // Repetición: el mismo identificador ya estaba registrado; no se reenvió.
+    if (data?.replay === true) {
+      if (data.sent === true) return { resultado: 'enviado', mensaje: data.mensaje ?? null, aviso: AVISO_YA_ENVIADO, contrato: CONTRATO_ENVIO, botPausado: false }
+      return { resultado: 'incierto', mensaje: data.mensaje ?? null, aviso: AVISO_INCIERTO, contrato: CONTRATO_ENVIO, botPausado: false }
+    }
+    const botPausado = data?.bot_paused === true
+    if (data?.sent === true) return { resultado: 'enviado', mensaje: data.mensaje ?? null, contrato: CONTRATO_ENVIO, botPausado }
+    if (data?.uncertain === true) return { resultado: 'incierto', mensaje: data.mensaje ?? null, aviso: AVISO_INCIERTO, contrato: CONTRATO_ENVIO, botPausado }
     return { resultado: 'desconocido', aviso: AVISO_DESCONOCIDO, contrato: actual }
   }
   const detalle = await leerErrorFuncion(error, AVISO_DESCONOCIDO)
@@ -111,5 +140,7 @@ export async function enviarMensajePanel({ invoke, insertarLegacy, contrato = nu
     return { resultado: 'desconocido', aviso: detalle.respondio ? AVISO_DESCONOCIDO : detalle.message, contrato: actual }
   }
   if (detalle.code === 'panel_send_possible_duplicate') return { resultado: 'posible_duplicado', aviso: detalle.message, contrato: CONTRATO_ENVIO }
+  // El identificador quedó asociado a otro texto: el próximo intento usa uno nuevo.
+  if (detalle.code === 'idempotency_conflict') return { resultado: 'rechazado', aviso: detalle.message, contrato: CONTRATO_ENVIO, reiniciarClave: true }
   return { resultado: 'rechazado', aviso: detalle.message, contrato: detalle.contract === CONTRATO_ENVIO ? CONTRATO_ENVIO : actual }
 }
