@@ -1,4 +1,4 @@
-# Integración local de mejoras de Austral — actualizada el 07/10/2026
+# Integración local de mejoras de Austral — actualizada el 08/10/2026
 
 **Sólo para revisar las mejoras juntas. No es un candidato de release y no se
 publicó.** Ninguna tarea queda completada por estar acá. Sin push, merge a main,
@@ -22,7 +22,7 @@ modificaron, salvo las dos ramas de revisión de 41 creadas a pedido (ver abajo)
 
 | Rama | Punta | Contenido |
 |---|---|---|
-| `integracion/austral-revisadas` | `a2dd086` | Base + tareas con revisión independiente: 06, 07, 38 completa, 41, 42, 43 y 44 (cada una con su revisión) |
+| `integracion/austral-revisadas` | `3b1298c` | Base + tareas con revisión independiente: 06, 07, 38 completa, 41, 42, 43, 44 y 45 (cada una con su revisión) |
 | `integracion/austral-demo` | (esta, ver `git log`) | Además 08, 37, 09, 39 y 40 (revisión pendiente), 20 (postergada) y este documento con el mock de la demo |
 
 ## Inventario: commits originales → integrados
@@ -45,7 +45,8 @@ modificaron, salvo las dos ramas de revisión de 41 creadas a pedido (ver abajo)
 | 41 bloquear fechas | `ccd5be0` + `299f984` + `36caf56` | `c139aa6`, `a46959d`, `981daf1` | `a3c702c`, `eebf6e2`, `3297d6f` | revisión 07/10, ver abajo |
 | 44 CSV multilínea | `c4e2338` (Codex) + `94b0f13` | `cf998a2`, `92e920d` | `8263fbf`, `761e5af` | revisión 07/10: vuelve a aceptar comas finales / columnas sobrantes vacías |
 | 42 sin días laborales | `e2d9d61` (Codex) + `f1dd489` | `fed83c0`, `9de88ea` | `7d0e881`, `67eca14` | revisión 07/10: la pausa ya no se pierde al pasar por cero días |
-| 43 notas por cliente | `ac8c171` (Codex) + `d46e890` | `719e8e8`, `a2dd086` | `9844008`, `d96c3bb` | revisión 07/10: notas antiguas sin ID visibles en la ficha con un único candidato |
+| 43 notas por cliente | `ac8c171` (Codex) + `d46e890` + `0baa10e` | `719e8e8`, `a2dd086`, `6a35ac0` | `9844008`, `d96c3bb`, `8b0fdc5` | revisión 07–08/10: **asociación sólo por `cliente_id`**. `d46e890` agregó un vínculo por nombre y `0baa10e` lo retiró (con `on delete set null`, un homónimo nuevo heredaba notas de una ficha borrada); regresión borrar → crear homónimo |
+| 45 cobros reales | `354a216` (Codex) + `a3128e7` | `330f55a`, `3b1298c` | `5743992`, `97b9a1b` | revisión 08/10 (worktree `revision-45`): una recarga de pagos por Realtime ya no borra los totales confirmados |
 
 **Con revisión pendiente (sólo en la demo):**
 
@@ -63,9 +64,8 @@ publicar; la migración `20261005220000` no se aplica.
 
 **No incorporado:**
 
-- 45 (tiene una propuesta local de Codex que no se pidió integrar) y 46 (sin
-  implementar): pendientes, no se dan por resueltas.
-- 47, registrada el 07/10, sin implementar: el panel carga `turnos`,
+- 46: tiene una propuesta local de Codex que no se pidió revisar ni integrar.
+- **47, siguiente frente** (registrada el 07/10, sin implementar): el panel carga `turnos`,
   `bloqueos_agenda` y `mensajes` sin rango y en orden ascendente. Con más de
   1000 filas (el límite por defecto de PostgREST) faltan los futuros o los más
   recientes, sin error visible. La consulta en la base de la advertencia de
@@ -118,11 +118,11 @@ Todos se resolvieron conservando lo de ambas partes:
 
 ## Controles sobre la combinación final (Node 24.18.0 / npm 11.16.0; CI usa Node 22)
 
-| Control | `austral-revisadas` (`a2dd086`) | `austral-demo` (`d96c3bb` + docs) |
+| Control | `austral-revisadas` (`3b1298c`) | `austral-demo` (`97b9a1b` + docs) |
 |---|---|---|
 | `npm run lint` | PASS | PASS |
 | `npm test` (contratos) | PASS | PASS |
-| `npm run test:unit -- --maxWorkers=2` | PASS 50 archivos / 603 tests | PASS 54 archivos / 692 tests |
+| `npm run test:unit -- --maxWorkers=2` | PASS 53 archivos / 622 tests | PASS 57 archivos / 711 tests |
 | `npm run build` | PASS | PASS |
 | SQL local `bloqueos-agenda` (41) | PASS | PASS |
 | SQL local `whatsapp-panel-send` (38) | PASS | PASS |
@@ -131,11 +131,12 @@ Todos se resolvieron conservando lo de ambas partes:
 
 Las suites SQL corren en un PostgreSQL 18 efímero local; no tocan ninguna base
 remota. La de moneda (20) no se corrió: está postergada. Los logs están en
-`../integracion-logs/` (`demo-d96c3bb/`, `revisadas-a2dd086/`; los de la tanda anterior siguen en `demo-final-3297d6f/` y `revisadas-final/`).
+`../integracion-logs/` (`demo-97b9a1b/`, `revisadas-3b1298c/`; las tandas anteriores siguen en `demo-d96c3bb/`, `revisadas-a2dd086/`, `demo-final-3297d6f/` y `revisadas-final/`).
 
 ## Probado en el navegador, sólo con datos de demo
 
 - **42/43 (segunda tanda):** en Operación, quitar los 7 días de un profesional y reactivar el martes deja sólo el martes; en Clientes, «Ver notas» abre Notas filtradas por la ficha («Notas de Agustín Molina»). 44 vive en el CRM de plataforma, que no está en `/demo`: cubierto sólo por pruebas.
+- **45:** Estadísticas muestra «Cobrado registrado $ 0» separado de «Valor estimado de atendidos sin cobro registrado $ 17.000», con la aclaración de que es una estimación.
 - **Reserva pública en pesos (37/09):** mock local de las 3 RPC
   (`scripts/demo-local/mock-reserva-publica.mjs`, `127.0.0.1:54399`):
   - 3 pasos completos hasta «¡Turno reservado!»;
