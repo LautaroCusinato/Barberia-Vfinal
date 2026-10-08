@@ -6,6 +6,7 @@ import ClientDetailModal from './ClientDetailModal'
 import EditClientModal from './EditClientModal'
 import NewClientModal from './NewClientModal'
 import { EmptyState } from './ui'
+import { notaDelCliente } from '../lib/clientNotes'
 
 export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente, onStartChat, clientesConMensajes }) {
   const [query, setQuery] = useState('')
@@ -28,7 +29,7 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
     })
   }, [pacientes, query])
 
-  const notasPorPaciente = (nombre) => (notas || []).filter((n) => n.paciente === nombre).length
+  const notasPorPaciente = (cliente) => (notas || []).filter((n) => notaDelCliente(n, cliente)).length
 
   return (
     <div className="management-screen management-clients">
@@ -78,7 +79,7 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
           </thead>
           <tbody>
             {filtrados.map((p) => {
-              const cantidad = notasPorPaciente(p.nombre)
+              const cantidad = notasPorPaciente(p)
               return (
                 <tr key={p.id}>
                   <td>
@@ -101,7 +102,7 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
                     <button
                       className="btn"
                       style={{ padding: '5px 10px', fontSize: 11.5 }}
-                      onClick={() => onViewNotes(p.nombre)}
+                      onClick={() => onViewNotes(p.id)}
                     >
                       <StickyNote size={13} style={{ color: cantidad > 0 ? 'var(--accent)' : 'var(--ink-faint)' }} />
                       {cantidad > 0 ? cantidad : 'Ver'}
@@ -148,7 +149,7 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
       {pacientes.length > 0 && filtrados.length > 0 && (
         <div className="clients-mobile-list" aria-label="Clientes">
           {filtrados.map((p) => {
-            const cantidad = notasPorPaciente(p.nombre)
+            const cantidad = notasPorPaciente(p)
             return (
               <article className="client-mobile-card" key={p.id}>
                 <div className="client-mobile-card-head">
@@ -190,7 +191,7 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
                 </dl>
                 <div className="client-mobile-notes">
                   <span><StickyNote size={14} /> Notas</span>
-                  <button className="btn" onClick={() => onViewNotes(p.nombre)}>
+                  <button className="btn" onClick={() => onViewNotes(p.id)}>
                     {cantidad > 0 ? `${cantidad} registrada${cantidad === 1 ? '' : 's'}` : 'Ver notas'}
                   </button>
                 </div>

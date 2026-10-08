@@ -26,6 +26,7 @@ import Calendar from './components/Calendar'
 import Messages from './components/Messages'
 import Clientes from './components/Clientes'
 import Notes from './components/Notes'
+import { asociacionNota } from './lib/clientNotes'
 import Stats from './components/Stats'
 import Operations from './components/Operations'
 import OnboardingChecklist from './components/OnboardingChecklist'
@@ -375,9 +376,9 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
     }
   }
 
-  const verNotasDePaciente = (nombre) => {
+  const verNotasDePaciente = (clienteId) => {
     navigateFromMenu('notas')
-    setNotasFiltro(nombre)
+    setNotasFiltro({ clienteId })
   }
 
   const navigateFromMenu = (v, { replace = false } = {}) => {
@@ -831,12 +832,17 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   }
 
   const addNota = async (nueva) => {
-    const conFecha = { ...nueva, fecha: todayKey }
+    const asociacion = nueva.cliente_id == null
+      ? { cliente_id: null, paciente: String(nueva.paciente || 'General') }
+      : asociacionNota(nueva.cliente_id, pacientes)
+    if (!asociacion) { mostrarValidacion('El cliente ya no está disponible. Actualizá la lista antes de guardar.'); return false }
+    const conFecha = { ...asociacion, texto: nueva.texto, fecha: todayKey }
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from('notas').insert({ ...conFecha, barberia_id: barberiaId }).select()
         if (error) { reportError('No se pudo guardar la nota', error); return false }
-        if (data?.[0]) setNotas((prev) => [data[0], ...prev])
+        if (!data?.[0]) { reportError('No se pudo confirmar el guardado de la nota'); return false }
+        setNotas((prev) => [data[0], ...prev])
         return true
       } catch (error) {
         reportError('No se pudo guardar la nota', error)
@@ -1146,17 +1152,24 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
 
   const deletePaciente = (id) => eliminarOptimista(pacientes, setPacientes, id, 'clientes', 'No se pudo eliminar el cliente')
 
-  const updateNota = async (id, texto) => {
+  const updateNota = async (id, texto, asociacionElegida) => {
+    const asociacion = asociacionElegida === undefined ? undefined : asociacionElegida.cliente_id == null
+      ? { cliente_id: null, paciente: 'General' }
+      : asociacionNota(asociacionElegida.cliente_id, pacientes)
+    if (asociacion === null) { mostrarValidacion('El cliente ya no está disponible. Actualizá la lista antes de guardar.'); return false }
+    const cambios = { texto, ...asociacion }
     const anterior = notas.find((n) => n.id === id)
-    setNotas((prev) => prev.map((n) => (n.id === id ? { ...n, texto } : n)))
+    if (!anterior) return false
+    setNotas((prev) => prev.map((n) => (n.id === id ? { ...n, ...cambios } : n)))
     if (!isSupabaseConfigured) return true
     try {
-      const { error } = await supabase.from('notas').update({ texto }).eq('id', id)
-      if (error) {
+      const { data, error } = await supabase.from('notas').update(cambios).eq('id', id).eq('barberia_id', barberiaId).select()
+      if (error || !data?.[0]) {
         if (anterior) setNotas((prev) => prev.map((n) => (n.id === id ? anterior : n)))
         reportError('No se pudo actualizar la nota', error)
         return false
       }
+      setNotas((prev) => prev.map((n) => n.id === id ? data[0] : n))
       return true
     } catch (error) {
       if (anterior) setNotas((prev) => prev.map((n) => (n.id === id ? anterior : n)))
@@ -1895,6 +1908,8 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
                 onDelete={deleteNota}
                 pacientes={pacientes}
                 filtroInicial={notasFiltro}
+                filtroClienteId={notasFiltro?.clienteId}
+                onClearCliente={() => setNotasFiltro('')}
               />
             )}
           </div>

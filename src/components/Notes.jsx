@@ -3,23 +3,27 @@ import { NotebookPen, StickyNote, Check, Search, X, Pencil, Trash2 } from 'lucid
 import { formatFechaVisible, normalizar } from '../lib/text'
 import { despuesDelColapso } from '../lib/collapseDelete'
 import { EmptyState } from './ui'
+import { asociacionNota, clienteDeNota, etiquetaClienteNota, nombreDeNota, notaDelCliente } from '../lib/clientNotes'
 
-const PACIENTE_GENERAL = 'General'
+const PACIENTE_GENERAL = '__general__'
 const OTRO_PACIENTE = '__otro__'
 
-function NoteCard({ nota, onUpdate, onDelete }) {
+function NoteCard({ nota, onUpdate, onDelete, pacientes }) {
   const [editando, setEditando] = useState(false)
   const [draft, setDraft] = useState(nota.texto)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false) // fila colapsándose
   const [errorMsg, setErrorMsg] = useState('')
+  const [clienteSel, setClienteSel] = useState('__conservar__')
 
   const guardar = async () => {
     if (!draft.trim()) return
     setSaving(true)
     setErrorMsg('')
     try {
-      const saved = await onUpdate?.(nota.id, draft.trim())
+      const asociacion = clienteSel === '__conservar__' ? undefined : asociacionNota(clienteSel, pacientes)
+      if (clienteSel !== '__conservar__' && !asociacion) { setErrorMsg('El cliente ya no está disponible. Revisá la selección.'); return }
+      const saved = await onUpdate?.(nota.id, draft.trim(), asociacion)
       if (saved !== false) setEditando(false)
       else setErrorMsg('No se pudo actualizar la nota. El texto quedó preservado.')
     } catch {
@@ -38,6 +42,7 @@ function NoteCard({ nota, onUpdate, onDelete }) {
 
   const cancelar = () => {
     setDraft(nota.texto)
+    setClienteSel('__conservar__')
     setEditando(false)
   }
 
@@ -46,10 +51,10 @@ function NoteCard({ nota, onUpdate, onDelete }) {
     <div className="collapse-row__inner">
     <div className="note-card fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <p className="note-meta">{nota.paciente} · {formatFechaVisible(nota.fecha)}</p>
+        <p className="note-meta">{nombreDeNota(nota, pacientes)} · {formatFechaVisible(nota.fecha)}{!clienteDeNota(nota, pacientes) && nota.paciente !== 'General' && ' · Sin vínculo a una ficha'}</p>
         {!editando && (
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-            <button className="btn-icon-plain" onClick={() => { setErrorMsg(''); setEditando(true) }} disabled={deleting} aria-label="Editar nota" title="Editar nota">
+            <button className="btn-icon-plain" onClick={() => { setErrorMsg(''); setClienteSel('__conservar__'); setEditando(true) }} disabled={deleting} aria-label="Editar nota" title="Editar nota">
               <Pencil size={13} />
             </button>
             <button className="btn-icon-plain" onClick={eliminar} disabled={deleting} aria-label="Eliminar nota" title="Eliminar nota">
@@ -61,6 +66,13 @@ function NoteCard({ nota, onUpdate, onDelete }) {
 
       {editando ? (
         <div style={{ marginTop: 6 }}>
+          <label>Cliente de esta nota
+            <select className="text-input" aria-label="Cliente de esta nota" value={clienteSel} onChange={(e) => setClienteSel(e.target.value)} disabled={saving}>
+              <option value="__conservar__">Conservar vínculo actual</option>
+              <option value={PACIENTE_GENERAL}>General (sin cliente puntual)</option>
+              {(pacientes || []).map((p) => <option key={p.id} value={String(p.id)}>{etiquetaClienteNota(p, pacientes)}</option>)}
+            </select>
+          </label>
           <textarea className="note-input" value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus disabled={saving} />
           {errorMsg && <p className="login-error" role="alert">{errorMsg}</p>}
           <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -79,34 +91,38 @@ function NoteCard({ nota, onUpdate, onDelete }) {
   )
 }
 
-export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, filtroInicial }) {
+export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes = [], filtroInicial, filtroClienteId, onClearCliente }) {
   const [texto, setTexto] = useState('')
-  const [pacienteSel, setPacienteSel] = useState(PACIENTE_GENERAL)
+  const [pacienteSel, setPacienteSel] = useState(filtroClienteId != null ? String(filtroClienteId) : PACIENTE_GENERAL)
   const [pacienteLibre, setPacienteLibre] = useState('')
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  const [query, setQuery] = useState(filtroInicial || '')
+  const [query, setQuery] = useState(typeof filtroInicial === 'string' ? filtroInicial : '')
 
   // Si llegamos acá desde "ver notas" de un paciente puntual (en la sección
   // Pacientes), precargamos el filtro con su nombre.
   useEffect(() => {
-    if (filtroInicial) setQuery(filtroInicial)
+    if (typeof filtroInicial === 'string' && filtroInicial) setQuery(filtroInicial)
   }, [filtroInicial])
+  useEffect(() => {
+    if (filtroClienteId != null) setPacienteSel(String(filtroClienteId))
+  }, [filtroClienteId])
 
   const notasFiltradas = useMemo(() => {
     const q = query.trim()
-    if (!q) return notas
     const qn = normalizar(q)
-    return notas.filter((n) => normalizar(n.paciente || '').includes(qn))
-  }, [notas, query])
+    const cliente = pacientes.find((p) => String(p.id) === String(filtroClienteId))
+    return notas.filter((n) => (filtroClienteId == null || notaDelCliente(n, cliente)) && (!q || normalizar(nombreDeNota(n, pacientes)).includes(qn)))
+  }, [notas, query, filtroClienteId, pacientes])
 
   const submit = async () => {
     if (!texto.trim()) return
-    const pacienteFinal = pacienteSel === OTRO_PACIENTE ? pacienteLibre.trim() || PACIENTE_GENERAL : pacienteSel
+    const asociacion = asociacionNota(pacienteSel, pacientes, pacienteLibre)
+    if (!asociacion) { setErrorMsg('El cliente ya no está disponible. Revisá la selección.'); return }
     setSaving(true)
     setErrorMsg('')
     try {
-      const saved = await onAdd({ paciente: pacienteFinal, texto: texto.trim() })
+      const saved = await onAdd({ ...asociacion, texto: texto.trim() })
       if (saved !== false) {
         setTexto('')
         setPacienteLibre('')
@@ -135,13 +151,14 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
           aria-label="Cliente de la nota"
           value={pacienteSel}
           onChange={(e) => setPacienteSel(e.target.value)}
+          disabled={saving}
           style={{ marginBottom: 8 }}
         >
           <option value={PACIENTE_GENERAL}>General (sin cliente puntual)</option>
           {(pacientes || []).map((p) => (
-            <option key={p.id} value={p.nombre}>{p.nombre}</option>
+            <option key={p.id} value={String(p.id)}>{etiquetaClienteNota(p, pacientes)}</option>
           ))}
-          <option value={OTRO_PACIENTE}>Otro cliente (escribir nombre)...</option>
+          <option value={OTRO_PACIENTE}>Sin ficha (escribir nombre)...</option>
         </select>
 
         {pacienteSel === OTRO_PACIENTE && (
@@ -151,6 +168,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
             placeholder="Nombre del cliente"
             value={pacienteLibre}
             onChange={(e) => setPacienteLibre(e.target.value)}
+            disabled={saving}
             style={{ marginBottom: 8 }}
           />
         )}
@@ -172,6 +190,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
         </div>
       </div>
 
+      {filtroClienteId != null && <p className="settings-notice">Notas de {etiquetaClienteNota(pacientes.find((p) => String(p.id) === String(filtroClienteId)) || {id:filtroClienteId,nombre:'Cliente no disponible'}, pacientes)} · <button type="button" className="link-btn" onClick={() => { setQuery(''); onClearCliente?.() }}>Ver todas las notas</button></p>}
       <div className="search-bar">
         <Search size={16} style={{ color: 'var(--ink-faint)' }} />
         <input
@@ -195,7 +214,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes, fil
       ) : (
         <div className="notes-list">
           {notasFiltradas.map((n) => (
-            <NoteCard key={n.id} nota={n} onUpdate={onUpdate} onDelete={onDelete} />
+            <NoteCard key={n.id} nota={n} onUpdate={onUpdate} onDelete={onDelete} pacientes={pacientes} />
           ))}
         </div>
       )}
