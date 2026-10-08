@@ -31,12 +31,15 @@ function parseHorario(horario) {
   // La agenda normalizada ya reconoce este marcador como cero jornadas.
   // No aplicar los días por defecto del formulario al volver a leerlo: una
   // edición posterior de la hora reactivaría lunes a viernes sin pedirlo.
-  const sinDias = normalizar(horario).match(/^\s*sin dias asignados\b(?:\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2}))?/)
+  const sinDias = normalizar(horario).match(/^\s*sin dias asignados\b(?:\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2})(?:\s+break\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2}))?)?/)
   if (sinDias) return {
     ...HORARIO_DEFAULT,
     dias: new Set(),
     desde: sinDias[1]?.padStart(5, '0') || HORARIO_DEFAULT.desde,
     hasta: sinDias[2]?.padStart(5, '0') || HORARIO_DEFAULT.hasta,
+    // La pausa se conserva para cuando se vuelva a activar un día.
+    breakDesde: sinDias[3]?.padStart(5, '0') || '',
+    breakHasta: sinDias[4]?.padStart(5, '0') || '',
   }
 
   const matchBreak = horario.match(/^(.+?)\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2})\s+break\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/)
@@ -72,7 +75,10 @@ function parseHorario(horario) {
 
 function serializeHorario(dias, desde, hasta, breakDesde, breakHasta) {
   const ordenados = DIAS.filter((d) => dias.has(d))
-  if (ordenados.length === 0) return `Sin dias asignados ${desde}-${hasta}`
+  const pausa = breakDesde && breakHasta && breakDesde !== breakHasta ? ` break ${breakDesde}-${breakHasta}` : ''
+  // Sin días la agenda queda vacía (parseHorarioTexto lo reconoce por el
+  // prefijo); la pausa se guarda igual para no perderla al reactivar un día.
+  if (ordenados.length === 0) return `Sin dias asignados ${desde}-${hasta}${pausa}`
 
   const diasTexto =
     ordenados.length === 1

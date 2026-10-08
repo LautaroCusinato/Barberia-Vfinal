@@ -55,3 +55,21 @@ el comportamiento en esos entornos y la combinación final al integrar.
 Revisar el diff sobre a3c702c y repetir controles al integrarlo. La revisión
 posterior de 41 y la propuesta 44 no forman parte de esta base; no copiar
 los commits de la base por duplicado. La tarea sigue sin tildar.
+
+## Revisión independiente — 07/10/2026 (Claude)
+
+Fallo comprobado y corregido: con cero días el serializador guardaba sólo
+`Sin dias asignados 09:00-18:00` y descartaba la pausa. Quitar todos los días
+(por ejemplo, por vacaciones) y reactivar uno perdía la pausa configurada.
+Ahora el marcador conserva el sufijo (`Sin dias asignados 09:00-18:00 break
+13:00-14:00`) y el editor lo vuelve a leer. Compatibilidad: `parseHorarioTexto`
+reconoce el marcador por el prefijo y devuelve agenda vacía también con el
+sufijo; `parseHorarioBarbero` devuelve `null` igual que antes; el webhook sólo
+lee `horario_texto` como contexto. Regresión nueva en
+`Operations.schedule.test.jsx` (fallaba sobre `e2d9d61`).
+
+Revisado sin cambios: cero días al abrir (con y sin tildes), horas con un
+dígito, reapertura, reactivación explícita de un día, rechazo de guardado y el
+Set de días por defecto (el editor copia antes de modificar). Sigue la deuda
+previa: otros textos no reconocidos vuelven a lunes–viernes en el formulario.
+Pendiente igual que antes: persistencia de `horarios_barbero` con backend real.

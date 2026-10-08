@@ -69,4 +69,19 @@ describe('Operación: profesional sin días laborales (42)', () => {
     fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: '19:00' } })
     await waitFor(() => expect(saved).toHaveBeenCalledWith(7, 'horario', 'Lun y Mar 09:00-19:00 break 13:00-14:00'))
   })
+
+  // Revisión 42: pasar por cero días (p. ej. vacaciones) no borra la pausa
+  // configurada; al reactivar un día vuelve con la misma pausa.
+  it('conserva la pausa al quitar todos los días y reactivar uno', async () => {
+    const first = setup('Lun 09:00-18:00 break 13:00-14:00')
+    fireEvent.click(screen.getByRole('button', { name: 'Lun', exact: true }))
+    await waitFor(() => expect(first.saved).toHaveBeenLastCalledWith(7, 'horario', 'Sin dias asignados 09:00-18:00 break 13:00-14:00'))
+    const sinDias = first.saved.mock.calls.at(-1)[2]
+    expect(parseHorarioTexto(sinDias)).toEqual([])
+    first.unmount()
+    const second = setup(sinDias)
+    expectNoDays()
+    fireEvent.click(screen.getByRole('button', { name: 'Mar', exact: true }))
+    await waitFor(() => expect(second.saved).toHaveBeenLastCalledWith(7, 'horario', 'Mar 09:00-18:00 break 13:00-14:00'))
+  })
 })
