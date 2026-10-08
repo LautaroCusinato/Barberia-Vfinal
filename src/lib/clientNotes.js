@@ -1,28 +1,11 @@
 const idIgual = (a, b) => a != null && b != null && String(a) === String(b)
-const mismoNegocio = (nota, cliente) => nota.barberia_id == null || cliente.barberia_id == null || idIgual(nota.barberia_id, cliente.barberia_id)
 
-// Notas anteriores a la tarea 43: el alta nunca guardaba cliente_id y la
-// ficha las mostraba por nombre. Se siguen mostrando en la ficha sólo si un
-// único cliente del negocio tiene exactamente ese nombre (sin escribir nada);
-// con homónimos quedan sin atribuir, visibles en Todas las notas.
-export function clienteLegadoDeNota(nota, clientes = []) {
-  if (!nota || nota.cliente_id != null) return null
-  const nombre = String(nota.paciente ?? '').trim()
-  if (!nombre || nombre === 'General') return null
-  const candidatos = (clientes || []).filter((cliente) => String(cliente.nombre ?? '').trim() === nombre && mismoNegocio(nota, cliente))
-  return candidatos.length === 1 ? candidatos[0] : null
-}
-
-// Con la lista de clientes se reconoce también el vínculo por nombre de una
-// nota anterior; sin ella sólo cuenta el cliente_id.
-export function notaDelCliente(nota, cliente, clientes = null) {
-  if (!cliente || !nota) return false
-  if (nota.cliente_id != null) return idIgual(nota.cliente_id, cliente.id) && mismoNegocio(nota, cliente)
-  return Array.isArray(clientes) && idIgual(clienteLegadoDeNota(nota, clientes)?.id, cliente.id)
+export function notaDelCliente(nota, cliente) {
+  if (!cliente || !idIgual(nota.cliente_id, cliente.id)) return false
+  return nota.barberia_id == null || cliente.barberia_id == null || idIgual(nota.barberia_id, cliente.barberia_id)
 }
 
 export function clienteDeNota(nota, clientes = []) {
-  if (nota?.cliente_id == null) return clienteLegadoDeNota(nota, clientes)
   return clientes.find((cliente) => notaDelCliente(nota, cliente)) || null
 }
 

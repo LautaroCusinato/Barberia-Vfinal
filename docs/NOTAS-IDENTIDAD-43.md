@@ -81,40 +81,33 @@ Los límites previos de concurrencia de edición o incertidumbre de una
 respuesta de alta no quedan resueltos por esta tarea: no prometer idempotencia
 de notas ni reemplazo atómico de toda la ficha. La tarea queda sin tildar.
 
-## Revisión independiente — 07/10/2026 (Claude)
+## Revisión independiente — 07/10/2026 (Claude), corregida
 
-**Regresión corregida — notas existentes fuera de las fichas.** El alta
-anterior nunca guardaba `cliente_id` y la ficha mostraba esas notas por nombre.
-Con `ac8c171`, **todas** las notas ya guardadas desaparecían de fichas y
-contadores; seguían sólo en «Todas las notas». La tarea pedía no asignar por
-nombre *con más de un candidato*.
+**Se retira el vínculo por nombre que agregó `d46e890`.** Esa revisión mostraba en la ficha las notas sin `cliente_id` cuando un único cliente tenía ese nombre, y es incorrecto. `notas.cliente_id` usa `on delete set null` (`20260810171324_qa_base_schema.sql`): al borrar una ficha, sus notas quedan sin vínculo y con el nombre como texto. Si después se creaba otro cliente con el mismo nombre, heredaba las notas del cliente borrado. Codex lo reprodujo también con una nota antigua `paciente = "Juan"` y un cliente nuevo llamado Juan.
 
-Ahora:
+Se vuelve al comportamiento de `ac8c171`:
 
-- Una nota sin `cliente_id` se muestra en la ficha si **exactamente un**
-  cliente del negocio tiene ese nombre (comparación exacta tras recortar
-  espacios, igual que antes). En Notas aparece marcada como «Nota anterior,
-  vinculada por nombre».
-- Con homónimos, «General», otro negocio o un nombre que ya no coincide
-  (cliente renombrado) no se atribuye.
-- **No se escribe nada en la base.** Vincularla de forma permanente sigue
-  siendo explícito, desde Editar.
-- Una nota con `cliente_id` nunca se reasigna por nombre.
-- Una nota nueva «Sin ficha» cuyo nombre coincide exactamente con un único
-  cliente también se ve en esa ficha, igual que antes de 43.
+- **Asociación sólo por ID:** una nota pertenece a una ficha únicamente por `cliente_id`.
+- **Notas sin vínculo:** las que no tienen `cliente_id` (antiguas o de fichas borradas) siguen en «Todas las notas», marcadas «Sin vínculo a una ficha». No se atribuyen a ninguna ficha por nombre.
+- **Vinculación manual:** desde Editar se elige la ficha por ID. Se guarda filtrando por negocio y exigiendo la fila devuelta.
 
-Cuatro pruebas en `Notes.legacy.test.jsx`, las cuatro fallaban sobre
-`ac8c171`.
+**Consecuencia para el dueño:** las notas creadas antes de 43 nunca tuvieron `cliente_id`. Desde ahora dejan de verse en las fichas y en los contadores hasta que se vinculen a mano. Un backfill automático tendría que ser una decisión explícita, revisada por una persona, sólo con candidatos únicos **y** sin fichas borradas con ese nombre. No se hizo.
+
+**Regresión:** `src/components/Notes.borrado-homonimo.test.jsx` simula el borrado con la semántica de `ON DELETE SET NULL` y crea otro «Juan». Comprueba:
+
+- el contador, la ficha y Notas filtradas por esa ficha quedan vacíos;
+- las notas siguen en «Todas las notas»;
+- se pueden asociar a mano por ID.
+
+Tres de las cuatro pruebas fallan con `d46e890`. `/demo` no aplica `SET NULL` porque no hay base, así que la regresión trabaja sobre los datos que deja la base tras el borrado.
 
 **Revisado sin cambios:**
 
-- selección y alta por ID con fila devuelta;
-- edición filtrada por negocio y con fila devuelta;
-- homónimos con sufijo de teléfono;
-- «General» como nombre;
-- cliente desaparecido conserva el borrador;
-- «Ver todas las notas»;
-- Deshacer de 06 y accesos de 38 intactos.
+- alta por ID con fila devuelta;
+- edición filtrada por negocio;
+- homónimos distinguidos por el final del teléfono;
+- «General» como nombre de cliente;
+- un cliente que desaparece no hace perder el borrador;
+- Deshacer de 06 y los accesos de 38.
 
-**Pendiente igual que antes:** roles, persistencia y frontera entre negocios
-con backend real.
+**Pendiente:** roles, persistencia y frontera entre negocios con backend real.
