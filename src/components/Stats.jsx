@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CalendarCheck, CalendarDays, CheckCircle2, Coins, Percent, Receipt, Users2, Wallet, Banknote, CreditCard, Landmark, Search, UserX, X } from 'lucide-react'
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
 import AnimatedNumber from './AnimatedNumber'
 import { capitalizar, formatPrecio, normalizar } from '../lib/text'
+import { fechaPago, resumenCobros } from '../lib/paymentStats'
 
 const DEFAULT_TZ = 'America/Argentina/Buenos_Aires'
 
@@ -12,12 +13,6 @@ const METODO_META = {
   efectivo: { label: 'Efectivo', Icon: Banknote, bg: 'var(--green-soft)', color: 'var(--green-text)' },
   mercadopago: { label: 'Mercado Pago', Icon: CreditCard, bg: 'var(--blue-soft)', color: 'var(--blue-text)' },
   transferencia: { label: 'Transferencia', Icon: Landmark, bg: 'var(--violet-soft)', color: 'var(--violet-text)' },
-}
-
-// Los pagos se agrupan por día en la zona del negocio, la misma que usa
-// todayKey; con una zona fija no coincidían para negocios fuera de AR.
-function fechaEnTZ(isoString, timezone = DEFAULT_TZ) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date(isoString))
 }
 
 function ultimosNDias(n, todayKey) {
@@ -31,31 +26,17 @@ function ultimosNDias(n, todayKey) {
   return dias
 }
 
-export default function Stats({ turnos, pacientes, conversaciones: _conversaciones, todayKey, barberos = [], servicios = [], pagos = [], timezone = DEFAULT_TZ }) {
+export default function Stats({ turnos, pacientes, conversaciones: _conversaciones, todayKey, barberos = [], servicios = [], pagos = [], pagosEstado = 'listo', timezone = DEFAULT_TZ }) {
   const atendidos = useMemo(() => turnos.filter((t) => statusMeta(t.estado).value === 'atendido'), [turnos])
-  // Lo cobrado de verdad (modal de cobro) manda; el precio de lista queda
-  // sólo como respaldo para turnos atendidos sin cobro registrado.
-  const cobradoPorTurno = useMemo(() => {
-    const totales = {}
-    for (const p of pagos) if (p.turno_id != null) totales[String(p.turno_id)] = (totales[String(p.turno_id)] || 0) + (Number(p.monto) || 0)
-    return totales
-  }, [pagos])
-  const ingresoDeTurno = useCallback((t) => cobradoPorTurno[String(t.id)] ?? (Number(t.precio) || 0), [cobradoPorTurno])
-  const ingresosTotales = useMemo(() => atendidos.reduce((acc, t) => acc + ingresoDeTurno(t), 0), [atendidos, ingresoDeTurno])
-  const ticketPromedio = atendidos.length > 0 ? Math.round(ingresosTotales / atendidos.length) : 0
-
-  const ingresosPorBarbero = useMemo(() => {
-    const nombreDe = (id) => barberos.find((b) => String(b.id) === String(id))?.nombre || 'Sin barbero'
-    const colorDe = (id) => barberos.find((b) => String(b.id) === String(id))?.color || 'var(--accent)'
-    const totales = {}
-    for (const t of atendidos) {
-      const key = String(t.barbero_id)
-      if (!totales[key]) totales[key] = { label: nombreDe(t.barbero_id), color: colorDe(t.barbero_id), total: 0, turnos: 0 }
-      totales[key].total += ingresoDeTurno(t)
-      totales[key].turnos += 1
-    }
-    return Object.values(totales).sort((a, b) => b.total - a.total)
-  }, [atendidos, barberos, ingresoDeTurno])
+  const resumen = useMemo(() => resumenCobros(pagos, turnos, barberos), [pagos, turnos, barberos])
+  const ingresosPorBarbero = resumen.porProfesional
+  const pagosListos = pagosEstado === 'listo'
+  const dineroConfirmado = (valor) => pagosListos ? money(valor) : '—'
+  const avisoPagos = pagosEstado === 'cargando'
+    ? 'Cargando cobros. Los importes se mostrarán cuando termine la lectura.'
+    : pagosEstado === 'incompleto'
+      ? 'La lectura de pagos está incompleta. No se pueden confirmar los totales ni las estimaciones.'
+      : 'No se pudieron actualizar los pagos. Los totales no están confirmados; el historial conservado puede estar desactualizado.'
 
   const maxIngresoBarbero = Math.max(1, ...ingresosPorBarbero.map((b) => b.total))
 
@@ -104,7 +85,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
   const confirmadosTotal = turnos.filter((t) => statusMeta(t.estado).value === 'confirmado').length
 
   const pagosHoy = useMemo(
-    () => pagos.filter((p) => fechaEnTZ(p.created_at, timezone) === todayKey),
+    () => pagos.filter((p) => fechaPago(p.created_at, timezone) === todayKey),
     [pagos, todayKey, timezone]
   )
 
@@ -114,7 +95,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
     return totales
   }, [pagosHoy])
 
-  const totalCajaHoy = totalesPorMetodoHoy.efectivo + totalesPorMetodoHoy.mercadopago + totalesPorMetodoHoy.transferencia
+  const totalCajaHoy = pagosHoy.reduce((sum, p) => sum + (Number(p.monto) || 0), 0)
 
   const [filtroPagoNombre, setFiltroPagoNombre] = useState('')
   const [filtroPagoFecha, setFiltroPagoFecha] = useState('')
@@ -122,7 +103,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
   const historialPagos = useMemo(() => {
     const q = normalizar(filtroPagoNombre.trim())
     return pagos
-      .filter((p) => !filtroPagoFecha || fechaEnTZ(p.created_at, timezone) === filtroPagoFecha)
+      .filter((p) => !filtroPagoFecha || fechaPago(p.created_at, timezone) === filtroPagoFecha)
       .filter((p) => !q || normalizar(p.paciente || '').includes(q))
       .slice()
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -130,6 +111,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
 
   return (
     <div>
+      <p className="note-popover-empty">Cobros en pesos de los pagos cargados. Caja usa la fecha del pago en la zona del negocio.</p>
+      {!pagosListos && <p role={pagosEstado === 'cargando' ? 'status' : 'alert'} className="note-popover-empty">{avisoPagos}</p>}
       <div className="stats-row">
         <div className="stat-card">
           <div>
@@ -172,8 +155,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
       <div className="stats-row">
         <div className="stat-card">
           <div>
-            <p className="stat-label">Ingresos totales</p>
-            <p className="stat-value"><AnimatedNumber value={money(ingresosTotales)} /></p>
+            <p className="stat-label">Cobrado registrado</p>
+            <p className="stat-value"><AnimatedNumber value={dineroConfirmado(resumen.cobrado)} /></p>
           </div>
           <div className="stat-icon">
             <Wallet size={17} />
@@ -181,8 +164,9 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         </div>
         <div className="stat-card">
           <div>
-            <p className="stat-label">Ticket promedio</p>
-            <p className="stat-value"><AnimatedNumber value={money(ticketPromedio)} /></p>
+            <p className="stat-label">Promedio por cobro</p>
+            <p className="stat-value"><AnimatedNumber value={dineroConfirmado(resumen.ticketPorCobro)} /></p>
+            <p className="note-popover-empty">Total cobrado ÷ cantidad de cobros registrados.</p>
           </div>
           <div className="stat-icon">
             <Receipt size={17} />
@@ -206,6 +190,12 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <UserX size={17} />
           </div>
         </div>
+      </div>
+
+      <div className="panel" style={{ marginBottom: '1.15rem' }}>
+        <p className="panel-title">Valor estimado de atendidos sin cobro registrado</p>
+        <p className="stat-value"><AnimatedNumber value={dineroConfirmado(resumen.estimadoSinCobro)} /></p>
+        <p className="note-popover-empty">Precio de lista de {pagosListos ? resumen.atendidosSinCobro : '—'} turnos atendidos sin pago en los datos cargados. Es una estimación; no confirma dinero recibido ni deuda.</p>
       </div>
 
       <div className="two-col stats-two-col">
@@ -256,16 +246,16 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
         </div>
       </div>
 
-      {ingresosPorBarbero.length > 0 && (
+      {pagosListos && ingresosPorBarbero.length > 0 && (
         <div className="panel" style={{ marginTop: '1.15rem' }}>
           <p className="panel-title">
-            <span className="panel-title-icon">Ingresos por barbero</span>
+            <span className="panel-title-icon">Cobrado por profesional</span>
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {ingresosPorBarbero.map((b) => (
-              <div key={b.label}>
+              <div key={b.id}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
-                  <span>{b.label} <span style={{ color: 'var(--ink-faint)' }}>({b.turnos} {b.turnos === 1 ? 'turno' : 'turnos'})</span></span>
+                  <span>{b.label} <span style={{ color: 'var(--ink-faint)' }}>({b.cobros} {b.cobros === 1 ? 'cobro' : 'cobros'})</span></span>
                   <span style={{ color: 'var(--ink-faint)' }}>{money(b.total)}</span>
                 </div>
                 <div className="stat-bar">
@@ -307,7 +297,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
             <div className="stat-card" key={key}>
               <div>
                 <p className="stat-label">{meta.label}</p>
-                <p className="stat-value"><AnimatedNumber value={money(totalesPorMetodoHoy[key])} /></p>
+                <p className="stat-value"><AnimatedNumber value={dineroConfirmado(totalesPorMetodoHoy[key])} /></p>
               </div>
               <div className="stat-icon">
                 <meta.Icon size={17} />
@@ -317,7 +307,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
           <div className="stat-card">
             <div>
               <p className="stat-label">Total en caja hoy</p>
-              <p className="stat-value"><AnimatedNumber value={money(totalCajaHoy)} /></p>
+              <p className="stat-value"><AnimatedNumber value={dineroConfirmado(totalCajaHoy)} /></p>
             </div>
             <div className="stat-icon">
               <Coins size={17} />
@@ -362,7 +352,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
 
         {historialPagos.length === 0 ? (
           <p className="note-popover-empty">
-            {pagos.length === 0 ? 'Todavía no se registró ningún cobro' : 'Ningún cobro coincide con el filtro'}
+            {!pagosListos ? 'Esperando una lectura completa de pagos.' : pagos.length === 0 ? 'Todavía no se registró ningún cobro' : 'Ningún cobro coincide con el filtro'}
           </p>
         ) : (
           <div className="table-scroll table-scroll--pagos">
@@ -383,7 +373,7 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
                   return (
                     <tr key={p.id}>
                       <td>
-                        {new Intl.DateTimeFormat('es-AR', { timeZone: timezone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(fecha)}
+                        {fechaPago(p.created_at, timezone) ? new Intl.DateTimeFormat('es-AR', { timeZone: timezone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(fecha) : 'Fecha no disponible'}
                       </td>
                       <td>{p.paciente || '—'}</td>
                       <td>{p.servicio || '—'}</td>

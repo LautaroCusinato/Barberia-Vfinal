@@ -50,6 +50,7 @@ import { getDemoSnapshot, resetDemoSession, saveDemoSnapshot } from './lib/demoS
 import { reportClientError } from './lib/observability.js'
 import { consultarTurnosActivos, copiaParaRestaurar, eliminarBloqueo, esBloqueoDiaCompleto, filasBloqueo, insertarBloqueos, puedeGestionarBloqueos, turnosAfectados, turnosNuevos } from './lib/bloqueosAgenda.js'
 import { initialWorkspaceCollection } from './lib/runtimeStability.js'
+import { crearCargaPagos } from './lib/paymentStats.js'
 import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './lib/whatsappProvisioning.js'
 import { enqueueLatest } from './lib/latestIntentQueue.js'
 import { useTurnoMoves } from './lib/useTurnoMoves.js'
@@ -189,6 +190,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   const [barberos, setBarberos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.barberos, fallbackValue: mockBarberos }))
   const [bloqueosBase, setBloqueos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.bloqueos, fallbackValue: [] }))
   const [pagos, setPagos] = useState(() => initialWorkspaceCollection({ demoMode, remoteConfigured: isSupabaseConfigured, demoValue: demoSnapshot?.pagos, fallbackValue: [] }))
+  const [pagosEstado, setPagosEstado] = useState(isSupabaseConfigured ? 'cargando' : 'listo')
   const [cobroTurno, setCobroTurno] = useState(null)
   // Una clave por apertura del modal de cobro (reintentos incluidos) y un
   // candado contra envíos simultáneos.
@@ -597,13 +599,11 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
       setBloqueos(data ?? [])
     }
 
-    async function cargarPagos() {
-      const { data, error } = await supabase
-        .from('pagos').select('*').eq('barberia_id', barberiaId).order('created_at', { ascending: false })
-      if (cancelado) return
-      if (error) { reportError('No se pudieron cargar los pagos', error); return }
-      setPagos(data ?? [])
-    }
+    const cargarPagos = crearCargaPagos({
+      client: supabase, barberiaId, onData: setPagos, onStatus: setPagosEstado,
+      onError: (error) => reportError('No se pudieron cargar los pagos', error),
+      isCancelled: () => cancelado,
+    })
 
     async function cargarMensajes(clientesPromise = null) {
       const mensajesPromise = supabase.from('mensajes').select('*').eq('barberia_id', barberiaId).order('created_at')
@@ -1924,7 +1924,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
               </div>
             </div>
             {loading ? <SkeletonBlock height={420} /> : (
-              <Stats turnos={turnos} pacientes={pacientes} conversaciones={conversaciones} todayKey={todayKey} barberos={barberos} servicios={servicios} pagos={pagos} timezone={zonaHoraria} />
+              <Stats turnos={turnos} pacientes={pacientes} conversaciones={conversaciones} todayKey={todayKey} barberos={barberos} servicios={servicios} pagos={pagos} pagosEstado={pagosEstado} timezone={zonaHoraria} />
             )}
           </div>
         )}
