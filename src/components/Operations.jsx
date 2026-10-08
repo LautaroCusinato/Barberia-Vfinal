@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Baby, Brush, Check, Coffee, Droplets, Eye, Layers, Palette, Plus, Scissors, Settings, Sparkles, Tag, Trash2, UserRound, Wind } from 'lucide-react'
-import { generarIdHabilidad, parseHabilidades, serializeHabilidades } from '../lib/text'
+import { generarIdHabilidad, normalizar, parseHabilidades, serializeHabilidades } from '../lib/text'
 import { EmptyState } from './ui'
 import { initials, textoSobre } from '../lib/avatar'
 import './operations.css'
@@ -27,6 +27,17 @@ const HORARIO_DEFAULT = {
 
 function parseHorario(horario) {
   if (!horario) return HORARIO_DEFAULT
+
+  // La agenda normalizada ya reconoce este marcador como cero jornadas.
+  // No aplicar los días por defecto del formulario al volver a leerlo: una
+  // edición posterior de la hora reactivaría lunes a viernes sin pedirlo.
+  const sinDias = normalizar(horario).match(/^\s*sin dias asignados\b(?:\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2}))?/)
+  if (sinDias) return {
+    ...HORARIO_DEFAULT,
+    dias: new Set(),
+    desde: sinDias[1]?.padStart(5, '0') || HORARIO_DEFAULT.desde,
+    hasta: sinDias[2]?.padStart(5, '0') || HORARIO_DEFAULT.hasta,
+  }
 
   const matchBreak = horario.match(/^(.+?)\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2})\s+break\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/)
   if (matchBreak) {
