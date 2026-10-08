@@ -49,17 +49,76 @@ function normalizeHeader(value) {
   return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
-function parseLine(line, delimiter) {
-  const values = []; let current = ''; let quoted = false
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index]
-    if (char === '"' && line[index + 1] === '"' && quoted) { current += '"'; index += 1; continue }
-    if (char === '"') { quoted = !quoted; continue }
-    if (char === delimiter && !quoted) { values.push(current.trim()); current = ''; continue }
-    current += char
+// Detectar el separador sólo en el primer registro, fuera de sus comillas.
+function csvDelimiter(text) {
+  let quoted = false; let commas = 0; let semicolons = 0; let started = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (char === '"') {
+      if (quoted && text[index + 1] === '"') { index += 1; continue }
+      quoted = !quoted
+    }
+    if (!quoted && (char === '\r' || char === '\n')) {
+      if (started) break
+      continue
+    }
+    if (char.trim()) started = true
+    if (!quoted && char === ',') commas += 1
+    if (!quoted && char === ';') semicolons += 1
   }
-  values.push(current.trim())
-  return values
+  return semicolons > commas ? ';' : ','
+}
+
+// Un salto de línea dentro de comillas pertenece al campo, no crea otro lead.
+// Los errores sintácticos invalidan el archivo completo: no devolver un prefijo
+// que el consumidor pudiera importar como si fuera un archivo válido.
+function csvRecords(text, delimiter) {
+  const records = []
+  let values = []; let current = ''; let state = 'field'
+  let line = 1; let recordLine = 1; let hasContent = false
+  const finishField = () => { values.push(current.trim()); current = ''; state = 'field' }
+  const finishRecord = () => {
+    finishField()
+    if (hasContent) records.push({ values, line: recordLine })
+    values = []; hasContent = false
+  }
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    const newline = char === '\n' || char === '\r'
+    if (state === 'quoted') {
+      if (char === '"') {
+        if (text[index + 1] === '"') { current += '"'; index += 1 }
+        else state = 'afterQuote'
+      } else {
+        current += char
+        if (newline) {
+          if (char === '\r' && text[index + 1] === '\n') { current += '\n'; index += 1 }
+          line += 1
+        }
+      }
+      continue
+    }
+    if (char === delimiter) { hasContent = true; finishField(); continue }
+    if (newline) {
+      finishRecord()
+      if (char === '\r' && text[index + 1] === '\n') index += 1
+      line += 1; recordLine = line
+      continue
+    }
+    if (state === 'afterQuote') {
+      if (char === ' ' || char === '\t') continue
+      return { records: [], error: { row: line, message: 'Hay texto después del cierre de un campo entre comillas.' } }
+    }
+    if (char === '"' && !current.trim()) {
+      current = ''; state = 'quoted'; hasContent = true
+    } else {
+      current += char
+      if (char.trim()) hasContent = true
+    }
+  }
+  if (state === 'quoted') return { records: [], error: { row: recordLine, message: 'Hay un campo con comillas sin cerrar.' } }
+  finishRecord()
+  return { records, error: null }
 }
 
 export function isDangerousCsvValue(value) {
@@ -67,10 +126,14 @@ export function isDangerousCsvValue(value) {
 }
 
 export function parseLeadsCsv(text) {
-  const rawLines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim())
-  if (!rawLines.length) return { headers: [], rows: [], errors: [{ row: 1, message: 'El archivo está vacío.' }] }
-  const delimiter = (rawLines[0].match(/;/g) || []).length > (rawLines[0].match(/,/g) || []).length ? ';' : ','
-  const originalHeaders = parseLine(rawLines[0], delimiter)
+  const source = String(text || '').replace(/^\uFEFF/, '')
+  const { records, error } = csvRecords(source, csvDelimiter(source))
+  if (error) return { headers: [], rows: [], errors: [error] }
+  if (!records.length) return { headers: [], rows: [], errors: [{ row: 1, message: 'El archivo está vacío.' }] }
+  const originalHeaders = records[0].values
+  if (records.length > 501) return { headers: originalHeaders, rows: [], errors: [{ row: records[501].line, message: 'El CSV no puede superar 500 contactos. Dividí el archivo antes de importar.' }] }
+  const extra = records.slice(1).find((record) => record.values.length > originalHeaders.length)
+  if (extra) return { headers: originalHeaders, rows: [], errors: [{ row: extra.line, message: 'Hay más columnas que en el encabezado. Revisá los separadores y las comillas.' }] }
   const normalized = originalHeaders.map(normalizeHeader)
   const mapping = {}
   Object.entries(FIELD_ALIASES).forEach(([field, aliases]) => {
@@ -80,14 +143,14 @@ export function parseLeadsCsv(text) {
     if (index >= 0) mapping[field] = index
   })
   const errors = []; const warnings = []
-  const rows = rawLines.slice(1).map((line, rowIndex) => {
-    const values = parseLine(line, delimiter); const row = {}; const formulaFields = []
+  const rows = records.slice(1).map(({ values, line }) => {
+    const row = {}; const formulaFields = []
     Object.keys(FIELD_ALIASES).forEach((field) => { row[field] = mapping[field] == null ? '' : values[mapping[field]] || ''; if (field !== 'telefono' && isDangerousCsvValue(row[field])) formulaFields.push(field); if (field === 'telefono' && /^[=@]/.test(row[field].trim())) formulaFields.push(field) })
-    if (formulaFields.length) errors.push({ row: rowIndex + 2, message: `Valor no permitido en ${formulaFields.join(', ')}.` })
-    if (!row.nombre.trim() || !row.negocio.trim()) errors.push({ row: rowIndex + 2, message: 'Nombre y negocio son obligatorios.' })
-    if (row.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.email)) errors.push({ row: rowIndex + 2, message: 'Email inválido.' })
-    if (!row.pais.trim()) warnings.push({ row: rowIndex + 2, message: 'País faltante: se importará sin país.' })
-    if (!row.idioma.trim()) warnings.push({ row: rowIndex + 2, message: 'Idioma faltante: se usará es.' })
+    if (formulaFields.length) errors.push({ row: line, message: `Valor no permitido en ${formulaFields.join(', ')}.` })
+    if (!row.nombre.trim() || !row.negocio.trim()) errors.push({ row: line, message: 'Nombre y negocio son obligatorios.' })
+    if (row.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.email)) errors.push({ row: line, message: 'Email inválido.' })
+    if (!row.pais.trim()) warnings.push({ row: line, message: 'País faltante: se importará sin país.' })
+    if (!row.idioma.trim()) warnings.push({ row: line, message: 'Idioma faltante: se usará es.' })
     return row
   })
   return { headers: originalHeaders, mapping, rows, errors, warnings }
