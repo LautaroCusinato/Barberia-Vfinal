@@ -29,7 +29,7 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
     })
   }, [pacientes, query])
 
-  const notasPorPaciente = (cliente) => (notas || []).filter((n) => notaDelCliente(n, cliente)).length
+  const notasPorPaciente = (cliente) => (notas || []).filter((n) => notaDelCliente(n, cliente, pacientes)).length
 
   return (
     <div className="management-screen management-clients">
@@ -205,6 +205,7 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
         paciente={detalle}
         turnos={turnos || []}
         notas={notas || []}
+        clientes={pacientes}
         onClose={() => setDetalle(null)}
         tieneMensajes={detalle ? Boolean(clientesConMensajes?.has(detalle.id)) : false}
         onStartChat={onStartChat ? (clienteId) => { setDetalle(null); onStartChat(clienteId) } : undefined}

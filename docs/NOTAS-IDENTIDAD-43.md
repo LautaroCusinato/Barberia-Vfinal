@@ -80,3 +80,41 @@ remoto. No añadir un índice, migración o regla de billing por inferencia.
 Los límites previos de concurrencia de edición o incertidumbre de una
 respuesta de alta no quedan resueltos por esta tarea: no prometer idempotencia
 de notas ni reemplazo atómico de toda la ficha. La tarea queda sin tildar.
+
+## Revisión independiente — 07/10/2026 (Claude)
+
+**Regresión corregida — notas existentes fuera de las fichas.** El alta
+anterior nunca guardaba `cliente_id` y la ficha mostraba esas notas por nombre.
+Con `ac8c171`, **todas** las notas ya guardadas desaparecían de fichas y
+contadores; seguían sólo en «Todas las notas». La tarea pedía no asignar por
+nombre *con más de un candidato*.
+
+Ahora:
+
+- Una nota sin `cliente_id` se muestra en la ficha si **exactamente un**
+  cliente del negocio tiene ese nombre (comparación exacta tras recortar
+  espacios, igual que antes). En Notas aparece marcada como «Nota anterior,
+  vinculada por nombre».
+- Con homónimos, «General», otro negocio o un nombre que ya no coincide
+  (cliente renombrado) no se atribuye.
+- **No se escribe nada en la base.** Vincularla de forma permanente sigue
+  siendo explícito, desde Editar.
+- Una nota con `cliente_id` nunca se reasigna por nombre.
+- Una nota nueva «Sin ficha» cuyo nombre coincide exactamente con un único
+  cliente también se ve en esa ficha, igual que antes de 43.
+
+Cuatro pruebas en `Notes.legacy.test.jsx`, las cuatro fallaban sobre
+`ac8c171`.
+
+**Revisado sin cambios:**
+
+- selección y alta por ID con fila devuelta;
+- edición filtrada por negocio y con fila devuelta;
+- homónimos con sufijo de teléfono;
+- «General» como nombre;
+- cliente desaparecido conserva el borrador;
+- «Ver todas las notas»;
+- Deshacer de 06 y accesos de 38 intactos.
+
+**Pendiente igual que antes:** roles, persistencia y frontera entre negocios
+con backend real.

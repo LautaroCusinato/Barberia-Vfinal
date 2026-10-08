@@ -51,7 +51,7 @@ function NoteCard({ nota, onUpdate, onDelete, pacientes }) {
     <div className="collapse-row__inner">
     <div className="note-card fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <p className="note-meta">{nombreDeNota(nota, pacientes)} · {formatFechaVisible(nota.fecha)}{!clienteDeNota(nota, pacientes) && nota.paciente !== 'General' && ' · Sin vínculo a una ficha'}</p>
+        <p className="note-meta">{nombreDeNota(nota, pacientes)} · {formatFechaVisible(nota.fecha)}{nota.cliente_id == null && nota.paciente !== 'General' && (clienteDeNota(nota, pacientes) ? ' · Nota anterior, vinculada por nombre' : ' · Sin vínculo a una ficha')}</p>
         {!editando && (
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
             <button className="btn-icon-plain" onClick={() => { setErrorMsg(''); setClienteSel('__conservar__'); setEditando(true) }} disabled={deleting} aria-label="Editar nota" title="Editar nota">
@@ -112,7 +112,7 @@ export default function Notes({ notas, onAdd, onUpdate, onDelete, pacientes = []
     const q = query.trim()
     const qn = normalizar(q)
     const cliente = pacientes.find((p) => String(p.id) === String(filtroClienteId))
-    return notas.filter((n) => (filtroClienteId == null || notaDelCliente(n, cliente)) && (!q || normalizar(nombreDeNota(n, pacientes)).includes(qn)))
+    return notas.filter((n) => (filtroClienteId == null || notaDelCliente(n, cliente, pacientes)) && (!q || normalizar(nombreDeNota(n, pacientes)).includes(qn)))
   }, [notas, query, filtroClienteId, pacientes])
 
   const submit = async () => {

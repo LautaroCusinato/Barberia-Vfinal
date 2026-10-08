@@ -5,7 +5,7 @@ import { formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
 import { conPresencia } from '../lib/presencia'
 import { notaDelCliente } from '../lib/clientNotes'
 
-function ClientDetailModal({ paciente, turnos, notas, onClose, onStartChat, tieneMensajes = false }) {
+function ClientDetailModal({ paciente, turnos, notas, clientes = null, onClose, onStartChat, tieneMensajes = false }) {
   if (!paciente) return null
 
   const esDelPaciente = (item) =>
@@ -16,7 +16,7 @@ function ClientDetailModal({ paciente, turnos, notas, onClose, onStartChat, tien
     .slice()
     .sort((a, b) => (b.fecha + b.hora).localeCompare(a.fecha + a.hora))
 
-  const notasDelPaciente = notas.filter((nota) => notaDelCliente(nota, paciente))
+  const notasDelPaciente = notas.filter((nota) => notaDelCliente(nota, paciente, clientes))
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
