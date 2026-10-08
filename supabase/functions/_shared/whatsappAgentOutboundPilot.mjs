@@ -1,3 +1,4 @@
+import { isSafeSlotRejectedReply } from './whatsappBookingMutation.mjs'
 export const QA_AGENT_OUTBOUND_ALLOWED_INTENTS = Object.freeze(['services_query', 'price_query', 'availability_query', 'general_query', 'booking_intent'])
 export const PROTECTED_WHATSAPP_INSTANCE = 'miwsp'
 
@@ -174,6 +175,9 @@ export function agentOutboundGuard({
   if (intent === 'price_query' && !hasAuthoritativePriceSource(sourceMetadata)) return { allowed: false, reason: 'price_source_required' }
   if (replyKind === 'booking_confirmation') {
     if (!isAllowedAgentIntent(intent) || !isSafeBookingConfirmationReply({ reply: proposedReply, bookingPersisted })) return { allowed: false, reason: 'unsafe_or_unpersisted_booking_confirmation' }
+  } else if (replyKind === 'booking_slot_rejected') {
+    // Tarea 41: aviso de horario rechazado, armado en el servidor y sólo sin turno guardado.
+    if (!isAllowedAgentIntent(intent) || bookingPersisted !== false || !isSafeSlotRejectedReply(proposedReply)) return { allowed: false, reason: 'unsafe_slot_rejected_reply' }
   } else if (!isSafePersistedReply({ intent, reply: proposedReply, metadata: sourceMetadata })) return { allowed: false, reason: 'unsafe_or_missing_proposed_reply' }
   if (operationAcquired !== true) return { allowed: false, reason: 'operation_already_claimed' }
   return { allowed: true, reason: null }

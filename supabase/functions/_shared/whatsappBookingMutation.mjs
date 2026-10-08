@@ -163,3 +163,67 @@ export function buildBookingMutationContract({ state = {}, recheck = {}, pilotEn
     booking_mutation_executed: false,
   }
 }
+
+// Tarea 41 (revisión): rechazos de horario al confirmar por WhatsApp. La
+// base rechaza un horario bloqueado (22023, en crear_reserva_whatsapp o en el
+// trigger de turnos) u ocupado (23P01). 22023 también se usa para otros
+// errores de datos, así que el bloqueo se reconoce por el mensaje.
+export const SLOT_REJECTION_REASONS = Object.freeze(['slot_blocked', 'slot_taken', 'slot_unavailable'])
+const MAX_ALTERNATIVES = 6
+const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+
+export function classifyBookingSlotRejection(error) {
+  const code = textFrom(error?.code)
+  const message = textFrom(error?.message).toLowerCase()
+  if (code === '23P01') return 'slot_taken'
+  if (code !== '22023') return null
+  if (/bloquead/.test(message)) return 'slot_blocked'
+  if (/ya pas[oó]|no trabaja/.test(message)) return 'slot_unavailable'
+  return null
+}
+
+// Horarios para ofrecer después de un rechazo: misma disponibilidad
+// autoritativa, mismo profesional si el cliente lo eligió, sin el horario
+// rechazado ni repetidos.
+export function alternativeSlotTimes(slots = [], state = {}) {
+  const requested = textFrom(state.requested_time).slice(0, 5)
+  const barber = state.barber_id === null || state.barber_id === undefined || state.barber_id === '' ? null : Number(state.barber_id)
+  const times = new Set()
+  for (const slot of Array.isArray(slots) ? slots : []) {
+    const time = textFrom(slot?.hora).slice(0, 5)
+    if (!TIME_RE.test(time) || time === requested) continue
+    if (barber !== null && Number(slot?.barbero_id) !== barber) continue
+    if (slot?.service_id !== undefined && Number(slot.service_id) !== Number(state.service_id)) continue
+    times.add(time)
+  }
+  return [...times].sort().slice(0, MAX_ALTERNATIVES)
+}
+
+const REJECTION_CAUSE = Object.freeze({
+  slot_blocked: 'porque el negocio lo bloqueó',
+  slot_taken: 'porque se acaba de ocupar',
+  slot_unavailable: 'porque ya no está disponible',
+})
+
+// Texto fijo armado en el servidor; nunca sale del modelo ni de n8n.
+export function buildSlotRejectedReply({ reason, alternatives = [] } = {}) {
+  const cause = REJECTION_CAUSE[reason]
+  if (!cause) return null
+  // null: no se pudo volver a consultar la disponibilidad; no se afirma que no quede nada.
+  if (alternatives === null) return `No pude reservar ese horario ${cause}. No se agendó ningún turno. Decime otro horario o día y lo reviso.`
+  if (!Array.isArray(alternatives) || alternatives.some((time) => !TIME_RE.test(textFrom(time)))) return null
+  const offer = alternatives.length
+    ? `Puedo ofrecerte: ${alternatives.slice(0, MAX_ALTERNATIVES).join(', ')}. ¿Cuál te sirve?`
+    : 'Ese día no quedan otros horarios. ¿Querés que busque otro día?'
+  return `No pude reservar ese horario ${cause}. No se agendó ningún turno. ${offer}`
+}
+
+export function isSafeSlotRejectedReply(reply) {
+  const value = textFrom(reply)
+  return value.length > 0 && value.length <= 400 && /^No pude reservar ese horario /.test(value) && /No se agendó ningún turno\./.test(value)
+}
+
+export function buildSlotRejectedOperationId(eventId) {
+  const clean = textFrom(eventId).replace(/[^a-zA-Z0-9_.:-]/g, '').slice(0, 160)
+  return clean ? `slot-rejected:${clean}` : null
+}

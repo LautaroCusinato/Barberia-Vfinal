@@ -15,7 +15,7 @@ import {
   qaAgentOutboundInstanceForTenant,
 } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
-import { buildBookingClaimEventId, buildBookingConfirmedReply } from '../_shared/whatsappBookingMutation.mjs'
+import { SLOT_REJECTION_REASONS, buildBookingClaimEventId, buildBookingConfirmedReply, buildSlotRejectedOperationId, buildSlotRejectedReply } from '../_shared/whatsappBookingMutation.mjs'
 import { canonicalArgentineMobile } from '../_shared/whatsappCustomer.mjs'
 import { isQa927WindowOpen } from '../_shared/whatsappQa927Window.mjs'
 import { buildQaEvolutionSendTextPath, normalizeRecipient, sanitizeProviderResult } from '../_shared/whatsappOutboundPilot.mjs'
@@ -77,7 +77,9 @@ Deno.serve(async (request) => {
     // kind=booking_confirmation: aviso posterior a guardar el turno. El texto
     // se arma con la fila guardada, nunca con la propuesta del modelo.
     const kind = safeString((body as Record<string, unknown>).kind) || 'proposal'
-    if (kind !== 'proposal' && kind !== 'booking_confirmation') return json({ error: 'kind_not_supported', outbound_allowed: false }, 422)
+    // kind=booking_slot_rejected (tarea 41): el horario confirmado fue
+    // rechazado (bloqueado u ocupado) y no se guardó ningún turno.
+    if (kind !== 'proposal' && kind !== 'booking_confirmation' && kind !== 'booking_slot_rejected') return json({ error: 'kind_not_supported', outbound_allowed: false }, 422)
     const eventOperationId = buildAgentOutboundOperationId(eventId)
     if (!eventOperationId) return json({ error: 'event_id_required', outbound_allowed: false }, 422)
 
@@ -177,6 +179,28 @@ Deno.serve(async (request) => {
       operationId = buildBookingConfirmationOperationId(turno.id)
       if (!operationId || !proposedReply) return json({ error: 'booking_confirmation_invalid', outbound_allowed: false }, 409)
       bookingPersisted = true
+    }
+    if (kind === 'booking_slot_rejected') {
+      // Sólo si la reserva marcó el rechazo para este evento, la conversación
+      // ya volvió a "elegir horario" y el turno de esa propuesta no existe.
+      const rejection = metadata.booking_rejection && typeof metadata.booking_rejection === 'object' ? metadata.booking_rejection as Record<string, unknown> : null
+      const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : {}
+      const reason = safeString(rejection?.reason)
+      if (!rejection || !SLOT_REJECTION_REASONS.includes(reason) || state.confirmation_state === 'confirmed' || state.ready_for_booking_mutation === true) return json({ error: 'slot_rejection_not_found', outbound_allowed: false }, 409)
+      const claimKey = safeString(rejection.claim_key)
+      if (!/^booking:/.test(claimKey)) return json({ error: 'slot_rejection_not_found', outbound_allowed: false }, 409)
+      const { data: claimRow, error: claimLookupError } = await admin
+        .from('saas_automation_events')
+        .select('status')
+        .eq('integration_id', integrationId)
+        .eq('event_id', claimKey)
+        .maybeSingle()
+      if (claimLookupError) return json({ error: 'booking_claim_lookup_failed', outbound_allowed: false }, 502)
+      if (claimRow?.status === 'completed') return json({ error: 'booking_already_persisted', outbound_allowed: false }, 409)
+      const alternatives = Array.isArray(rejection.alternatives) ? rejection.alternatives.map((value) => safeString(value)) : null
+      proposedReply = safeString(buildSlotRejectedReply({ reason, alternatives }))
+      operationId = buildSlotRejectedOperationId(eventId)
+      if (!operationId || !proposedReply) return json({ error: 'slot_rejection_invalid', outbound_allowed: false }, 409)
     }
     const recipientHash = safeString(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
     const pilotEnabled = safeString(Deno.env.get('WHATSAPP_AGENT_OUTBOUND_PILOT_ENABLED')) === '1'

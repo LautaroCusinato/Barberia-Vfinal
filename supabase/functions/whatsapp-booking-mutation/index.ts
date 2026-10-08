@@ -2,13 +2,15 @@ import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
 import { requireOperator } from '../_shared/supabase.ts'
 import { isRealPersistedSourceMetadata } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
-import { isConversationStateFresh, isConversationStateForScope } from '../_shared/whatsappConversationState.mjs'
+import { isConversationStateFresh, isConversationStateForScope, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
 import { canonicalArgentineMobile, resolveBookingCustomer } from '../_shared/whatsappCustomer.mjs'
 import {
   QA_BOOKING_MUTATION_ENVIRONMENT,
   QA_BOOKING_MUTATION_FLAG,
   QA_BOOKING_MUTATION_TENANTS_ENV,
   QA_BOOKING_MUTATION_PROMPT_VERSION,
+  alternativeSlotTimes,
+  classifyBookingSlotRejection,
   isQaBookingTenantAllowed,
   qaBookingInstanceForTenant,
   bookingMutationGuard,
@@ -38,6 +40,25 @@ function adminClient() {
   const key = textFrom(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))
   if (!url || !key) throw new Error('supabase_not_configured')
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
+}
+
+// Un bloqueo de la agenda cubre el horario pedido (del negocio, del
+// profesional elegido o, sin profesional elegido, de cualquiera).
+async function slotIsBlocked(admin: ReturnType<typeof adminClient>, tenantId: number, state: Record<string, unknown>) {
+  const { data, error } = await admin
+    .from('bloqueos_agenda')
+    .select('barbero_id,start_time,end_time')
+    .eq('barberia_id', tenantId)
+    .eq('fecha', textFrom(state.requested_date))
+  if (error || !Array.isArray(data)) return false
+  const time = textFrom(state.requested_time).slice(0, 5)
+  const barber = textFrom(state.barber_id)
+  return data.some((row: Record<string, unknown>) => {
+    const start = textFrom(row.start_time).slice(0, 5)
+    const end = textFrom(row.end_time).slice(0, 5)
+    const scoped = row.barbero_id === null || row.barbero_id === undefined || !barber || textFrom(row.barbero_id) === barber
+    return scoped && start <= time && time < end
+  })
 }
 
 function eventIsFresh(observedAt: unknown) {
@@ -142,13 +163,14 @@ Deno.serve(async (request) => {
     const recipient = canonicalArgentineMobile(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
     const recipientHash = textFrom(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
     const senderMatches = Boolean(recipient && recipientHash && constantTimeEqual(senderHashValue, recipientHash))
-    const stateScopeValid = state ? isConversationStateForScope(state, {
+    const conversationScope = {
       tenantId: connection.barberia_id,
       integrationId: connection.integration_id,
       instance: connection.instance_name,
       senderHash: senderHashValue,
       environment: QA_BOOKING_MUTATION_ENVIRONMENT,
-    }) : false
+    }
+    const stateScopeValid = state ? isConversationStateForScope(state, conversationScope) : false
     const stateFresh = state ? isConversationStateFresh(state) : false
     const promptVersionValid = textFrom(agent?.prompt_version) === QA_BOOKING_MUTATION_PROMPT_VERSION
     const stateValid = stateScopeValid && stateFresh && promptVersionValid && state ? isConfirmedBookingState(state, eventId, allowedTenants) : false
@@ -201,10 +223,37 @@ Deno.serve(async (request) => {
         mutation_allowed: true,
       })
     }
-    if (!selected.allowed) return json({ error: selected.reason, mutation_allowed: false, revalidated: true }, 409)
+    const pilotEnabled = textFrom(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1'
+    // Tarea 41: horario rechazado (bloqueado u ocupado). No se crea nada: la
+    // conversación vuelve a "elegir horario" con la disponibilidad vigente y
+    // el aviso al cliente (kind booking_slot_rejected) se arma en el servidor.
+    const rejectSlot = async (reason: string, freshSlots: unknown[] | null) => {
+      const alternatives = freshSlots === null ? null : alternativeSlotTimes(freshSlots as Record<string, unknown>[], state)
+      const reopened = recordAvailabilityResult({
+        state,
+        expectedScope: conversationScope,
+        available: false,
+        snapshotId: `booking-rejected:${claimEventId}`,
+        slots: (alternatives || []).map((hora) => ({ hora })),
+      })
+      const base = { error: reason === 'slot_unavailable' ? 'slot_unavailable_after_recheck' : reason, rejection_reason: reason, slot_rejected: true, booking_created: false, mutation_allowed: false, revalidated: true, booking_mutation_executed: false }
+      if (!reopened.accepted) return json({ ...base, conversation_reopened: false }, 409)
+      const { error: reopenError } = await admin
+        .from('saas_automation_shadow_runs')
+        .update({ metadata: { ...metadata, conversation_state: reopened.state, booking_rejection: { reason, alternatives, claim_key: claimEventId, rejected_at: new Date().toISOString() } } })
+        .eq('id', sourceRun.id)
+        .eq('event_id', eventId)
+      if (reopenError) return json({ ...base, conversation_reopened: false, error: 'conversation_reopen_failed' }, 502)
+      return json({ ...base, conversation_reopened: true, alternatives_count: alternatives?.length ?? null }, 409)
+    }
+    if (!selected.allowed) {
+      if (selected.reason === 'slot_unavailable_after_recheck' && pilotEnabled) {
+        return rejectSlot(await slotIsBlocked(admin, tenantId, state) ? 'slot_blocked' : 'slot_unavailable', slots || [])
+      }
+      return json({ error: selected.reason, mutation_allowed: false, revalidated: true }, 409)
+    }
     if (!recipient) return json({ error: 'qa_recipient_not_configured', mutation_allowed: false }, 503)
 
-    const pilotEnabled = textFrom(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1'
     const guard = bookingMutationGuard({
       enabled: pilotEnabled,
       runtimeValid,
@@ -245,8 +294,19 @@ Deno.serve(async (request) => {
       p_email: customer.email,
     })
     if (bookingError) {
-      const code = safeErrorCode(bookingError)
-      return json({ error: code === '23P01' ? 'slot_unavailable_after_recheck' : 'booking_creation_failed', mutation_allowed: true, revalidated: true, booking_mutation_executed: false }, code === '23P01' ? 409 : 502)
+      // La transacción se revirtió: no hay turno. Si fue por el horario
+      // (bloqueado entre la revalidación y el INSERT, u ocupado), se ofrece
+      // otro con la disponibilidad posterior al rechazo.
+      const rejection = classifyBookingSlotRejection(bookingError)
+      if (rejection) {
+        const { data: freshSlots, error: freshError } = await admin.rpc('horarios_disponibles_reserva_publica', {
+          p_slug: business.slug,
+          p_servicio_id: service.id,
+          p_fecha: textFrom(state.requested_date),
+        })
+        return rejectSlot(rejection, freshError || !Array.isArray(freshSlots) ? null : freshSlots)
+      }
+      return json({ error: 'booking_creation_failed', mutation_allowed: true, revalidated: true, booking_mutation_executed: false }, 502)
     }
     const row = Array.isArray(booking) ? booking[0] : booking
     if (!row?.turno_id) return json({ error: 'booking_result_missing', mutation_allowed: true, revalidated: true, booking_mutation_executed: false }, 502)
