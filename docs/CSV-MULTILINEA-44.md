@@ -23,7 +23,8 @@ abre un campo sólo al inicio, después de espacios. Un campo entrecomillado
 exige un cierre correcto y luego sólo espacios, separador o fin del registro.
 
 Comillas sin cerrar, contenido después del cierre y columnas sobrantes
-invalidan todo el archivo: `rows` queda vacío y `errors` explica la causa.
+**con contenido** invalidan todo el archivo (las sobrantes vacías, como una
+coma final, se ignoran desde la revisión del 07/10): `rows` queda vacío y `errors` explica la causa.
 Las columnas faltantes siguen vacías como antes. Los errores usan la línea
 física inicial del registro, incluso después de notas de varias líneas.
 
@@ -58,3 +59,15 @@ silenciosamente con `slice(0, 500)`. Las filas vacías no cuentan como contactos
 
 Sin e2e, importaciones reales, escritura en Supabase, mensajes, push o deploy.
 La tarea queda sin tildar, preparada para revisión.
+
+## Revisión independiente — 07/10/2026 (Claude)
+
+Regresión corregida: una coma final o columnas sobrantes vacías (`Ana,Salon,`
+con encabezado de dos columnas) se importaban antes y la propuesta rechazaba
+el archivo entero. Ahora se ignoran; las sobrantes con contenido siguen
+invalidando todo el archivo. Tres pruebas en `src/lib/csvImport.revision.test.js`
+(dos fallaban sobre `c4e2338`). Revisado sin cambios: multilínea, CR/CRLF,
+BOM, comillas escapadas y literales, texto tras el cierre, comillas sin
+cerrar, numeración física, 500/501 y fórmulas al inicio de la celda (una
+fórmula en la segunda línea de una nota no se ejecuta al abrir el CSV, por lo
+que no se marca). Pendiente igual que antes: modal CRM y persistencia reales.

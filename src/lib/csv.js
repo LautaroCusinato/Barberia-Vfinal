@@ -132,7 +132,8 @@ export function parseLeadsCsv(text) {
   if (!records.length) return { headers: [], rows: [], errors: [{ row: 1, message: 'El archivo está vacío.' }] }
   const originalHeaders = records[0].values
   if (records.length > 501) return { headers: originalHeaders, rows: [], errors: [{ row: records[501].line, message: 'El CSV no puede superar 500 contactos. Dividí el archivo antes de importar.' }] }
-  const extra = records.slice(1).find((record) => record.values.length > originalHeaders.length)
+  // Columnas sobrantes vacías (p. ej. una coma final) no parten un contacto.
+  const extra = records.slice(1).find((record) => record.values.slice(originalHeaders.length).some((value) => value !== ''))
   if (extra) return { headers: originalHeaders, rows: [], errors: [{ row: extra.line, message: 'Hay más columnas que en el encabezado. Revisá los separadores y las comillas.' }] }
   const normalized = originalHeaders.map(normalizeHeader)
   const mapping = {}
