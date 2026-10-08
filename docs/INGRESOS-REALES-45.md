@@ -80,3 +80,32 @@ con Supabase real antes de publicar y decidir si el aviso de colección
 incompleta es suficiente para el piloto o requiere paginación previa. Integrar
 App con cuidado: la otra IA está revisando las cargas de turnos en otra rama.
 La revisión y la integración no habilitan despliegues automáticamente.
+
+## Revisión independiente — 07/10/2026 (Claude)
+
+Worktree propio `revision-45`, rama `fix/ingresos-reales-45-revision`, sobre `354a216`. Sin push, despliegues ni cambios remotos.
+
+**Fallo comprobado y corregido — los totales se borraban en cada recarga.** Cada recarga de pagos volvía a `cargando`, ya fuera por Realtime (cada cobro, propio o de otro operador) o por un reintento. Mientras tanto Estadísticas reemplazaba todos los importes por «—», ocultaba el bloque por profesional y mostraba «Cargando cobros». Los totales ya confirmados desaparecían en cada cobro hasta que terminaba la lectura.
+
+Ahora:
+- Una recarga posterior a una lectura completa queda en `actualizando`. Stats sigue mostrando los totales confirmados.
+- La primera carga, o una recarga después de un error o de una lectura incompleta, sigue en `cargando` y oculta los importes. Así nunca se reconfirma un total viejo.
+
+Tres pruebas en `src/lib/paymentStats.revision.test.jsx`; las tres fallan sobre `354a216`.
+
+**Revisado sin cambios:**
+- cobrado sólo desde `pagos`;
+- estimación separada de los atendidos sin pago;
+- pagos sin turno o con el turno en otro estado;
+- promedio por registro de cobro;
+- profesionales homónimos separados por ID;
+- caja por fecha del pago en la zona del negocio;
+- `count: 'exact'` contra la cantidad de filas: si el servidor corta, «—» con aviso en lugar de un total parcial;
+- respuestas fuera de orden descartadas;
+- `/demo` no carga del servidor: `isSupabaseConfigured` ya excluye el modo demo, así que arranca en `listo`;
+- sólo ARS; la tarea 20 sigue postergada.
+
+**Sigue abierto:**
+- Los pagos se detectan truncados, pero no se paginan.
+- La estimación y el reparto por profesional dependen de los turnos cargados, que también están sujetos al límite de 1000 filas (tarea 47).
+- Conteo, permisos y Realtime con Supabase real.

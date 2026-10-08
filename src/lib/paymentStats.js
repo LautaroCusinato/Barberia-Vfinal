@@ -46,11 +46,14 @@ export function fechaPago(iso, timezone = 'America/Argentina/Buenos_Aires') {
 }
 
 // Última lectura gana. Una carga fallida/incompleta nunca confirma un cero.
+// Una recarga (Realtime, reintento) después de una lectura completa queda
+// "actualizando": los totales ya confirmados siguen visibles mientras tanto.
 export function crearCargaPagos({ client, barberiaId, onData, onStatus, onError, isCancelled = () => false }) {
   let secuencia = 0
+  let confirmado = false
   return async () => {
     const actual = ++secuencia
-    onStatus('cargando')
+    onStatus(confirmado ? 'actualizando' : 'cargando')
     try {
       const { data, error, count } = await client.from('pagos')
         .select('*', { count: 'exact' }).eq('barberia_id', barberiaId)
@@ -58,13 +61,16 @@ export function crearCargaPagos({ client, barberiaId, onData, onStatus, onError,
       if (isCancelled() || actual !== secuencia) return
       if (error) throw error
       if (!Array.isArray(data) || !Number.isInteger(count) || count !== data.length) {
+        confirmado = false
         onStatus('incompleto')
         return
       }
       onData(data)
+      confirmado = true
       onStatus('listo')
     } catch (error) {
       if (isCancelled() || actual !== secuencia) return
+      confirmado = false
       onStatus('error')
       onError(error)
     }

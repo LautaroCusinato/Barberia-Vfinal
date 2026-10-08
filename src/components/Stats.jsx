@@ -30,7 +30,8 @@ export default function Stats({ turnos, pacientes, conversaciones: _conversacion
   const atendidos = useMemo(() => turnos.filter((t) => statusMeta(t.estado).value === 'atendido'), [turnos])
   const resumen = useMemo(() => resumenCobros(pagos, turnos, barberos), [pagos, turnos, barberos])
   const ingresosPorBarbero = resumen.porProfesional
-  const pagosListos = pagosEstado === 'listo'
+  // 'actualizando': recarga sobre una lectura completa; se muestran los totales confirmados.
+  const pagosListos = pagosEstado === 'listo' || pagosEstado === 'actualizando'
   const dineroConfirmado = (valor) => pagosListos ? money(valor) : '—'
   const avisoPagos = pagosEstado === 'cargando'
     ? 'Cargando cobros. Los importes se mostrarán cuando termine la lectura.'
