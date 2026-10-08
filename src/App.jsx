@@ -47,7 +47,7 @@ import {
 } from './data/mockData'
 import { getDemoSnapshot, resetDemoSession, saveDemoSnapshot } from './lib/demoStore.js'
 import { reportClientError } from './lib/observability.js'
-import { copiaParaRestaurar, eliminarBloqueo, filasBloqueo, insertarBloqueos } from './lib/bloqueosAgenda.js'
+import { consultarTurnosActivos, copiaParaRestaurar, eliminarBloqueo, esBloqueoDiaCompleto, filasBloqueo, insertarBloqueos, puedeGestionarBloqueos, turnosAfectados, turnosNuevos } from './lib/bloqueosAgenda.js'
 import { initialWorkspaceCollection } from './lib/runtimeStability.js'
 import { MANAGED_WHATSAPP_PROVISIONING, WHATSAPP_PROVISION_FUNCTION } from './lib/whatsappProvisioning.js'
 import { enqueueLatest } from './lib/latestIntentQueue.js'
@@ -172,7 +172,7 @@ export default function App(props) {
   return <PanelNegocio key={`${props.demoMode ? 'demo' : 'negocio'}:${props.barberiaId}`} {...props} />
 }
 
-function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMode = false, demoSessionId = null }) {
+function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMode = false, demoSessionId = null, rol = null }) {
   // Demo mode deliberately reuses every local branch of the real panel while
   // making the Supabase adapter unavailable. This keeps the tenant boundary
   // explicit: no demo callback can reach an authenticated or server adapter.
@@ -230,6 +230,9 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   const { toasts, mostrar: mostrarToast, cerrar: cerrarToast } = useToasts({ contexto: contextoBorrados })
   const borrados = useDeferredDeletes(contextoBorrados)
   const turnos = borrados.filtrar('turnos', turnosBase)
+  // Lectura actual para callbacks diferidos (p. ej. Deshacer de un desbloqueo).
+  const turnosRef = useRef(turnos)
+  useEffect(() => { turnosRef.current = turnos }, [turnos])
   const notas = borrados.filtrar('notas', notasBase)
   const bloqueos = borrados.filtrar('bloqueos_agenda', bloqueosBase)
   const [reloadKey, setReloadKey] = useState(0)
@@ -1524,6 +1527,9 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
     const nuevas = filas.filter((b) => !ids.has(String(b.id)))
     return nuevas.length ? [...prev, ...nuevas] : prev
   })
+  // Sólo owner/admin pueden bloquear (bloqueos_write_owner). El resto no ve
+  // el botón; la base igual rechaza cualquier intento.
+  const puedeBloquear = puedeGestionarBloqueos(rol, { conBackend: isSupabaseConfigured && !demoMode })
   const MENSAJE_SIN_PERMISO_BLOQUEO = 'Sólo el dueño o un administrador del negocio pueden bloquear o desbloquear fechas.'
 
   const bloquearFechas = async ({ fechas, barberoId, tipo, detalle }) => {
@@ -1546,21 +1552,60 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
     return { ok: false, mensaje: 'No se pudo guardar el bloqueo y no se bloqueó ninguna fecha. Revisá la conexión e intentá de nuevo.' }
   }
 
-  const restaurarBloqueo = async (bloqueo) => {
+  // Turnos activos que alcanza un bloqueo: los parciales sólo cuentan los que
+  // empiezan dentro de su franja.
+  const turnosDelBloqueo = (lista, bloqueo) => turnosAfectados(lista, [bloqueo.fecha], bloqueo.barbero_id)
+    .filter((t) => esBloqueoDiaCompleto(bloqueo)
+      || (String(t.hora || '').slice(0, 5) >= String(bloqueo.start_time || '').slice(0, 5)
+        && String(t.hora || '').slice(0, 5) < String(bloqueo.end_time || '').slice(0, 5)))
+
+  const leerTurnosDelBloqueo = async (bloqueo) => {
+    if (!isSupabaseConfigured) return { ok: true, turnos: turnosDelBloqueo(turnosRef.current, bloqueo) }
+    const resultado = await consultarTurnosActivos(supabase, { barberiaId, fechas: [bloqueo.fecha], barberoId: bloqueo.barbero_id })
+    return resultado.ok ? { ok: true, turnos: turnosDelBloqueo(resultado.turnos, bloqueo) } : resultado
+  }
+
+  // Deshacer un desbloqueo vuelve a crear la fila. Si mientras la fecha
+  // estuvo libre entraron reservas, se conservan (como al bloquear) y se avisa.
+  const restaurarBloqueo = async (bloqueo, turnosAntes) => {
     const fila = copiaParaRestaurar(bloqueo)
     if (!isSupabaseConfigured) {
       setBloqueos((prev) => [...prev, { id: nextLocalId(prev), ...fila }])
+    } else {
+      const resultado = await insertarBloqueos(supabase, [fila])
+      if (!resultado.ok) {
+        if (resultado.motivo === 'permiso') mostrarValidacion(MENSAJE_SIN_PERMISO_BLOQUEO)
+        else reportError('No se pudo restaurar el bloqueo. La fecha sigue desbloqueada.', resultado.error)
+        return
+      }
+      agregarBloqueosSinDuplicar(resultado.data)
+    }
+    const despues = await leerTurnosDelBloqueo(bloqueo)
+    if (!despues.ok || !turnosAntes) {
+      mostrarValidacion('Bloqueo restaurado. No pudimos revisar si se reservaron turnos mientras estuvo libre: revisá la Agenda de ese día.')
       return
     }
-    const resultado = await insertarBloqueos(supabase, [fila])
-    if (resultado.ok) {
-      agregarBloqueosSinDuplicar(resultado.data)
-      mostrarToast({ mensaje: 'Bloqueo restaurado', duracion: DURACION_AVISO_MS })
-    } else if (resultado.motivo === 'permiso') mostrarValidacion(MENSAJE_SIN_PERMISO_BLOQUEO)
-    else reportError('No se pudo restaurar el bloqueo. La fecha sigue desbloqueada.', resultado.error)
+    const nuevos = turnosNuevos(turnosAntes, despues.turnos)
+    if (nuevos.length) {
+      mostrarValidacion(`Bloqueo restaurado. Mientras estuvo libre se ${nuevos.length === 1 ? 'reservó 1 turno' : `reservaron ${nuevos.length} turnos`} ese día: se conservan y no se avisó a nadie. Revisalos en la Agenda.`)
+      return
+    }
+    mostrarToast({ mensaje: 'Bloqueo restaurado', duracion: DURACION_AVISO_MS })
+  }
+
+  // La advertencia antes de bloquear consulta la base: la lista del panel
+  // puede no tener todos los turnos futuros.
+  const revisarTurnosAfectados = async ({ fechas, barberoId }) => {
+    if (!isSupabaseConfigured) return { ok: true, turnos: turnosAfectados(turnosRef.current, fechas, barberoId) }
+    const resultado = await consultarTurnosActivos(supabase, { barberiaId, fechas, barberoId })
+    if (!resultado.ok) reportClientError(resultado.error, { source: 'workspace', tenant_id: barberiaId, user_message: 'No se pudieron revisar los turnos del bloqueo' })
+    return resultado
   }
 
   const desbloquearFecha = async (bloqueo) => {
+    // Foto de los turnos antes de liberar la fecha, para el Deshacer.
+    const antes = await leerTurnosDelBloqueo(bloqueo)
+    const turnosAntes = antes.ok ? antes.turnos : null
     if (isSupabaseConfigured) {
       const resultado = await eliminarBloqueo(supabase, bloqueo.id, barberiaId)
       if (!resultado.ok) {
@@ -1571,7 +1616,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
     }
     // Recién ahora, con el servidor confirmado, deja de mostrarse.
     setBloqueos((prev) => prev.filter((b) => b.id !== bloqueo.id))
-    mostrarToast({ mensaje: 'Fecha desbloqueada', duracion: 5000, onUndo: () => { restaurarBloqueo(bloqueo) } })
+    mostrarToast({ mensaje: 'Fecha desbloqueada', duracion: 5000, onUndo: () => { restaurarBloqueo(bloqueo, turnosAntes) } })
     return { ok: true }
   }
 
@@ -1733,10 +1778,12 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
                   <Download size={14} aria-hidden="true" />
                   <span className="btn-label">Exportar</span>
                 </button>
-                <button className="btn agenda-block-btn" onClick={() => setBloqueosOpen(true)} aria-haspopup="dialog" title="Bloquear o desbloquear fechas">
-                  <Ban size={15} strokeWidth={2.25} aria-hidden="true" />
-                  Bloquear
-                </button>
+                {puedeBloquear && (
+                  <button className="btn agenda-block-btn" onClick={() => setBloqueosOpen(true)} aria-haspopup="dialog" title="Bloquear o desbloquear fechas">
+                    <Ban size={15} strokeWidth={2.25} aria-hidden="true" />
+                    Bloquear
+                  </button>
+                )}
               </div>
             </div>
             {loading ? <SkeletonBlock height={420} /> : (
@@ -1902,13 +1949,14 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
       </main>
 
       <BloqueosModal
-        open={bloqueosOpen}
+        open={bloqueosOpen && puedeBloquear}
         onClose={() => setBloqueosOpen(false)}
         fechaInicial={agendaFecha || todayKey}
         todayKey={todayKey}
         barberos={barberos}
         bloqueos={bloqueos}
         turnos={turnos}
+        onRevisarTurnos={revisarTurnosAfectados}
         onBloquear={bloquearFechas}
         onDesbloquear={desbloquearFecha}
       />

@@ -21,7 +21,7 @@ const fechaCorta = (fecha) => capitalizar(format(parseISO(fecha), "EEE d MMM", {
 
 // Gestión de fechas bloqueadas desde la Agenda (tarea 41). El servidor decide
 // permisos y disponibilidad; acá sólo se anuncia éxito después de guardar.
-export default function BloqueosModal({ open, onClose, fechaInicial, todayKey, barberos = [], bloqueos = [], turnos = [], onBloquear, onDesbloquear }) {
+export default function BloqueosModal({ open, onClose, fechaInicial, todayKey, barberos = [], bloqueos = [], turnos = [], onRevisarTurnos, onBloquear, onDesbloquear }) {
   const [desde, setDesde] = useState('')
   const [variasFechas, setVariasFechas] = useState(false)
   const [hasta, setHasta] = useState('')
@@ -29,6 +29,7 @@ export default function BloqueosModal({ open, onClose, fechaInicial, todayKey, b
   const [tipo, setTipo] = useState('cierre')
   const [detalle, setDetalle] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const [revisando, setRevisando] = useState(false)
   const [error, setError] = useState('')
   const [aviso, setAviso] = useState('')
   const [confirmacion, setConfirmacion] = useState(null)
@@ -88,14 +89,26 @@ export default function BloqueosModal({ open, onClose, fechaInicial, todayKey, b
       setError(plan.yaBloqueadas.length > 1 ? `Esas fechas ya están bloqueadas para ${alcanceTexto}.` : `Esa fecha ya está bloqueada para ${alcanceTexto}.`)
       return
     }
-    const afectados = turnosAfectados(turnos, plan.nuevas, barberoId)
-    if (afectados.length && !confirmado) {
-      setConfirmacion({ afectados, fechas: plan.nuevas })
-      return
-    }
     guardandoRef.current = true
     setGuardando(true)
     try {
+      if (!confirmado) {
+        // Se consulta la base: la lista del panel puede no tener todos los
+        // turnos futuros. Sin esa revisión no se bloquea nada.
+        setRevisando(true)
+        const revision = onRevisarTurnos
+          ? await onRevisarTurnos({ fechas: plan.nuevas, barberoId })
+          : { ok: true, turnos: turnosAfectados(turnos, plan.nuevas, barberoId) }
+        setRevisando(false)
+        if (!revision?.ok) {
+          setError('No pudimos revisar los turnos de esas fechas, así que no se bloqueó nada. Revisá la conexión e intentá de nuevo.')
+          return
+        }
+        if (revision.turnos.length) {
+          setConfirmacion({ afectados: revision.turnos, fechas: plan.nuevas })
+          return
+        }
+      }
       const resultado = await onBloquear({ fechas: plan.nuevas, barberoId, tipo, detalle })
       if (resultado?.ok) {
         const cuantas = plan.nuevas.length
@@ -111,6 +124,7 @@ export default function BloqueosModal({ open, onClose, fechaInicial, todayKey, b
     } finally {
       guardandoRef.current = false
       setGuardando(false)
+      setRevisando(false)
     }
   }
 
@@ -203,7 +217,7 @@ export default function BloqueosModal({ open, onClose, fechaInicial, todayKey, b
           <div className="bloqueos-actions">
             <Button variant="ghost" onClick={cerrar} aria-disabled={guardando || undefined}>Cerrar</Button>
             <Button type="submit" variant="danger" className="bloqueos-submit" aria-disabled={guardando || undefined}>
-              <Ban size={15} aria-hidden="true" />{guardando ? 'Bloqueando…' : 'Bloquear'}
+              <Ban size={15} aria-hidden="true" />{revisando ? 'Revisando turnos…' : guardando ? 'Bloqueando…' : 'Bloquear'}
             </Button>
           </div>
         )}

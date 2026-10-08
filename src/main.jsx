@@ -516,7 +516,10 @@ function Root() {
     )
   }
 
-  return <App barberiaId={barberiaId} barberiaNombre={barberiaNombre} vertical={DEFAULT_VERTICAL} />
+  // El rol sólo adapta la interfaz (p. ej. ocultar «Bloquear»); la base
+  // vuelve a autorizar cada escritura con RLS.
+  const rolNegocio = opciones?.find((o) => String(o.barberia_id) === String(barberiaId))?.role || null
+  return <App barberiaId={barberiaId} barberiaNombre={barberiaNombre} vertical={DEFAULT_VERTICAL} rol={rolNegocio} />
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

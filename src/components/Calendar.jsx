@@ -526,19 +526,23 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
   useEffect(() => { onSelectDate?.(selectedKey) }, [selectedKey, onSelectDate])
   const barberoNombre = (id) => barberos.find((b) => String(b.id) === String(id))?.nombre || 'Sin barbero'
   const bloqueosDelDia = (fecha) => bloqueos.filter((b) => b.fecha === fecha && (b.barbero_id == null || !barberoFiltro || String(b.barbero_id) === barberoFiltro))
-  // 'completo' si algún bloqueo visible cubre el día; 'parcial' si sólo hay franjas.
+  // Bloqueos que cierran la vista actual: con un profesional elegido, los
+  // suyos y los del negocio; sin filtro, sólo los del negocio. El bloqueo de
+  // un profesional no cierra el día ni las franjas de los demás.
+  const bloqueosQueCierran = (fecha) => bloqueosDelDia(fecha).filter((b) => b.barbero_id == null || barberoFiltro)
+  // 'completo' si un bloqueo de la vista cubre el día; 'parcial' si sólo hay
+  // franjas o bloqueos de algún profesional.
   const estadoBloqueoDia = (fecha) => {
-    const delDia = bloqueosDelDia(fecha)
-    if (!delDia.length) return ''
-    return delDia.some(esBloqueoDiaCompleto) ? 'completo' : 'parcial'
+    if (!bloqueosDelDia(fecha).length) return ''
+    return bloqueosQueCierran(fecha).some(esBloqueoDiaCompleto) ? 'completo' : 'parcial'
   }
-  const slotBloqueado = (fecha, minutosSlot) => bloqueosDelDia(fecha).some((b) => {
+  const slotBloqueado = (fecha, minutosSlot) => bloqueosQueCierran(fecha).some((b) => {
     const [hi, mi] = String(b.start_time || '00:00').slice(0, 5).split(':').map(Number)
     const [hf, mf] = String(b.end_time || '23:59').slice(0, 5).split(':').map(Number)
     return minutosSlot < hf * 60 + mf && minutosSlot + 30 > hi * 60 + mi
   })
   const bloqueoSeleccionado = bloqueosDelDia(selectedKey)
-  const bloqueoDiaCompleto = bloqueoSeleccionado.some(esBloqueoDiaCompleto)
+  const bloqueoDiaCompleto = bloqueosQueCierran(selectedKey).some(esBloqueoDiaCompleto)
   // El estado del día por profesional distingue el bloqueo de día completo
   // del parcial: un parcial no lo saca del día, sólo de esas horas.
   const estadoBloqueoBarbero = (barberoId) => {

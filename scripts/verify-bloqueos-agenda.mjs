@@ -48,13 +48,27 @@ assert.deepEqual(nuevas, [], 'la tarea 41 no agrega migraciones')
 const desbloquear = app.slice(app.indexOf('const desbloquearFecha'), app.indexOf('const turnosHoy'))
 assert.ok(desbloquear.indexOf('eliminarBloqueo(supabase') < desbloquear.indexOf('setBloqueos((prev) => prev.filter'), 'borra en servidor y después actualiza la vista')
 assert.doesNotMatch(desbloquear, /eliminarConDeshacer/, 'no usa el borrado diferido')
-assert.match(desbloquear, /onUndo: \(\) => \{ restaurarBloqueo\(bloqueo\) \}/, 'Deshacer vuelve a crear el bloqueo')
+assert.match(desbloquear, /onUndo: \(\) => \{ restaurarBloqueo\(bloqueo, turnosAntes\) \}/, 'Deshacer vuelve a crear el bloqueo')
+// Revisión: la foto de turnos se toma antes de borrar, y Deshacer avisa de
+// reservas que entraron mientras la fecha estuvo libre.
+assert.ok(desbloquear.indexOf('leerTurnosDelBloqueo(bloqueo)') < desbloquear.indexOf('eliminarBloqueo(supabase'), 'foto de turnos antes de desbloquear')
+assert.match(app, /turnosNuevos\(turnosAntes, despues\.turnos\)/, 'Deshacer compara con los turnos previos')
+// Revisión: Bloquear sólo para owner/admin (la base vuelve a autorizar) y la
+// advertencia de turnos consulta la base, no la lista cargada en el panel.
+assert.match(app, /puedeGestionarBloqueos\(rol,/, 'el rol decide si se muestra Bloquear')
+assert.match(app, /\{puedeBloquear && \(/, 'Bloquear oculto sin permiso')
+assert.match(app, /consultarTurnosActivos\(supabase/, 'turnos afectados desde la base')
+assert.match(read('src/main.jsx'), /rol=\{rolNegocio\}/, 'main pasa el rol del negocio')
 
 // 5. El modal no anuncia éxito antes de guardar y evita doble envío.
 assert.match(modal, /if \(guardandoRef\.current\) return/)
 assert.match(modal, /const resultado = await onBloquear\([\s\S]*?if \(resultado\?\.ok\)/)
 assert.match(modal, /turnosAfectados\(turnos, plan\.nuevas, barberoId\)/)
-assert.doesNotMatch(modal + lib, /from\('turnos'\)|\.update\(|cancelado'\s*\}/, 'no toca turnos')
+// Revisión: la librería lee turnos (advertencia y Deshacer) pero nunca escribe.
+assert.doesNotMatch(modal, /from\('turnos'\)/, 'el modal no accede a turnos')
+assert.match(lib, /from\('turnos'\)\s*\.select\(/, 'turnos sólo se leen')
+assert.doesNotMatch(lib, /from\('turnos'\)\s*\.(insert|update|delete|upsert)\(/, 'no escribe turnos')
+assert.doesNotMatch(modal + lib, /\.update\(|cancelado'\s*\}/, 'no toca turnos')
 
 // 6. Validación en servidor para todos los canales (repo, no estado remoto).
 const trigger = read('supabase/migrations/20260801030000_turno_business_rules.sql')

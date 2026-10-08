@@ -93,4 +93,31 @@ echo "turnos conservados en los días de las carreras: $N"
 F=$("${PSQL[@]}" -At -c "$AS_STAFF select public.try_turno(12, public.d(22), '09:30');" | tail -n1)
 echo "confirmación de oferta obsoleta: $F"
 case "$F" in 22023:*bloqueado*) ;; *) exit 1 ;; esac
+# 10. (Revisión) Transacción de reserva abierta ANTES del bloqueo, pero cuyo
+# INSERT corre DESPUÉS de que el bloqueo confirma. En READ COMMITTED cada
+# sentencia toma una foto nueva: el trigger ve el bloqueo y rechaza. Lo que
+# garantiza el éxito del bloqueo es eso: toda sentencia de reserva que empiece
+# después de su COMMIT se rechaza. No cubre la que ya insertó (etapa 8).
+"${PSQL[@]}" -At -c "$AS_STAFF begin; select pg_sleep(1.5); select public.try_turno(11, public.d(23), '10:00'); commit;" > "$OUT/c.out" &
+PID=$!
+sleep 0.5
+G=$("${PSQL[@]}" -At -c "$AS_OWNER select public.try_bloqueo(1, null, public.d(23));" | tail -n1)
+wait $PID
+H=$(grep -E '^(ok|[0-9A-Z]{5}:)' "$OUT/c.out" | head -n1)
+echo "reserva iniciada antes / insertada después del bloqueo: bloqueo=$G reserva=$H"
+[ "$G" = "ok" ]
+case "$H" in 22023:*bloqueado*) ;; *) exit 1 ;; esac
+
+# 11. (Revisión) Desbloquear → alguien reserva en el hueco → Deshacer.
+# Deshacer vuelve a insertar el bloqueo (no lo impide el turno nuevo), el
+# turno se conserva y la siguiente reserva del día se rechaza.
+"${PSQL[@]}" -At -c "$AS_OWNER select public.try_bloqueo(1, null, public.d(24));" >/dev/null
+I=$("${PSQL[@]}" -At -c "$AS_OWNER with b as (delete from public.bloqueos_agenda where barberia_id = 1 and fecha = public.d(24) returning id) select count(*) from b;" | tail -n1)
+J=$("${PSQL[@]}" -At -c "$AS_STAFF select public.try_turno(11, public.d(24), '10:00');" | tail -n1)
+K=$("${PSQL[@]}" -At -c "$AS_OWNER select public.try_bloqueo(1, null, public.d(24));" | tail -n1)
+L=$("${PSQL[@]}" -At -c "$AS_STAFF select public.try_turno(12, public.d(24), '11:00');" | tail -n1)
+M=$("${PSQL[@]}" -At -c "select count(*) from public.turnos where fecha = public.d(24)")
+echo "desbloqueo=$I reserva en el hueco=$J deshacer=$K reserva posterior=$L turnos conservados=$M"
+[ "$I" = "1" ] && [ "$J" = "ok" ] && [ "$K" = "ok" ] && [ "$M" = "1" ]
+case "$L" in 22023:*bloqueado*) ;; *) exit 1 ;; esac
 echo "SQL LOCAL BLOQUEOS: TODO PASS"

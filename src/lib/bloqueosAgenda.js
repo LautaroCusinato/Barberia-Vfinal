@@ -169,3 +169,42 @@ export async function eliminarBloqueo(client, id, barberiaId) {
     return { ok: false, motivo: 'error', error }
   }
 }
+
+// Roles que la política bloqueos_write_owner deja escribir. Sólo adapta la
+// interfaz: la base vuelve a autorizar cada alta y baja.
+export const ROLES_GESTION_BLOQUEOS = ['owner', 'admin']
+
+export function puedeGestionarBloqueos(rol, { conBackend = true } = {}) {
+  if (!conBackend) return true
+  return ROLES_GESTION_BLOQUEOS.includes(String(rol || ''))
+}
+
+// Turnos activos en esas fechas según el servidor. La lista del panel puede
+// estar incompleta (PostgREST corta en 1000 filas y llega por Realtime con
+// demora), así que la advertencia y el Deshacer consultan la base.
+export const MAX_TURNOS_CONSULTA = 500
+
+export async function consultarTurnosActivos(client, { barberiaId, fechas, barberoId = null }) {
+  if (!fechas?.length) return { ok: true, turnos: [] }
+  try {
+    let query = client
+      .from('turnos')
+      .select('id,fecha,hora,paciente,barbero_id,estado')
+      .eq('barberia_id', barberiaId)
+      .in('fecha', fechas)
+      .not('estado', 'in', '(cancelado,no_asistio)')
+    if (barberoId != null && barberoId !== '') query = query.eq('barbero_id', barberoId)
+    const { data, error } = await query.order('fecha').order('hora').limit(MAX_TURNOS_CONSULTA)
+    if (error) return { ok: false, error }
+    return { ok: true, turnos: turnosAfectados(data ?? [], fechas, barberoId) }
+  } catch (error) {
+    return { ok: false, error }
+  }
+}
+
+// Turnos que aparecieron entre dos lecturas (p. ej. reservados mientras una
+// fecha estuvo desbloqueada).
+export function turnosNuevos(antes, despues) {
+  const ids = new Set((antes || []).map((t) => String(t.id)))
+  return (despues || []).filter((t) => !ids.has(String(t.id)))
+}
