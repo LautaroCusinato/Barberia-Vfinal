@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2.45.0'
 import { mergeEvolutionConnectionMetadata, normalizeEvolutionState, resolveEvolutionState, shouldPersistEvolutionStatus } from '../_shared/evolutionState.mjs'
 import { qaProvisionCorsOrigin, publicQaCapabilities } from '../_shared/qaProvisionUi.mjs'
+import { disconnectQaSession } from '../_shared/qaDisconnect.mjs'
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
@@ -315,7 +316,7 @@ async function realEvolutionStatus(instanceName: string, current: Record<string,
 
 async function realEvolutionDisconnect(instanceName: string) {
   assertEvolutionConfiguration()
-  await evolutionRequest(`/instance/logout/${encodeURIComponent(instanceName)}`, { method: 'DELETE' })
+  await disconnectQaSession({ instanceName, request: evolutionRequest, signals: realEvolutionSignals })
 }
 
 async function upsertConnection(admin: SupabaseClient, tenantId: number, integrationId: number, patch: Record<string, unknown>) {

@@ -66,8 +66,9 @@ assert.match(panelSend, /Deno\.env\.get\('WHATSAPP_PANEL_SEND_INSTANCE'\)/, 'La 
 assert.match(panelSend, /Deno\.env\.get\('WHATSAPP_PANEL_SEND_ROUTING'\)/, 'El modo de remitente se declara en el servidor')
 assert.match(panelSend, /return classifyWebhookResponse\(response\.status, parsed\)/, 'El resultado del webhook distingue recepción, aceptación, rechazo e incierto')
 assert.match(panelSend, /rpc\(manual \? 'reservar_envio_panel_qa_manual' : 'reservar_envio_panel', \{[\s\S]*p_barberia_id: tenantId,[\s\S]*p_rate_limit: s\.rateLimit/, 'La reserva general y la manual usan el tenant resuelto y los límites del servidor')
-assert.match(panelSend, /manual \? \{ allowedRecipients: manualQaPhoneList/, 'La lista de prueba se obtiene del servidor, nunca del navegador')
-assert.match(panelSend, /manual \? \{ p_allowed_phones: s\.allowedRecipients/, 'La reserva manual recibe la lista validada en el servidor')
+assert.match(panelSend, /manual && !openRecipients \? \{ allowedRecipients: manualQaPhoneList/, 'La lista anterior se conserva fuera del modo abierto autorizado')
+assert.match(panelSend, /manual \? \{ p_allowed_phones: openRecipients \? \[expectedPhone\] : s\.allowedRecipients/, 'En modo abierto la RPC bloquea el teléfono leído de la ficha; nunca recibe el del navegador')
+assert.match(panelSendLogic, /expectedPhone: context\.telefono/, 'El destinatario esperado sale del contexto autorizado')
 assert.doesNotMatch(panelSend, /p_rate_limit: body|p_barberia_id: body/, 'Ni límites ni tenant desde el body')
 
 // Migración aditiva: sólo service_role ejecuta las RPC; estados validados sin

@@ -165,7 +165,7 @@ Deno.serve(async (request) => {
     const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
     const agent = metadata.agent && typeof metadata.agent === 'object' ? metadata.agent as Record<string, unknown> : null
     const senderHashValue = textFrom(metadata.sender_hash)
-    const manualRecipient = manual ? await manualQaRecipient((name: string) => Deno.env.get(name), senderHashValue) : null
+    const manualRecipient = manual ? await manualQaRecipient((name: string) => Deno.env.get(name), senderHashValue, metadata.qa_manual_sender_phone) : null
     const recipient = manual ? manualRecipient?.recipient : canonicalArgentineMobile(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
     const recipientHash = manual ? manualRecipient?.recipientHash || '' : textFrom(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
     const senderMatches = Boolean(recipient && recipientHash && constantTimeEqual(senderHashValue, recipientHash))

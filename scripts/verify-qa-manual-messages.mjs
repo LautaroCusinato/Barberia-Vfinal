@@ -181,13 +181,30 @@ try {
   assert.equal(db.tables.saas_automation_shadow_runs.length, 1)
   assert.equal(db.tables.mensajes.length, 1)
 
-  // Teléfono ajeno: ni fichas, ni mensajes, ni shadow runs.
+  // El dueño habilitó cualquier cliente directo en QA928. El destino del
+  // bot sale de la fuente autenticada y persistida, nunca del body de n8n.
   db = createMemoryDb(fixture(), { rpc })
   incoming = await send('Hola', { sender: '5491155559999' })
-  assert.equal(incoming.body.reason, 'qa_recipient_not_allowed')
-  assert.equal(db.tables.clientes.length, 0)
-  assert.equal(db.tables.mensajes?.length || 0, 0)
-  assert.equal(db.tables.saas_automation_shadow_runs.length, 0)
+  assert.equal(incoming.status, 200)
+  assert.equal(db.tables.clientes[0].telefono, '5491155559999')
+  assert.equal(db.tables.mensajes.length, 1)
+  assert.equal(db.tables.saas_automation_shadow_runs[0].metadata.qa_manual_sender_phone, '5491155559999')
+  const thirdReply = await reply(incoming.id)
+  assert.equal(thirdReply.body.panel_message_persisted, true)
+  assert.equal(sends.at(-1).number, '5491155559999')
+  assert.equal(db.tables.mensajes.length, 2)
+  const thirdBefore = sends.length
+  db.tables.saas_automation_shadow_runs[0].metadata.qa_manual_sender_phone = '5491155558888'
+  const wrongDestination = await reply(incoming.id)
+  assert.equal(wrongDestination.status, 503)
+  assert.equal(sends.length, thirdBefore, 'no responde a un destino cambiado')
+
+  db = createMemoryDb(fixture(), { rpc })
+  incoming = await send('Hola', { sender: '541155559999' })
+  assert.equal(db.tables.clientes[0].telefono, '5491155559999', 'la identidad sin el 9 se completa igual que la web')
+  const normalizedReply = await reply(incoming.id)
+  assert.equal(normalizedReply.body.panel_message_persisted, true)
+  assert.equal(sends.at(-1).number, '5491155559999')
 
   // Otro tenant conserva el piloto anterior y no usa la nueva RPC de bandeja.
   const other = fixture()

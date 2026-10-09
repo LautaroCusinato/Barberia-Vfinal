@@ -181,6 +181,21 @@ await test('QA manual no degrada el guardado seguro si falta su RPC', async () =
   assert.equal(ctx.deliveries.length, 0)
 })
 
+await test('QA abierto conserva el teléfono esperado y bloquea una sustitución posterior a la reserva', async () => {
+  const ctx = createDb({ atomic: true })
+  const reserve = ctx.store.reserve
+  ctx.store.reserve = async (args) => {
+    assert.equal(args.expectedPhone, '5491122334455', 'lo leyó de la ficha autorizada')
+    const result = await reserve(args)
+    result.mensaje.telefono = '5491155559999'
+    return result
+  }
+  const result = await run(ctx, send('Prueba cliente abierto'), 'owner-7', { ...FIXED, requireRecipientMatch: true })
+  assert.equal(result.code, 'qa_recipient_not_allowed')
+  assert.equal(ctx.deliveries.length, 0)
+  assert.equal(ctx.db.mensajes[0].estado_envio, 'fallido')
+})
+
 await test('cliente existente sin conversación: preflight listo, sin escribir ni enviar', async () => {
   const ctx = createDb()
   const result = await run(ctx, { action: 'preflight', tenant_id: TENANT, cliente_id: 100 })

@@ -1,5 +1,5 @@
 import { canonicalArgentineMobile, isValidCustomerName } from './whatsappCustomer.mjs'
-import { manualQaPhoneList } from './qaManualRuntime.mjs'
+import { manualQaPhoneAllowed } from './qaManualRuntime.mjs'
 
 const RECEIPT_PREFIX = 'qa928-accepted:'
 
@@ -37,7 +37,7 @@ export function parseAcceptedManualReceipt(value, { integrationId, operationId, 
   try { receipt = JSON.parse(value.slice(RECEIPT_PREFIX.length)) } catch { return null }
   const phone = canonicalArgentineMobile(receipt?.phone)
   if (Number(receipt?.integrationId) !== Number(integrationId) || receipt?.operationId !== operationId
-    || receipt.de !== 'bot' || !phone || !manualQaPhoneList(getEnv).includes(phone)
+    || receipt.de !== 'bot' || !phone || !manualQaPhoneAllowed(getEnv, phone)
     || typeof receipt.text !== 'string' || !receipt.text.trim() || receipt.text.length > 4096
     || typeof receipt.providerMessageId !== 'string' || !receipt.providerMessageId.trim() || receipt.providerMessageId.length > 200
     || !Number.isFinite(Date.parse(receipt.messageAt))) return null

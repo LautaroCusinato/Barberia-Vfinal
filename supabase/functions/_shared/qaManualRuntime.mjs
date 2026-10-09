@@ -27,12 +27,28 @@ export function manualQaPhoneList(getEnv) {
   return unique.length <= 2 ? unique : []
 }
 
-export async function manualQaRecipient(getEnv, senderHash) {
-  const phones = manualQaPhoneList(getEnv)
-  // Lista acotada: la prueba usa los dos teléfonos propios autorizados.
-  if (!phones.length || phones.length > 2) return null
+// El dueño habilitó el 09/10 la recepción desde cualquier cliente para QA928.
+// Conserva todos los gates de proyecto, entorno, tenant e instancia; los
+// pilotos anteriores siguen usando sus listas. No admite grupos ni un
+// destino arbitrario enviado por n8n: debe coincidir con el remitente real.
+export function manualQaOpenRecipients(getEnv) {
+  return manualQaEnabled(getEnv, QA_MANUAL_TENANT, `austral-qa-tenant-${QA_MANUAL_TENANT}`)
+}
+
+export function manualQaPhoneAllowed(getEnv, value) {
+  const phone = canonicalArgentineMobile(value)
+  return Boolean(phone && (manualQaOpenRecipients(getEnv) || manualQaPhoneList(getEnv).includes(phone)))
+}
+
+export async function manualQaRecipient(getEnv, senderHash, persistedSenderPhone = null) {
+  const sourcePhone = canonicalArgentineMobile(persistedSenderPhone)
+  const open = manualQaOpenRecipients(getEnv)
+  if (open && persistedSenderPhone !== null && persistedSenderPhone !== undefined && !sourcePhone) return null
+  const phones = open && sourcePhone ? [sourcePhone] : manualQaPhoneList(getEnv)
+  // Las fuentes anteriores sin teléfono conservan la recuperación acotada.
+  if (!phones.length) return null
   const matches = []
-  for (const phone of phones) {
+  for (const phone of [...new Set(phones)]) {
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${phone}@s.whatsapp.net`))
     const hash = `sha256:${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 12)}`
     if (hash === senderHash) matches.push({ recipient: phone, recipientHash: hash })

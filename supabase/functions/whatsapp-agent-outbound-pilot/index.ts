@@ -165,7 +165,7 @@ Deno.serve(async (request) => {
     const sourceEventReal = isRealPersistedSourceMetadata(metadata)
     if (!manual && (!sourceFresh || !sourceEventReal)) return json({ error: 'fresh_source_event_required', outbound_allowed: false }, 409)
 
-    const manualRecipient = manual ? await manualQaRecipient((name: string) => Deno.env.get(name), safeString(metadata.sender_hash)) : null
+    const manualRecipient = manual ? await manualQaRecipient((name: string) => Deno.env.get(name), safeString(metadata.sender_hash), metadata.qa_manual_sender_phone) : null
     const recipient = manual ? manualRecipient?.recipient : normalizeRecipient(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
     if (!recipient) return json({ error: 'qa_recipient_not_configured', outbound_allowed: false }, 503)
 

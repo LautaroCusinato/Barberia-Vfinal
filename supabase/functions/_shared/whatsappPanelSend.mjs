@@ -326,6 +326,7 @@ export async function handlePanelSend({ user, body, store, deliver, settings, no
     texto,
     hora,
     confirmResend: body?.confirm_resend === true,
+    expectedPhone: context.telefono,
     settings,
   }).catch(() => fail('No se pudo guardar el mensaje.', 502, 'message_insert_failed'))
   if (reservation == null) reservation = await reserveWithTables({ context, texto, body, store, now, settings, hora })
@@ -351,7 +352,8 @@ export async function handlePanelSend({ user, body, store, deliver, settings, no
   // La RPC releyó la ficha: un cambio concurrente puede devolver otro
   // teléfono. La restricción QA también se verifica sobre el destino final,
   // después de reservar y antes de cualquier llamada al proveedor.
-  if (Array.isArray(settings.allowedRecipients) && !settings.allowedRecipients.includes(telefono)) {
+  if ((Array.isArray(settings.allowedRecipients) && !settings.allowedRecipients.includes(telefono))
+    || (settings.requireRecipientMatch === true && telefono !== context.telefono)) {
     const failed = atomic
       ? await store.complete(context.tenantId, saved.id, 'fallido', null).catch(() => null)
       : await store.updateMensaje(context.tenantId, saved.id, { estado_envio: 'fallido', enviado_wsp: false }).catch(() => null)

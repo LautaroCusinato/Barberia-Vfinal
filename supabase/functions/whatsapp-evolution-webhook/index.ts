@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
-import { manualQaEnabled, manualQaCapabilities, manualQaPhoneList, QA_MANUAL_ROUTE, QA_MANUAL_PUBLIC_ORIGIN } from '../_shared/qaManualRuntime.mjs'
+import { manualQaEnabled, manualQaCapabilities, manualQaPhoneAllowed, QA_MANUAL_ROUTE, QA_MANUAL_PUBLIC_ORIGIN } from '../_shared/qaManualRuntime.mjs'
 import { persistManualMessage } from '../_shared/qaManualMessages.mjs'
 import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate, normalizeCustomerReply, resolveRequestedServices } from '../_shared/whatsappAgentShadow.mjs'
 import { QA_BOOKING_MUTATION_FLAG, QA_BOOKING_MUTATION_TENANTS_ENV, isQaBookingTenantAllowed } from '../_shared/whatsappBookingMutation.mjs'
@@ -434,11 +434,11 @@ async function processInboundMessage({
   if (!isFreshInboundTimestamp(inbound.timestamp)) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: 'stale_or_invalid_timestamp', mutation_blocked: true, outbound_send: false }, status: 202 }
   const manual = manualQaEnabled((name: string) => Deno.env.get(name), connection.barberia_id, instance)
   const phone = manual ? canonicalArgentineMobile(inbound.remoteJid) : null
-  if (manual && (!phone || !manualQaPhoneList((name: string) => Deno.env.get(name)).includes(phone))) {
+  if (manual && (!phone || !manualQaPhoneAllowed((name: string) => Deno.env.get(name), phone))) {
     return { body: { received: true, accepted: false, reason: 'qa_recipient_not_allowed', mutation_blocked: true, outbound_send: false }, status: 202 }
   }
   // El mensaje real se conserva también cuando una persona pausó el bot.
-  // Sólo texto de los teléfonos propios; nunca crea un envío externo.
+  // Sólo texto directo válido; nunca crea un envío externo al persistir.
   const panelMessage = manual && inbound.messageType === 'text' && !inbound.isGroup && !inbound.isBroadcast && inbound.text.trim() && inbound.text.length <= 4096
     ? { integrationId: Number(connection.integration_id), operationId: `inbound:${inbound.eventId}`, de: 'paciente', phone, text: inbound.text, messageAt: new Date(Number(inboundTimestampSeconds(inbound.timestamp)) * 1000).toISOString(), providerMessageId: inbound.eventId }
     : null
@@ -459,7 +459,9 @@ async function processInboundMessage({
   const pause = await loadBotPause(admin, tenantId)
   if (!pause.botActive) return { body: { received: true, accepted: false, event: INBOUND_EVENT, tenant_id: connection.barberia_id, reason: 'bot_paused', mutation_blocked: true, outbound_send: false }, status: 202 }
   const context = await loadTenantContext(admin, connection.barberia_id)
-  const senderHashValue = await senderHash(inbound.remoteJid)
+  // QA manual usa la misma identidad canónica que Clientes y la reserva web,
+  // también si el proveedor entrega el celular argentino sin el 9.
+  const senderHashValue = await senderHash(manual && phone ? `${phone}@s.whatsapp.net` : inbound.remoteJid)
   const previousConversation = await loadConversationState(admin, connection, instance, senderHashValue)
   const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
   const now = new Date()
@@ -584,6 +586,7 @@ async function processInboundMessage({
       message_type: inbound.messageType,
       message_timestamp: inbound.timestamp,
       sender_hash: senderHashValue,
+      ...(manual ? { qa_manual_sender_phone: phone } : {}),
       instance,
       from_me: false,
       agent: {

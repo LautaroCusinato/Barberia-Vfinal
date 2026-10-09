@@ -1,6 +1,51 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { qaProvisionCorsOrigin, publicQaCapabilities } from '../../supabase/functions/_shared/qaProvisionUi.mjs'
+import { disconnectQaSession } from '../../supabase/functions/_shared/qaDisconnect.mjs'
+
+const emptyPending={name:'austral-qa-tenant-928',ownerJid:null,number:null,_count:{Message:0,Chat:0,Contact:0}}
+const pendingSignals=async()=>({connectionState:'connecting',fetchState:'connecting'})
+test('cancela sólo QR nuevo y vacío de QA928 y confirma que desapareció', async()=>{
+  let deleted=false
+  await disconnectQaSession({instanceName:emptyPending.name,signals:pendingSignals,request:async path=>{
+    if(path.includes('/logout/'))throw Error('no session')
+    if(path.includes('/delete/')){deleted=true;return {status:'SUCCESS'}}
+    return deleted?[]:[emptyPending]
+  }})
+  assert.equal(deleted,true)
+})
+test('no borra propietario, historial, otro tenant ni señales abiertas o desconocidas', async()=>{
+  for(const patch of [{ownerJid:'existing@s.whatsapp.net'},{number:'5491155550107'},{_count:{Message:1,Chat:0,Contact:0}},{_count:{Message:0,Chat:0,Contact:1}},{_count:null},{name:'austral-qa-tenant-927'},{signals:{connectionState:'open',fetchState:'connecting'}}]){
+    let deleted=false
+    const row={...emptyPending,...patch}
+    await assert.rejects(disconnectQaSession({instanceName:row.name,signals:async()=>patch.signals||await pendingSignals(),request:async path=>{
+      if(path.includes('/logout/'))throw Error('logout failed')
+      if(path.includes('/delete/'))deleted=true
+      return [row]
+    }}))
+    assert.equal(deleted,false)
+  }
+})
+test('un error de logout sólo se acepta con cierre o ausencia confirmados', async()=>{
+  let deleted=false
+  await disconnectQaSession({instanceName:emptyPending.name,signals:async()=>({connectionState:'close',fetchState:'close'}),request:async path=>{
+    if(path.includes('/logout/'))throw Error('cleanup failed')
+    if(path.includes('/delete/'))deleted=true
+    return [{...emptyPending,ownerJid:'existing@s.whatsapp.net'}]
+  }})
+  assert.equal(deleted,false)
+  await disconnectQaSession({instanceName:emptyPending.name,signals:async()=>{throw Error('not needed')},request:async path=>{
+    if(path.includes('/logout/'))throw Error('already absent')
+    return []
+  }})
+})
+test('no afirma desconexión si logout o eliminación no dejaron cerrado el canal', async()=>{
+  await assert.rejects(disconnectQaSession({instanceName:emptyPending.name,signals:async()=>({connectionState:'open',fetchState:'open'}),request:async()=>({status:'SUCCESS'})}),error=>error.code==='evolution_disconnect_not_confirmed')
+  await assert.rejects(disconnectQaSession({instanceName:emptyPending.name,signals:pendingSignals,request:async path=>{
+    if(path.includes('/logout/'))throw Error('no session')
+    return path.includes('/delete/')?{status:'SUCCESS'}:[emptyPending]
+  }}),error=>error.code==='evolution_disconnect_not_confirmed')
+})
 
 const qa = { appBaseUrl: 'https://barberia-qa.cuchitron.lat', projectRef: 'cmsymmszlzikqpvfqjre', environment: 'qa' }
 

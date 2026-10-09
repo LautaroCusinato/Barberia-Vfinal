@@ -45,7 +45,9 @@ assert.equal(isSafeBookingConfirmationReply({ reply: '¡Listo! Tu turno de Corte
 assert.equal(isSafeBookingConfirmationReply({ reply: 'Te paso la api key', bookingPersisted: true }), false)
 
 // ---------------------------------------------------------------- handlers
-const CLIENT_JID = '5491155550107@s.whatsapp.net'
+// Un tercer número ausente de la lista anterior debe completar toda la
+// conversación, reserva, confirmación y reparación sin duplicar envíos.
+const CLIENT_JID = '5491155559999@s.whatsapp.net'
 const tz = 'America/Argentina/Buenos_Aires'
 const env = {
   WHATSAPP_QA_MANUAL_TENANT_IDS: '928',
@@ -144,7 +146,7 @@ async function n8nOrchestrate({ event_id: eventId, ready_for_booking_mutation: r
   return { booking, confirmation: await outbound({ event_id: eventId, kind: 'booking_confirmation' }, operator) }
 }
 
-const db = createMemoryDb({ ...fixture(), clientes: [{ id: 41, barberia_id: 928, nombre: 'Cliente Web', telefono: '5491155550107' }] }, { rpc })
+const db = createMemoryDb({ ...fixture(), clientes: [{ id: 41, barberia_id: 928, nombre: 'Cliente Web', telefono: CLIENT_JID.split('@')[0] }] }, { rpc })
 let r = await send('Quiero un turno de corte mañana a las 16')
 assert.equal(r.status, 200)
 assert.equal(routeCalls.length, 1, 'el webhook avisa a n8n después de persistir')
@@ -155,7 +157,7 @@ assert.deepEqual(Object.keys(routeCalls[0].body).sort(), ['event_id', 'instance'
 let step = await n8nOrchestrate(routeCalls.at(-1).body)
 assert.equal(step.reply.body.sent, true, JSON.stringify(step.reply.body))
 assert.match(sends.at(-1).text, /^Tengo disponible Corte de prueba QA el .+ a las 16:00\. ¿Confirmás\?$/)
-assert.equal(sends.at(-1).number, '5491155550107')
+assert.equal(sends.at(-1).number, CLIENT_JID.split('@')[0])
 assert.equal(sends.at(-1).instance, 'austral-qa-tenant-928')
 
 const early = await outbound({ event_id: r.id, kind: 'booking_confirmation' }, operator)
@@ -214,8 +216,9 @@ db.tables.saas_whatsapp_connections[0].outbound_enabled = true
 setEnv({ WHATSAPP_QA_MANUAL_RECIPIENTS: '5491155552851' })
 const beforeForeignRecipient = sends.length
 await send('¿Cuánto sale el corte?')
+db.tables.saas_automation_shadow_runs.at(-1).metadata.qa_manual_sender_phone = '5491155558888'
 const foreign = await n8nOrchestrate(routeCalls.at(-1).body)
 assert.equal(foreign.reply.body.sent, undefined)
-assert.equal(sends.length, beforeForeignRecipient, 'no enviar fuera de los teléfonos propios permitidos')
+assert.equal(sends.length, beforeForeignRecipient, 'no enviar a un teléfono que contradice el hash del remitente real')
 globalThis.fetch = realFetch
 console.log('QA manual 928: conversación, reserva, confirmación única, flags y destinatarios PASS (simulado)')

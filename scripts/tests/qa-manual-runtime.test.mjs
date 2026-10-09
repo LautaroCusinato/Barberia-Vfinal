@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { manualQaEnabled, manualQaRecipient, manualQaCapabilities } from '../../supabase/functions/_shared/qaManualRuntime.mjs'
+import { manualQaEnabled, manualQaRecipient, manualQaCapabilities, manualQaOpenRecipients, manualQaPhoneAllowed } from '../../supabase/functions/_shared/qaManualRuntime.mjs'
 const env = { SUPABASE_URL: 'https://cmsymmszlzikqpvfqjre.supabase.co', WHATSAPP_PROVISIONING_ENV: 'qa', WHATSAPP_MODE: 'shadow', PILOT_MODE: 'shadow', WHATSAPP_QA_MANUAL_TENANT_IDS: '928' }
 const getter = overrides => key => ({ ...env, ...overrides })[key]
 const hash = phone => `sha256:${createHash('sha256').update(`${phone}@s.whatsapp.net`).digest('hex').slice(0, 12)}`
@@ -25,6 +25,24 @@ test('la ruta y la reserva respetan conexión y capacidades reales', () => {
   assert.equal(manualQaCapabilities(connection), true)
   assert.equal(manualQaCapabilities(connection,{booking:true}), false)
   for (const patch of [{state:'CONNECTING'},{automation_enabled:false},{outbound_enabled:'true'}]) assert.equal(manualQaCapabilities({...connection,...patch}), false)
+})
+
+test('QA928 recibe otro cliente, pero sólo responde al remitente persistido cuyo hash coincide', async () => {
+  const phone = '5491155559999'
+  const get = getter({ WHATSAPP_QA_MANUAL_RECIPIENTS: '5491155550107,5491155552851' })
+  assert.equal(manualQaOpenRecipients(get), true)
+  assert.equal(manualQaPhoneAllowed(get, phone), true)
+  assert.deepEqual(await manualQaRecipient(get, hash(phone), phone), { recipient: phone, recipientHash: hash(phone) })
+  assert.equal(await manualQaRecipient(get, hash(phone), '5491155558888'), null, 'un número cambiado no coincide con el origen real')
+  assert.equal(await manualQaRecipient(get, hash('5491155550107'), phone), null, 'la lista anterior tampoco puede ocultar una fuente cambiada')
+  assert.equal(await manualQaRecipient(get, hash('5491155550107'), '123'), null, 'una fuente inválida no degrada al destino viejo')
+  assert.equal(await manualQaRecipient(get, hash(phone)), null, 'sin teléfono de la fuente no se deduce un destino')
+  assert.equal(manualQaPhoneAllowed(get, 'grupo@g.us'), false)
+  assert.equal(manualQaPhoneAllowed(get, '123'), false)
+  for (const overrides of [{SUPABASE_URL:'https://ssagttjdgtypxjcgdnrw.supabase.co'},{WHATSAPP_QA_MANUAL_TENANT_IDS:'927'},{WHATSAPP_PROVISIONING_ENV:'production'},{WHATSAPP_MODE:'live'}]) {
+    assert.equal(manualQaOpenRecipients(getter(overrides)), false)
+    assert.equal(await manualQaRecipient(getter(overrides), hash(phone), phone), null)
+  }
 })
 
 test('las plantillas manuales no guardan headers, teléfonos ni textos en ejecuciones', () => {
