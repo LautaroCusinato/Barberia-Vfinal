@@ -147,3 +147,52 @@ lint, npm test, test:unit y build. Evidencia en `online-qa-before.json`,
 `online-qa-after.json`, `online-qa-postflight.json`, `check-*-open-customers.log`
 y `whatsapp-before-open/`. El último directorio respalda fuentes desplegadas,
 comparadas sin diferencias contra `933b281` antes de actualizar cinco funciones.
+
+## Fallos encontrados por el dueño · 09/10/2026
+
+La prueba física mostró tres problemas. Esta entrega queda para revisión
+independiente; no cierra las tareas por pruebas simuladas.
+
+- La reserva pública reemplazaba los botones por esqueletos cada 30 segundos.
+  El sondeo del mismo servicio/día ahora conserva los controles, el foco y
+  la selección válida. Un cambio de contexto sigue mostrando carga; un horario
+  ocupado se invalida. Un error transitorio del catálogo conserva el borrador.
+  La confirmación vuelve a consultar catálogo/horarios y la RPC mantiene sus
+  validaciones autoritativas.
+- El turno web 44 (10/10, 12:00) estaba guardado, pero la publicación
+  `supabase_realtime` de QA no tenía ninguna tabla. La migración aditiva
+  `20261009233000_panel_realtime_publication.sql` publica las diez tablas
+  suscriptas por App, sin cambiar RLS, grants, RPC ni REPLICA IDENTITY.
+  No publica las tablas internas del bot. Se probó dos veces dentro de una
+  transacción revertida: owner ve 2 turnos propios, 0 ajenos y anon bloqueado.
+  Luego se aplicó y registró sólo en QA. Una suscripción autenticada con los
+  diez filtros del negocio 928 devolvió SUBSCRIBED.
+- «Corte de pelo» coincidía con Corte clásico y Corte + barba. El estado
+  mantenía service_id vacío y repetía una pregunta sin opciones. Ahora muestra
+  las opciones concretas del catálogo del negocio; elegir «Corte clásico»
+  avanza al día. No elige automáticamente un combo ni inventa servicios.
+- App vuelve a leer los datos al recuperar el foco o reconectarse, cubriendo
+  cambios guardados entre la lectura inicial y la suscripción. No remonta el
+  panel ni borra un borrador de mensaje.
+
+El saludo observado tardó 29,5 s: inbound 22:42:01 UTC, propuesta 22:42:27,7,
+mensaje saliente guardado 22:42:30,5. Las cuatro respuestas siguientes tardaron
+3,9–5,3 s. Fueron deterministas, sin llamada al modelo. No se pudo obtener el
+log de ejecución de Supabase: el conector rechaza la autenticación, y el log
+de Evolution no conserva entradas útiles de esa ventana. No se atribuye la
+demora a una causa sin evidencia. Se paralelizaron tres lecturas independientes
+después de validar la pausa; nuevos eventos guardan processing_started_at y
+proposed_latency_ms para distinguir la llegada al proceso de su duración.
+Queda pendiente medir el primer mensaje real después de la publicación.
+
+Reversión de QA: el inventario previo era vacío; quitar las diez tablas de
+`supabase_realtime` revierte sólo esta entrega, sin perder datos. En otro
+entorno, comparar el inventario previo y quitar exclusivamente las tablas
+añadidas allí. Conservar el fallback del panel durante la reversión.
+
+Controles: lint, npm test, 58 archivos/719 tests unitarios y build PASS.
+Evidencia privada: check-*-defects.log, realtime-migration-dry.sql,
+realtime-migration-apply.sql, read-current-defects.mjs y whatsapp-before-defects/.
+El respaldo de funciones coincide con 8ed68b7. No se enviaron mensajes ni se
+desconectó la sesión del dueño para probar estos arreglos. Publicación del
+frontend y webhook QA registrada en tareas al terminar; producción intacta.

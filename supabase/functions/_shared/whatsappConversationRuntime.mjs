@@ -200,7 +200,7 @@ export function buildChannelProposal({ reply, intent = 'general_query', requeste
   }
 }
 
-export function buildConversationProposal({ state, action, availability = null, services = [], barbers = [], businessName = 'la barbería', replyPrefix = '' } = {}) {
+export function buildConversationProposal({ state, action, availability = null, serviceResolution = null, services = [], barbers = [], businessName = 'la barbería', replyPrefix = '' } = {}) {
   const safeBusinessName = textFrom(businessName) || 'la barbería'
   const service = serviceName(services, state?.service_id)
   const date = dateLabel(state?.requested_date)
@@ -209,10 +209,15 @@ export function buildConversationProposal({ state, action, availability = null, 
   let requestedAction
 
   switch (action?.action) {
-    case 'ask_service':
-      proposedReply = '¿Qué servicio querés reservar?'
+    case 'ask_service': {
+      // Una coincidencia ambigua no debe convertirse en una pregunta vacía
+      // repetida: ofrecemos los nombres del catálogo de este negocio.
+      const choices = serviceResolution?.status === 'ambiguous' ? serviceResolution.matches : services
+      const names = (choices || []).filter((item) => item?.activo !== false).map((item) => textFrom(item?.nombre)).filter(Boolean).slice(0, 5)
+      proposedReply = names.length ? `¿Qué servicio querés reservar? Tenemos: ${names.join(', ')}.` : '¿Qué servicio querés reservar?'
       requestedAction = 'booking_collect_service'
       break
+    }
     case 'ask_barber': {
       const names = barbers.filter((barber) => barber?.activo !== false).map((barber) => textFrom(barber?.nombre)).filter(Boolean).slice(0, 3)
       proposedReply = names.length ? `¿Con qué barbero preferís? ${names.join(', ')}.` : '¿Con qué barbero preferís?'

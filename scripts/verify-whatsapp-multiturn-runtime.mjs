@@ -22,6 +22,22 @@ const second = advanceConversationTurn({ state: first.state, scope, eventId: 'ev
 assert.equal(second.action.action, 'ask_date')
 assert.equal(second.state.service_id, 1)
 
+// Regresión real: "corte de pelo" coincide con corte y combo. Se pregunta
+// con opciones concretas y una respuesta del catálogo avanza sin inventar.
+const realCatalog = [{ id: 71, nombre: 'Corte clásico', activo: true }, { id: 72, nombre: 'Barba', activo: true }, { id: 73, nombre: 'Corte + barba', activo: true }]
+for (const text of ['Corte de pelo', 'Un corte de pelo']) {
+  const turn = advanceConversationTurn({ state: first.state, scope, eventId: `evt-${text}`, text, services: realCatalog, timezone, now })
+  assert.equal(turn.state.service_id, null)
+  const reply = buildConversationProposal({ ...turn, serviceResolution: turn.extracted.serviceResolution, services: realCatalog })
+  assert.match(reply.proposed_reply, /Corte clásico.*Corte \+ barba/)
+  assert.doesNotMatch(reply.proposed_reply, /Tenemos: .*Barba, /)
+  const chosen = advanceConversationTurn({ state: turn.state, scope, eventId: `chosen-${text}`, text: 'Corte clásico', services: realCatalog, timezone, now })
+  assert.equal(chosen.state.service_id, 71)
+  assert.equal(chosen.action.action, 'ask_date')
+}
+const unknown = buildConversationProposal({ state: first.state, action: first.action, services: realCatalog })
+assert.match(unknown.proposed_reply, /Corte clásico, Barba, Corte \+ barba/)
+
 const third = advanceConversationTurn({ state: second.state, scope, eventId: 'evt-3', text: 'mañana', services, timezone, now })
 assert.equal(third.action.action, 'ask_time')
 assert.equal(third.state.requested_date, '2026-08-29')

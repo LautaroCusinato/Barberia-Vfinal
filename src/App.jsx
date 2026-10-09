@@ -696,9 +696,13 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos', filter: `barberia_id=eq.${barberiaId}` }, () => programarRecarga('pagos', cargarPagos))
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
+          if (cancelado) return
           realtimeActivo = true
           pollDelay = 15000
           detenerFallback()
+          // Una reserva pudo guardarse entre la primera lectura y la
+          // suscripción (o mientras el socket estaba caído).
+          refrescarDatosVisibles()
           if (import.meta.env.DEV) console.debug('[realtime] conectado OK')
         } else if (!cancelado && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
           realtimeActivo = false
@@ -740,11 +744,23 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
       pollingTimer = null
     }
 
+    const refrescarDatosVisibles = () => {
+      if (cancelado || document.visibilityState !== 'visible') return
+      programarRecarga('clientes', () => { const clientesPromise = cargarClientes(); cargarMensajes(clientesPromise) })
+      programarRecarga('turnos', cargarTurnos)
+      programarRecarga('pagos', cargarPagos)
+      programarRecarga('bloqueos', cargarBloqueos)
+    }
+    window.addEventListener('focus', refrescarDatosVisibles)
+    document.addEventListener('visibilitychange', refrescarDatosVisibles)
+
     activarFallback()
     suscribirRealtime()
 
     return () => {
       cancelado = true
+      window.removeEventListener('focus', refrescarDatosVisibles)
+      document.removeEventListener('visibilitychange', refrescarDatosVisibles)
       for (const timer of recargasPendientes.values()) window.clearTimeout(timer)
       recargasPendientes.clear()
       if (channel) supabase.removeChannel(channel)

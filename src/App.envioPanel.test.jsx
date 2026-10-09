@@ -32,7 +32,6 @@ const falso = vi.hoisted(() => {
     }
     return api
   }
-  const canal = { on: () => canal, subscribe: (cb) => { cb?.('SUBSCRIBED'); return canal } }
   const supabase = {
     from,
     rpc: async (nombre, args) => {
@@ -52,7 +51,10 @@ const falso = vi.hoisted(() => {
         return Promise.resolve({ data: null, error: null })
       },
     },
-    channel: () => canal,
+    channel: () => {
+      const canal = { handlers: [], on: (_event, filter, cb) => { canal.handlers.push({ filter, cb }); return canal }, subscribe: (cb) => { canal.status = cb; estado.canales.push(canal); cb?.('SUBSCRIBED'); return canal } }
+      return canal
+    },
     removeChannel: () => {},
     auth: { getSession: async () => ({ data: { session: null } }) },
     realtime: { setAuth: async () => {} },
@@ -88,6 +90,7 @@ function sembrar() {
   falso.estado.llamadas = []
   falso.estado.envios = []
   falso.estado.rpcs = []
+  falso.estado.canales = []
 }
 
 const errorDeFuncion = (status, body) => ({ data: null, error: { context: new Response(JSON.stringify(body), { status }) } })
@@ -114,6 +117,27 @@ beforeEach(() => {
 
 afterEach(() => {
   window.history.replaceState(null, '', '/')
+})
+
+describe('actualización externa del panel', () => {
+  it('al reconectar recibe cambios pendientes sin perder el mensaje que se está escribiendo', async () => {
+    render(<App barberiaId={1} barberiaNombre="Negocio A" />)
+    const compositor = await abrirHilo('Ana Uno')
+    fireEvent.change(compositor, { target: { value: 'Mi borrador' } })
+    falso.estado.db.mensajes.push({ id: 3, barberia_id: 1, cliente_id: 101, paciente: 'Ana Uno', texto: 'Respuesta externa nueva', de: 'bot', hora: '10:02', leido: true, created_at: CREADO })
+    act(() => falso.estado.canales.at(-1).status('SUBSCRIBED'))
+    await screen.findAllByText('Respuesta externa nueva')
+    expect(screen.getByLabelText('Mensaje para Ana Uno')).toHaveValue('Mi borrador')
+  })
+
+  it('al volver a la agenda incorpora una reserva externa sin recargar la página', async () => {
+    window.history.replaceState(null, '', '/?view=agenda')
+    render(<App barberiaId={1} barberiaNombre="Negocio A" />)
+    await screen.findByText('0 turnos en total')
+    falso.estado.db.turnos = [{ id: 44, barberia_id: 1, fecha: '2026-10-10', hora: '12:00', paciente: 'Reserva desde web', estado: 'confirmado', duracion_min: 30 }]
+    fireEvent(window, new Event('focus'))
+    await screen.findByText('1 turnos en total')
+  })
 })
 
 describe('cambio de negocio con un envío en curso', () => {

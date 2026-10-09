@@ -201,6 +201,34 @@ describe('catálogo y recuperación de reserva pública', () => {
     expect(screen.getByRole('button', { name: 'Confirmar reserva', exact: true })).not.toBeDisabled()
   })
 
+  it('actualiza horarios en segundo plano sin desmontar el botón enfocado ni ocultar las opciones', async () => {
+    await abrir()
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+    const horario = await screen.findByRole('button', { name: '10:00', exact: true })
+    fireEvent.click(horario)
+    horario.focus()
+    const pendiente = diferido()
+    consultarSlots.mockReturnValueOnce(pendiente.promise)
+    const timer = window.setInterval.mock.calls.filter(([, delay]) => delay === 30000).at(-1)
+    await act(async () => timer[0]())
+    expect(screen.getByRole('button', { name: '10:00', exact: true })).toBe(horario)
+    expect(horario).toHaveFocus()
+    expect(horario).toHaveAttribute('aria-pressed', 'true')
+    await act(async () => pendiente.resolve({ data: [slot], error: null }))
+    expect(screen.getByRole('button', { name: '10:00', exact: true })).toBe(horario)
+    expect(horario).toHaveFocus()
+  })
+
+  it('un fallo de catálogo durante el sondeo conserva el formulario y el borrador', async () => {
+    await formulario()
+    consultarCatalogo.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    fireEvent(window, new Event('focus'))
+    await screen.findByText('No pudimos actualizar los servicios. Revisaremos los datos antes de confirmar.')
+    expect(screen.getByRole('textbox', { name: /Nombre y apellido/ })).toHaveValue('Cliente de prueba')
+    expect(screen.queryByRole('heading', { name: /No pudimos abrir/ })).not.toBeInTheDocument()
+    expect(crear).not.toHaveBeenCalled()
+  })
+
   it('al cambiar la duración del servicio exige elegir nuevamente un horario', async () => {
     await formulario()
     catalogo = { ...catalogo, servicios: [{ ...servicio, duracion_min: 45 }] }

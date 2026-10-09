@@ -404,7 +404,7 @@ function PublicBookingFlow({ slug }) {
     } catch { /* history is optional */ }
   }
 
-  const cargarCatalogo = useCallback(async () => {
+  const cargarCatalogo = useCallback(async ({ background = false } = {}) => {
     const requestId = ++catalogRequestRef.current
     const vigente = () => mountedRef.current && requestId === catalogRequestRef.current && !finishedRef.current
     try {
@@ -438,7 +438,10 @@ function PublicBookingFlow({ slug }) {
       setError('')
       return nextCatalog
     } catch {
-      if (vigente()) setError('No pudimos actualizar los servicios. Intentá nuevamente.')
+      if (vigente()) {
+        if (background) setCatalogNotice('No pudimos actualizar los servicios. Revisaremos los datos antes de confirmar.')
+        else setError('No pudimos actualizar los servicios. Intentá nuevamente.')
+      }
       return null
     } finally {
       if (vigente()) setLoading(false)
@@ -447,7 +450,7 @@ function PublicBookingFlow({ slug }) {
 
   const serviceId = servicio?.id
   const serviceDuration = servicio?.duracion_min
-  const cargarSlots = useCallback(async () => {
+  const cargarSlots = useCallback(async ({ background = false } = {}) => {
     const requestId = ++slotsRequestRef.current
     const vigente = () => mountedRef.current && requestId === slotsRequestRef.current && !finishedRef.current
     if (serviceId == null || !fecha || !isSupabaseConfigured) {
@@ -455,7 +458,10 @@ function PublicBookingFlow({ slug }) {
       setLoadingSlots(false)
       return null
     }
-    setLoadingSlots(true)
+    // El sondeo del mismo servicio y día no desmonta los botones ni roba el
+    // foco. La confirmación siempre vuelve a consultar la disponibilidad.
+    const sameLoadedContext = previousSlotsContextRef.current?.serviceId === serviceId && previousSlotsContextRef.current?.fecha === fecha
+    if (!background || !sameLoadedContext) setLoadingSlots(true)
     try {
       const { data, error: rpcError } = await supabase.rpc('horarios_disponibles_reserva_publica', {
         p_slug: slug, p_servicio_id: serviceId, p_fecha: fecha,
@@ -487,7 +493,7 @@ function PublicBookingFlow({ slug }) {
     return () => { slotsRequestRef.current += 1 }
   }, [cargarSlots, serviceDuration])
   useEffect(() => {
-    const refresh = () => { if (document.visibilityState === 'visible' && !submittingRef.current && !finishedRef.current) { cargarCatalogo(); cargarSlots() } }
+    const refresh = () => { if (document.visibilityState === 'visible' && !submittingRef.current && !finishedRef.current) { cargarCatalogo({ background: true }); cargarSlots({ background: true }) } }
     window.addEventListener('focus', refresh)
     let timer = null
     const syncTimer = () => {

@@ -426,6 +426,7 @@ async function processInboundMessage({
   payload: Record<string, unknown>
   isBatch: boolean
 }): Promise<InboundProcessingResult> {
+  const processingStartedAt = new Date()
   if (connection.state !== 'CONNECTED') return { body: { error: 'connection_not_connected', mutation_blocked: true }, status: 409 }
   if (!connection.integration_id) return { body: { error: 'integration_not_configured', mutation_blocked: true }, status: 409 }
   const inbound = messageData(payload, { allowEnvelopeIdentity: !isBatch })
@@ -458,11 +459,14 @@ async function processInboundMessage({
   const tenantId = Number(connection.barberia_id)
   const pause = await loadBotPause(admin, tenantId)
   if (!pause.botActive) return { body: { received: true, accepted: false, event: INBOUND_EVENT, tenant_id: connection.barberia_id, reason: 'bot_paused', mutation_blocked: true, outbound_send: false }, status: 202 }
-  const context = await loadTenantContext(admin, connection.barberia_id)
   // QA manual usa la misma identidad canónica que Clientes y la reserva web,
   // también si el proveedor entrega el celular argentino sin el 9.
   const senderHashValue = await senderHash(manual && phone ? `${phone}@s.whatsapp.net` : inbound.remoteJid)
-  const previousConversation = await loadConversationState(admin, connection, instance, senderHashValue)
+  const [context, previousConversation, customerNameRequired] = await Promise.all([
+    loadTenantContext(admin, connection.barberia_id),
+    loadConversationState(admin, connection, instance, senderHashValue),
+    isCustomerNameRequired(admin, tenantId, inbound.remoteJid, manual),
+  ])
   const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
   const now = new Date()
   const scope = { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }
@@ -470,7 +474,6 @@ async function processInboundMessage({
   const chatBookingEnabled = (isQaBookingTenantAllowed(tenantId, Deno.env.get(QA_BOOKING_MUTATION_TENANTS_ENV)) && safeString(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1')
     || (manualQaEnabled((name: string) => Deno.env.get(name), tenantId, instance) && manualQaCapabilities(connection, { booking: true }))
   const bookingLink = resolveBookingLink(context.business, chatBookingEnabled, manualQaEnabled((name: string) => Deno.env.get(name), tenantId, instance))
-  const customerNameRequired = await isCustomerNameRequired(admin, tenantId, inbound.remoteJid, manual)
   const channelChoice = classifyChannelChoice(inbound.text)
   const previousOfferDelivery = await loadPreviousOfferDelivery(admin, Number(connection.integration_id), previousConversation, now)
   const choicePending = isChannelChoicePending(previousConversation, now, previousOfferDelivery)
@@ -546,7 +549,7 @@ async function processInboundMessage({
         }
       }
       proposal = bookingFlow
-        ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: scope, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, services: context.services, barbers: context.barbers, businessName: context.business.nombre, replyPrefix: chatChosen && chatBookingEnabled ? CHAT_CHOICE_PREFIX : '' })
+        ? buildConversationProposal({ state: conversationState, action: conversation.action?.action === 'check_availability' && availability?.rpc_executed ? nextConversationAction(conversationState, { expectedScope: scope, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available }) : conversation.action, availability, serviceResolution: conversation.extracted?.serviceResolution, services: context.services, barbers: context.barbers, businessName: context.business.nombre, replyPrefix: chatChosen && chatBookingEnabled ? CHAT_CHOICE_PREFIX : '' })
         : await (async () => {
           const initialIntent = classifyShadowIntent(inbound.text)
           if (initialIntent === 'availability_query') {
@@ -576,7 +579,7 @@ async function processInboundMessage({
     p_intent: proposal.intent,
     p_proposed_result: 'agent_proposal_shadow',
     p_proposed_response_length: proposal.proposed_reply.length,
-    p_proposed_latency_ms: null,
+    p_proposed_latency_ms: Math.max(0, Date.now() - processingStartedAt.getTime()),
     p_proposed_tokens_input: null,
     p_proposed_tokens_output: null,
     p_metadata: {
@@ -585,6 +588,7 @@ async function processInboundMessage({
       environment: 'qa',
       message_type: inbound.messageType,
       message_timestamp: inbound.timestamp,
+      processing_started_at: processingStartedAt.toISOString(),
       sender_hash: senderHashValue,
       ...(manual ? { qa_manual_sender_phone: phone } : {}),
       instance,
