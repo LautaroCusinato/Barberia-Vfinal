@@ -318,6 +318,7 @@ async function loadConversationAvailability(admin: ReturnType<typeof adminClient
   if (error) throw new Error('availability_rpc_failed')
   const slots = (data || [])
     .filter((slot: Record<string, unknown>) => matchesTimePeriod(slot.hora, request.time_period))
+    .filter((slot: Record<string, unknown>) => state.barber_id == null || Number(slot.barbero_id) === Number(state.barber_id))
     .map((slot: Record<string, unknown>) => ({
       service_id: service.id,
       service_name: service.nombre,

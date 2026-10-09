@@ -25,7 +25,12 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "credentials": { "httpHeaderAuth": { "id": "australQa928PanelHeader", "name": "Austral QA 928 Panel Header" } },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "australQa928PanelHeader",
+          "name": "Austral QA 928 Panel Header"
+        }
+      },
       "notes": "Autentica antes de aceptar con la credencial QA928 existente. Lo llama whatsapp-evolution-webhook después de persistir el mensaje; luego responde al recibir, sin esperar al proveedor."
     },
     {
@@ -280,6 +285,41 @@
         "jsCode": "throw new Error('booking_not_saved:' + String($input.first()?.json?.error || 'unknown').slice(0, 60));"
       },
       "notes": "Cualquier otro fallo deja la ejecución marcada como error, sin mensaje al cliente."
+    },
+    {
+      "id": "qa928-if-followup",
+      "name": "¿Falta elegir barbero?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        340
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "qa928-followup",
+              "leftValue": "={{ $json.booking_follow_up === true && $json.conversation_reopened === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "Recupera una propuesta confirmada antigua con varios profesionales. El servidor persiste la pregunta; Enviar respuesta usa sólo el evento verificado y su reclamo idempotente."
     }
   ],
   "connections": {
@@ -345,7 +385,7 @@
         ],
         [
           {
-            "node": "¿Horario rechazado?",
+            "node": "¿Falta elegir barbero?",
             "type": "main",
             "index": 0
           }
@@ -364,6 +404,24 @@
         [
           {
             "node": "Reserva no guardada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Falta elegir barbero?": {
+      "main": [
+        [
+          {
+            "node": "Enviar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Horario rechazado?",
             "type": "main",
             "index": 0
           }

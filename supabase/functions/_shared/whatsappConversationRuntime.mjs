@@ -110,6 +110,12 @@ export function advanceConversationTurn({ state = null, scope, eventId, text, me
     && (state.confirmation_state === 'confirmed' || !isConversationStateFresh(state, now)))
   const pendingIntent = forceBookingIntent === true ? 'booking_intent' : closedState ? null : state?.pending_intent || null
   const extracted = extractConversationTurn({ text, pendingIntent, services, barbers, timezone, now })
+  // "Cualquiera" es una preferencia explícita, sólo después de preguntar
+  // por profesionales concretos obtenidos de la disponibilidad del negocio.
+  if (state?.barber_selection_pending === true && /^(?:con )?(?:cualquiera|el que tenga libre|me da igual)[.!]*$/i.test(textFrom(text))) {
+    const candidate = (state.available_barber_ids || []).find((id) => barbers.some((barber) => Number(barber.id) === Number(id) && barber.activo !== false))
+    if (candidate) { extracted.fields.barber_id = candidate; extracted.fields.barber_selection_pending = false }
+  }
   const incomingConfirmation = state?.confirmation_state === 'awaiting_confirmation' && parseExplicitConfirmation(text)
   if (incomingConfirmation) {
     const confirmation = applyConfirmation({ state, expectedScope: scope, text, eventId, now, proposalId: state.proposal_id, proposalVersion: state.confirmation_version })
@@ -219,7 +225,8 @@ export function buildConversationProposal({ state, action, availability = null, 
       break
     }
     case 'ask_barber': {
-      const names = barbers.filter((barber) => barber?.activo !== false).map((barber) => textFrom(barber?.nombre)).filter(Boolean).slice(0, 3)
+      const allowed = state?.available_barber_ids || []
+      const names = [...new Set(barbers.filter((barber) => barber?.activo !== false && (!allowed.length || allowed.includes(Number(barber.id)))).map((barber) => textFrom(barber?.nombre)).filter(Boolean))].slice(0, 3)
       proposedReply = names.length ? `¿Con qué barbero preferís? ${names.join(', ')}.` : '¿Con qué barbero preferís?'
       requestedAction = 'booking_collect_barber'
       break

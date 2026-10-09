@@ -5,6 +5,7 @@ import { isRealPersistedSourceMetadata } from '../_shared/whatsappAgentOutboundP
 import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
 import { isConversationStateFresh, isConversationStateForScope, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
 import { canonicalArgentineMobile, resolveBookingCustomer } from '../_shared/whatsappCustomer.mjs'
+import { buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
 import {
   QA_BOOKING_MUTATION_ENVIRONMENT,
   QA_BOOKING_MUTATION_FLAG,
@@ -183,6 +184,17 @@ Deno.serve(async (request) => {
     const sourceEventReal = isRealPersistedSourceMetadata(metadata)
     const sourceFresh = eventIsFresh(sourceRun.observed_at)
 
+    // Un reintento del mismo Sí recupera la pregunta persistida, sin pedir
+    // otra reserva ni sustituir el estado por una confirmación vieja.
+    const followUp = metadata.booking_follow_up as Record<string, unknown> | undefined
+    if (state && stateScopeValid && stateFresh && promptVersionValid && sourceFresh && sourceEventReal && senderMatches
+      && sourceRun.intent === 'booking_intent' && (manual || textFrom(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1')
+      && followUp?.reason === 'barber_selection_required' && state.barber_selection_pending === true
+      && state.confirmation_state === 'collecting' && state.last_event_id === eventId) {
+      const { data: claim, error } = await admin.from('saas_automation_events').select('status').eq('integration_id', connection.integration_id).eq('event_id', followUp.claim_key).maybeSingle()
+      if (error || claim) return json({ error: 'booking_follow_up_claim_conflict', mutation_allowed: false }, 409)
+      return json({ error: 'barber_selection_required', booking_created: false, booking_follow_up: true, conversation_reopened: true, booking_mutation_executed: false }, 409)
+    }
     if (!state || !stateValid) return json({ error: 'confirmed_booking_state_required', mutation_allowed: false }, 409)
     if (!sourceFresh || !sourceEventReal || !senderMatches) return json({ error: 'source_event_not_eligible', mutation_allowed: false }, 403)
 
@@ -253,6 +265,17 @@ Deno.serve(async (request) => {
       return json({ ...base, conversation_reopened: true, alternatives_count: alternatives?.length ?? null }, 409)
     }
     if (!selected.allowed) {
+      if (selected.reason === 'barber_selection_required' && pilotEnabled && sourceRun.intent === 'booking_intent') {
+        if (existingClaim) return json({ error: 'booking_follow_up_claim_conflict', mutation_allowed: false }, 409)
+        const reopened = recordAvailabilityResult({ state, expectedScope: conversationScope, available: true, snapshotId: `barber-choice:${eventId}`, slots: slots || [] })
+        if (!reopened.accepted || !reopened.state.barber_selection_pending) return json({ error: 'barber_selection_reopen_failed', mutation_allowed: false }, 502)
+        const proposal = buildConversationProposal({ state: reopened.state, action: { action: 'ask_barber' }, barbers: (slots || []).map((slot: Record<string, unknown>) => ({ id: Number(slot.barbero_id), nombre: slot.barbero_nombre })) })
+        const { data: changed, error } = await admin.from('saas_automation_shadow_runs')
+          .update({ metadata: { ...metadata, proposed_reply: proposal.proposed_reply, conversation_state: reopened.state, conversation_action: proposal.requested_action, agent: { ...agent, requested_action: proposal.requested_action }, booking_follow_up: { reason: 'barber_selection_required', claim_key: claimEventId } } })
+          .eq('id', sourceRun.id).eq('event_id', eventId).eq('metadata->conversation_state->>confirmation_state', 'confirmed').select('id').maybeSingle()
+        if (error || !changed) return json({ error: 'barber_selection_reopen_failed', mutation_allowed: false }, 502)
+        return json({ error: 'barber_selection_required', booking_created: false, booking_follow_up: true, conversation_reopened: true, booking_mutation_executed: false }, 409)
+      }
       if (selected.reason === 'slot_unavailable_after_recheck' && pilotEnabled) {
         return rejectSlot(await slotIsBlocked(admin, tenantId, state) ? 'slot_blocked' : 'slot_unavailable', slots || [])
       }

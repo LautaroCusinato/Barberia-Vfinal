@@ -58,7 +58,7 @@ export function createMemoryDb(tables = {}, { rpc = {} } = {}) {
   class Query {
     constructor(table) { this.table = table; this.filters = []; this.sort = null; this.max = null; this.values = null }
     select() { return this }
-    eq(key, value) { this.filters.push((row) => String(row[key]) === String(value)); return this }
+    eq(key, value) { this.filters.push((row) => String(key.split(/->>?/).reduce((item, part) => item?.[part], row)) === String(value)); return this }
     in(key, values) { this.filters.push((row) => values.map(String).includes(String(row[key]))); return this }
     order(key, { ascending = true } = {}) { this.sort = { key, ascending }; return this }
     limit(count) { this.max = count; return this }
@@ -74,6 +74,7 @@ export function createMemoryDb(tables = {}, { rpc = {} } = {}) {
       if (db.failTables.has(this.table)) return { data: null, error: { message: 'forced_failure' } }
       const rows = this.rows()
       if (rows.length > 1) return { data: null, error: { message: 'multiple_rows' } }
+      if (this.values) for (const row of rows) Object.assign(row, this.values)
       return { data: rows[0] ?? null, error: null }
     }
     then(resolve, reject) {

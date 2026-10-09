@@ -196,3 +196,38 @@ realtime-migration-apply.sql, read-current-defects.mjs y whatsapp-before-defects
 El respaldo de funciones coincide con 8ed68b7. No se enviaron mensajes ni se
 desconectó la sesión del dueño para probar estos arreglos. Publicación del
 frontend y webhook QA registrada en tareas al terminar; producción intacta.
+
+## Silencio después de confirmar por chat · 09/10/2026
+
+El dueño envió «Sí» a las 20:14 para Barba, 10/10, 09:00. El evento 4641
+se persistió como confirmed, pero sin barber_id. Una invocación autenticada
+de la función real devolvió HTTP 409/barber_selection_required, sin turno.
+Había dos profesionales disponibles. El flujo activo de n8n tenía la salida
+genérica «Reserva no guardada», que marca error sin responder al cliente.
+
+Ahora recordAvailabilityResult pide profesional antes de confirmar cuando
+la RPC ofrece varios para el horario solicitado. Las opciones son del negocio
+y del horario; nombres duplicados por filas de slots no se repiten. «Cualquiera»
+elige sólo entre esos candidatos y vuelve a validar la disponibilidad. Si se
+eligió un profesional, un horario de otro no se considera válido para él.
+
+Para propuestas anteriores ya confirmadas y sin profesional, booking-mutation
+persiste una pregunta de elección, con un cambio condicionado al estado
+confirmed del evento. No crea turno y devuelve booking_follow_up. n8n tiene
+un IF nuevo «¿Falta elegir barbero?» que entrega esa respuesta persistida por
+el envío normal idempotente. Repetir el evento no duplica el mensaje. Si existe
+un reclamo de reserva completado o incierto, se corta la recuperación; tampoco
+se rebajan controles de pausa, identidad, actor, entorno o pertenencia.
+
+El respaldo remoto de tres funciones coincide con b97671d; el workflow activo
+también fue respaldado antes de cambiarlo. Se conservan credenciales y ajustes
+de privacidad de n8n. No se modifica el workflow del panel ni Evolution.
+No hay migración ni frontend nuevo en esta entrega.
+
+Controles: lint, npm test, 58 archivos/719 tests unitarios y build PASS.
+El harness real de las funciones añade casos de dos profesionales, cualquiera,
+elección explícita no disponible, recuperación de una propuesta vieja, replay,
+reserva con el profesional elegido y bloqueo frente a reclamo en curso. El
+mock ahora ejecuta update.select.maybeSingle y filtros JSON, como la API real.
+Queda para revisión independiente; registrar despliegue y resultado de la
+recuperación real en tareas. No se marca WhatsApp integral como completado.

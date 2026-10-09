@@ -5,6 +5,7 @@ import { qaManualMessageRpc } from './lib/qaManualMessageHarness.mjs'
 // fetch simulado para n8n y Evolution. Es una prueba local: no reemplaza el
 // recorrido real entre los dos números QA.
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import { isSafeBookingConfirmationReply } from '../supabase/functions/_shared/whatsappAgentOutboundPilot.mjs'
 import { isConfirmedBookingState, isQaBookingTenantAllowed, parseQaBookingTenantAllowlist } from '../supabase/functions/_shared/whatsappBookingMutation.mjs'
 import { canonicalArgentineMobile } from '../supabase/functions/_shared/whatsappCustomer.mjs'
@@ -142,6 +143,7 @@ const send = async (text, instance = 'austral-qa-tenant-928') => {
 async function n8nOrchestrate({ event_id: eventId, ready_for_booking_mutation: ready }) {
   if (!ready) return { reply: await outbound({ event_id: eventId }, operator) }
   const booking = await mutation({ event_id: eventId }, operator)
+  if (booking.body.booking_follow_up === true && booking.body.conversation_reopened === true) return { booking, reply: await outbound({ event_id: eventId }, operator) }
   if (booking.body.booking_created !== true) return { booking }
   return { booking, confirmation: await outbound({ event_id: eventId, kind: 'booking_confirmation' }, operator) }
 }
@@ -220,5 +222,73 @@ db.tables.saas_automation_shadow_runs.at(-1).metadata.qa_manual_sender_phone = '
 const foreign = await n8nOrchestrate(routeCalls.at(-1).body)
 assert.equal(foreign.reply.body.sent, undefined)
 assert.equal(sends.length, beforeForeignRecipient, 'no enviar a un teléfono que contradice el hash del remitente real')
+// Dos profesionales para el mismo horario: preguntar antes de confirmar.
+setEnv()
+const multiFixture = { ...fixture(), servicios: [{ id: 70, barberia_id: 928, nombre: 'Barba', activo: true }], barberos: [{ id: 9, barberia_id: 928, nombre: 'Lucas', activo: true }, { id: 10, barberia_id: 928, nombre: 'Mateo', activo: true }], clientes: [{ id: 41, barberia_id: 928, nombre: 'Cliente Web', telefono: CLIENT_JID.split('@')[0] }] }
+let omitBarber = null
+const multiRpc = { ...rpc, horarios_disponibles_reserva_publica: () => [9, 10].filter(id => id !== omitBarber).map(id => ({ barbero_id: id, barbero_nombre: id === 9 ? 'Lucas' : 'Mateo', hora: '09:00:00', duracion_min: 30 })) }
+const multiple = createMemoryDb(multiFixture, { rpc: multiRpc })
+r = await send('Quiero Barba mañana a las 9 de la mañana')
+assert.match(r.body.proposed_reply, /Lucas, Mateo/)
+assert.doesNotMatch(r.body.proposed_reply, /Confirmás/)
+assert.equal(multiple.tables.saas_automation_shadow_runs.at(-1).metadata.conversation_state.confirmation_state, 'collecting')
+r = await send('Cualquiera')
+assert.match(r.body.proposed_reply, /Confirmás/)
+assert.equal(multiple.tables.saas_automation_shadow_runs.at(-1).metadata.conversation_state.barber_id, 9)
+
+// Propuesta antigua como la real: pidió confirmar sin resolver barbero.
+const previous = multiple.tables.saas_automation_shadow_runs.at(-1)
+previous.metadata.conversation_state.barber_id = null
+await send('Sí')
+step = await n8nOrchestrate(routeCalls.at(-1).body)
+assert.equal(step.booking.body.booking_created, false, JSON.stringify(step.booking.body))
+assert.equal(step.booking.body.booking_follow_up, true)
+assert.equal(step.reply.body.sent, true)
+assert.match(sends.at(-1).text, /Lucas, Mateo/)
+assert.equal(multiple.tables.turnos.length, 0)
+const sentAfterRepair = sends.length
+step = await n8nOrchestrate(routeCalls.at(-1).body)
+assert.equal(step.booking.body.booking_follow_up, true)
+assert.equal(step.reply.body.duplicate, true)
+assert.equal(sends.length, sentAfterRepair, 'un replay no duplica la pregunta de recuperación')
+r = await send('Mateo')
+assert.match(r.body.proposed_reply, /Confirmás/)
+await send('Sí')
+step = await n8nOrchestrate(routeCalls.at(-1).body)
+assert.equal(step.booking.body.booking_created, true)
+assert.equal(multiple.tables.turnos[0].barbero_id, 10)
+assert.equal(step.confirmation.body.sent, true)
+
+// El horario de Lucas no autoriza ofrecerlo como disponible con Mateo.
+omitBarber = 10
+const missingSelected = createMemoryDb(multiFixture, { rpc: multiRpc })
+r = await send('Quiero Barba mañana a las 9 de la mañana con Mateo')
+assert.doesNotMatch(r.body.proposed_reply, /Confirmás/)
+assert.equal(missingSelected.tables.saas_automation_shadow_runs.at(-1).metadata.conversation_state.requested_slot_available, false)
+assert.equal(missingSelected.tables.turnos.length, 0)
+
+// Si otro intento ya reclamó la reserva, no se manda una elección nueva.
+omitBarber = null
+const conflict = createMemoryDb(multiFixture, { rpc: multiRpc })
+await send('Quiero Barba mañana a las 9 de la mañana')
+await send('Cualquiera')
+conflict.tables.saas_automation_shadow_runs.at(-1).metadata.conversation_state.barber_id = null
+r = await send('Sí')
+const followUp = await mutation({ event_id: r.id }, operator)
+assert.equal(followUp.body.booking_follow_up, true)
+const repaired = conflict.tables.saas_automation_shadow_runs.at(-1)
+conflict.tables.saas_automation_events.push({ integration_id: 47, event_id: repaired.metadata.booking_follow_up.claim_key, status: 'processing' })
+const countBeforeConflict = sends.length
+assert.equal((await outbound({ event_id: r.id }, operator)).body.error, 'booking_follow_up_claim_conflict')
+assert.equal((await mutation({ event_id: r.id }, operator)).body.error, 'booking_follow_up_claim_conflict')
+assert.equal(sends.length, countBeforeConflict)
+
+// Cableado real del template QA928: la respuesta usa sólo el evento original.
+const workflow = JSON.parse(fs.readFileSync(new URL('../integrations/templates/Austral WhatsApp QA - Prueba manual 928.json', import.meta.url), 'utf8'))
+assert.deepEqual(workflow.connections['¿Turno guardado?'].main[1], [{ node: '¿Falta elegir barbero?', type: 'main', index: 0 }])
+assert.deepEqual(workflow.connections['¿Falta elegir barbero?'].main[0], [{ node: 'Enviar respuesta', type: 'main', index: 0 }])
+assert.deepEqual(workflow.connections['¿Falta elegir barbero?'].main[1], [{ node: '¿Horario rechazado?', type: 'main', index: 0 }])
+assert.match(workflow.nodes.find(n => n.name === '¿Falta elegir barbero?').parameters.conditions.conditions[0].leftValue, /booking_follow_up === true && \$json.conversation_reopened === true/)
+
 globalThis.fetch = realFetch
 console.log('QA manual 928: conversación, reserva, confirmación única, flags y destinatarios PASS (simulado)')

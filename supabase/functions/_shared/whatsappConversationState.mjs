@@ -56,6 +56,7 @@ const EMPTY_STATE_FIELDS = Object.freeze({
   daypart: null,
   barber_id: null,
   barber_selection_pending: false,
+  available_barber_ids: [],
   last_intent: null,
   availability_slots: [],
   availability_reference_time: null,
@@ -309,6 +310,7 @@ export function mergeConversationTurn({ state, expectedScope, eventId, extracted
     next.availability_snapshot_id = null
     next.availability_checked_at = null
     next.availability_slots = []
+    next.available_barber_ids = []
     next.availability_reference_time = null
     next.requested_slot_available = null
     next.ready_for_booking_mutation = false
@@ -333,7 +335,14 @@ export function recordAvailabilityResult({ state, expectedScope, source = 'autho
     ? slots.map((slot) => textFrom(slot?.hora || slot).slice(0, 5)).filter((slot) => /^([01]\d|2[0-3]):[0-5]\d$/.test(slot)).slice(0, 8)
     : []
   const next = { ...cloneState(state), availability_snapshot_id: textFrom(snapshotId) || null, availability_checked_at: iso(now, 'now'), availability_slots: normalizedSlots, availability_reference_time: textFrom(state.requested_time) || normalizedSlots[0] || null, requested_slot_available: available, updated_at: iso(now, 'now'), mutation_allowed: false }
-  if (available) {
+  const matchingBarbers = [...new Set((Array.isArray(slots) ? slots : [])
+    .filter((slot) => textFrom(slot?.hora).slice(0, 5) === textFrom(state.requested_time)
+      && (slot?.service_id == null || Number(slot.service_id) === Number(state.service_id)))
+    .map((slot) => Number(slot?.barbero_id)).filter((id) => Number.isSafeInteger(id) && id > 0))]
+  const needsBarber = available && state.barber_id == null && matchingBarbers.length > 1
+  next.available_barber_ids = needsBarber ? matchingBarbers : []
+  next.barber_selection_pending = needsBarber
+  if (available && !needsBarber) {
     next.confirmation_required = true
     next.confirmation_state = 'awaiting_confirmation'
     next.confirmation_version = state.version

@@ -201,6 +201,14 @@ Deno.serve(async (request) => {
     }
 
     let bookingPersisted = false
+    if (kind === 'proposal' && (metadata.booking_follow_up as Record<string, unknown> | undefined)?.reason === 'barber_selection_required') {
+      // Se recupera primero cualquier recibo aceptado. Un envío nuevo no
+      // puede contradecir una reserva guardada o cuyo resultado esté en curso.
+      const followUp = metadata.booking_follow_up as Record<string, unknown>
+      const { data: claim, error } = await admin.from('saas_automation_events').select('status')
+        .eq('integration_id', integrationId).eq('event_id', followUp.claim_key).maybeSingle()
+      if (error || claim) return json({ error: 'booking_follow_up_claim_conflict', outbound_allowed: false }, 409)
+    }
     if (kind === 'booking_confirmation') {
       // El turno tiene que estar guardado por crear_reserva_whatsapp para esta
       // misma conversación (reclamo completado) y ser de este negocio y de
