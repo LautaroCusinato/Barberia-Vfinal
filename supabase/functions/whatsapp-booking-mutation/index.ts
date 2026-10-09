@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
+import { manualQaEnabled, manualQaCapabilities, manualQaRecipient } from '../_shared/qaManualRuntime.mjs'
 import { requireOperator } from '../_shared/supabase.ts'
 import { isRealPersistedSourceMetadata } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
@@ -73,15 +74,16 @@ function safeErrorCode(error: unknown) {
 
 // Cliente del negocio con el mismo teléfono canónico (misma regla que la
 // reserva web y que la restricción única barberia_id + telefono).
-async function loadExistingCustomer(admin: ReturnType<typeof adminClient>, tenantId: number, phone: string) {
+async function loadExistingCustomer(admin: ReturnType<typeof adminClient>, tenantId: number, phone: string, manual = false) {
   const { data, error } = await admin
     .from('clientes')
-    .select('nombre,email')
+    .select(manual ? 'nombre,email,whatsapp_nombre_pendiente' : 'nombre,email')
     .eq('barberia_id', tenantId)
     .eq('telefono', phone)
     .maybeSingle()
   if (error) throw new Error('customer_lookup_failed')
-  return data || null
+  // El rótulo visible del contacto nuevo no es un nombre confirmado.
+  return data ? { ...data, ...(manual && data.whatsapp_nombre_pendiente === true ? { nombre: '' } : {}) } : null
 }
 
 Deno.serve(async (request) => {
@@ -118,19 +120,22 @@ Deno.serve(async (request) => {
     if (sourceRows.length > 1) return json({ error: 'source_event_ambiguous', mutation_allowed: false }, 409)
     const sourceRun = sourceRows[0]
     const tenantId = Number(sourceRun.tenant_id)
-    const allowedTenants = Deno.env.get(QA_BOOKING_MUTATION_TENANTS_ENV)
+    const manual = manualQaEnabled((name: string) => Deno.env.get(name), tenantId, qaBookingInstanceForTenant(tenantId))
+    const previousAllowed = Deno.env.get(QA_BOOKING_MUTATION_TENANTS_ENV)
+    const allowedTenants = manual ? `${previousAllowed || '1'},${tenantId}` : previousAllowed
     if (!isQaBookingTenantAllowed(tenantId, allowedTenants)) return json({ error: 'qa_tenant_required', mutation_allowed: false }, 403)
     const expectedInstance = qaBookingInstanceForTenant(tenantId)
 
     const { data: connection, error: connectionError } = await admin
       .from('saas_whatsapp_connections')
-      .select('id,barberia_id,integration_id,provider,environment,state,instance_name')
+      .select('id,barberia_id,integration_id,provider,environment,state,instance_name,automation_enabled,outbound_enabled,booking_enabled')
       .eq('barberia_id', tenantId)
       .eq('provider', 'evolution')
       .eq('environment', QA_BOOKING_MUTATION_ENVIRONMENT)
       .eq('instance_name', expectedInstance)
       .maybeSingle()
     if (connectionError) return json({ error: 'connection_lookup_failed', mutation_allowed: false }, 502)
+    if (manual && !manualQaCapabilities(connection, { booking: true })) return json({ error: 'qa_manual_flags_not_ready', mutation_allowed: false }, 409)
     if (!connection || connection.state !== 'CONNECTED' || connection.instance_name === PROTECTED_INSTANCE) return json({ error: 'qa_connection_not_connected', mutation_allowed: false }, 409)
     if (Number(connection.integration_id) !== Number(sourceRun.integration_id)) return json({ error: 'source_integration_mismatch', mutation_allowed: false }, 403)
 
@@ -160,8 +165,9 @@ Deno.serve(async (request) => {
     const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
     const agent = metadata.agent && typeof metadata.agent === 'object' ? metadata.agent as Record<string, unknown> : null
     const senderHashValue = textFrom(metadata.sender_hash)
-    const recipient = canonicalArgentineMobile(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
-    const recipientHash = textFrom(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
+    const manualRecipient = manual ? await manualQaRecipient((name: string) => Deno.env.get(name), senderHashValue) : null
+    const recipient = manual ? manualRecipient?.recipient : canonicalArgentineMobile(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
+    const recipientHash = manual ? manualRecipient?.recipientHash || '' : textFrom(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
     const senderMatches = Boolean(recipient && recipientHash && constantTimeEqual(senderHashValue, recipientHash))
     const conversationScope = {
       tenantId: connection.barberia_id,
@@ -223,7 +229,7 @@ Deno.serve(async (request) => {
         mutation_allowed: true,
       })
     }
-    const pilotEnabled = textFrom(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1'
+    const pilotEnabled = manual || textFrom(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1'
     // Tarea 41: horario rechazado (bloqueado u ocupado). No se crea nada: la
     // conversación vuelve a "elegir horario" con la disponibilidad vigente y
     // el aviso al cliente (kind booking_slot_rejected) se arma en el servidor.
@@ -280,7 +286,7 @@ Deno.serve(async (request) => {
 
     // Cliente existente: conserva su ficha. Cliente nuevo: el nombre confirmado
     // en la conversación; sin ese nombre no se agenda (no hay nombre de relleno).
-    const customer = resolveBookingCustomer({ existing: await loadExistingCustomer(admin, tenantId, recipient), conversationName: state.customer_name })
+    const customer = resolveBookingCustomer({ existing: await loadExistingCustomer(admin, tenantId, recipient, manual), conversationName: state.customer_name })
     if (customer.status === 'name_required') return json({ error: 'customer_name_required', mutation_allowed: false, revalidated: true, booking_mutation_executed: false }, 409)
     const { data: booking, error: bookingError } = await admin.rpc('crear_reserva_whatsapp', {
       p_integration_id: connection.integration_id,

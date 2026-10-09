@@ -32,9 +32,10 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
 
   const state = statusUnavailable && !connection ? 'STATUS_UNAVAILABLE' : connection?.state || 'NOT_CONFIGURED'
   const copy = STATE_COPY[state] || STATE_COPY.ERROR
-  const canConnect = !statusUnavailable && !working && ['NOT_CONFIGURED', 'DISCONNECTED', 'ERROR'].includes(state)
-  const canDisconnect = WHATSAPP_DISCONNECT_SUPPORTED && !statusUnavailable && !working && ['CONNECTED', 'QR_READY', 'CONNECTING'].includes(state)
   const qrVisible = Boolean(connection?.qr_available && connection?.qr)
+  const canRenewQr = ['QR_READY', 'CONNECTING'].includes(state) && !qrVisible
+  const canConnect = !statusUnavailable && !working && (['NOT_CONFIGURED', 'DISCONNECTED', 'ERROR'].includes(state) || canRenewQr)
+  const canDisconnect = WHATSAPP_DISCONNECT_SUPPORTED && !statusUnavailable && !working && ['CONNECTED', 'QR_READY', 'CONNECTING'].includes(state)
   const capabilityStatus = [
     { label: 'Conexión', enabled: state === 'CONNECTED', enabledCopy: 'Conectada', disabledCopy: 'No conectada' },
     { label: 'Automatización', enabled: connection?.automation_enabled === true, enabledCopy: 'Activa', disabledCopy: 'Inactiva' },
@@ -85,6 +86,15 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    if (!connection?.qr_available || !connection?.qr) return
+    const expiry = Date.parse(connection.pairing_expires_at || '')
+    if (!Number.isFinite(expiry)) return
+    const timer = setTimeout(() => setConnection(current => current?.pairing_expires_at === connection.pairing_expires_at
+      ? { ...current, qr_available: false, qr: undefined, qr_expired: true } : current), Math.max(0, expiry - Date.now()))
+    return () => clearTimeout(timer)
+  }, [connection])
+
   const title = useMemo(() => demoMode ? 'WhatsApp en validación' : state === 'NOT_CONFIGURED' ? 'Conectar WhatsApp' : 'Estado de WhatsApp', [demoMode, state])
 
   if (loading) return <section className="panel whatsapp-connection-card" aria-busy="true"><LoaderCircle className="spin" size={18} /> Cargando estado de WhatsApp…</section>
@@ -105,13 +115,14 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
           <span>{item.label}</span><strong className={item.enabled ? 'is-enabled' : 'is-disabled'}>{item.enabled ? item.enabledCopy : item.disabledCopy}</strong>
         </div>)}
       </div>}
-      {qrVisible && <div className="whatsapp-qr-wrap"><div className="whatsapp-qr-heading"><strong>Código temporal</strong><small>Vence en unos minutos. No compartas esta pantalla.</small></div><div className="whatsapp-qr-frame"><img src={connection.qr} alt="Código temporal para vincular WhatsApp" /></div></div>}
+      {qrVisible && <div className="whatsapp-qr-wrap"><div className="whatsapp-qr-heading"><strong>Código temporal</strong><small>Tiene vigencia limitada. No compartas esta pantalla.</small></div><div className="whatsapp-qr-frame"><img src={connection.qr} alt="Código temporal para vincular WhatsApp" /></div></div>}
+      {!demoMode && canRenewQr && <div className="whatsapp-connection-note" role="status"><RefreshCw size={15} /> No hay un código vigente. Generá uno nuevo cuando estés listo para vincular el teléfono.</div>}
       {connection?.provisioning_mode === 'mock' && !demoMode && <div className="whatsapp-connection-note" role="status"><Link2 size={15} /> Este estado es una simulación QA; no requiere ni permite escaneo real.</div>}
       {state === 'CONNECTED' && connection?.automation_enabled !== true && !demoMode && <div className="whatsapp-connection-note" role="status"><ShieldCheck size={15} /> WhatsApp está conectado, pero la automatización todavía requiere habilitación operativa.</div>}
     </div>
 
     <div className="whatsapp-connection-actions">
-      {!demoMode && canConnect && <button type="button" className="btn btn-primary" onClick={() => invoke(state === 'ERROR' || state === 'DISCONNECTED' ? 'reconnect' : 'connect')} disabled={!canConnect} aria-busy={working}>{working ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {state === 'NOT_CONFIGURED' ? 'Preparar conexión' : 'Volver a conectar'}</button>}
+      {!demoMode && canConnect && <button type="button" className="btn btn-primary" onClick={() => invoke(state === 'ERROR' || state === 'DISCONNECTED' ? 'reconnect' : 'connect')} disabled={!canConnect} aria-busy={working}>{working ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} {canRenewQr ? 'Generar nuevo código' : state === 'NOT_CONFIGURED' ? 'Preparar conexión' : 'Volver a conectar'}</button>}
       {canDisconnect && !demoMode && <button type="button" className="btn" onClick={() => invoke('disconnect')}><Unplug size={15} /> Desconectar</button>}
       {!demoMode && <button type="button" className="btn btn-ghost" onClick={load} disabled={working}><Power size={15} /> {statusUnavailable ? 'Reintentar verificación' : 'Actualizar estado'}</button>}
     </div>

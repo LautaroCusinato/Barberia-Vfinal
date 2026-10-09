@@ -1,0 +1,374 @@
+{
+  "name": "Austral QA 928 - prueba manual de WhatsApp",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "qa36-webhook",
+      "name": "Ruta QA 36",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "5b0d3c1e-36aa-4f3e-9c36-a3f0b2d9e136",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "austral-qa-manual-928",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "credentials": { "httpHeaderAuth": { "id": "australQa928PanelHeader", "name": "Austral QA 928 Panel Header" } },
+      "notes": "Autentica antes de aceptar con la credencial QA928 existente. Lo llama whatsapp-evolution-webhook después de persistir el mensaje; luego responde al recibir, sin esperar al proveedor."
+    },
+    {
+      "id": "qa36-guard",
+      "name": "Validar ruta QA 36",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first()?.json || {};\nconst body = item.body || {};\nconst headers = item.headers || {};\nconst expected = String($env.EVOLUTION_WEBHOOK_SECRET || '');\nconst received = String(headers['x-austral-qa-route-secret'] || '');\nconst allowedTenants = [928];\nconst tenantId = Number(body.tenant_id);\nconst eventId = String(body.event_id || '');\nif (!expected || received.length !== expected.length || received !== expected) throw new Error('qa36_route_unauthorized');\nif (!allowedTenants.includes(tenantId) || body.instance !== 'austral-qa-tenant-' + tenantId || body.instance === 'miwsp') throw new Error('qa36_route_tenant_rejected');\nif (!Number.isSafeInteger(Number(body.integration_id)) || Number(body.integration_id) <= 0) throw new Error('qa36_route_integration_rejected');\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(eventId)) throw new Error('qa36_route_event_rejected');\nreturn [{ json: { event_id: eventId, tenant_id: tenantId, ready_for_booking_mutation: body.ready_for_booking_mutation === true } }];"
+      },
+      "notes": "Sólo eventos del tenant QA permitido, con el secreto del webhook QA. El tenant, destinatario y textos los vuelve a decidir Supabase."
+    },
+    {
+      "id": "qa36-if-ready",
+      "name": "¿Cliente confirmó?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "qa36-ready",
+              "leftValue": "={{ $json.ready_for_booking_mutation }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "qa36-reply",
+      "name": "Enviar respuesta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://cmsymmszlzikqpvfqjre.supabase.co/functions/v1/whatsapp-agent-outbound-pilot",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "australQa36FnSecret",
+          "name": "Austral QA 36 Funciones"
+        }
+      },
+      "notes": "Envía la respuesta persistida al Cliente QA configurado en Supabase (WHATSAPP_OUTBOUND_QA_RECIPIENT). Sin reintento automático."
+    },
+    {
+      "id": "qa36-booking",
+      "name": "Guardar reserva",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://cmsymmszlzikqpvfqjre.supabase.co/functions/v1/whatsapp-booking-mutation",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id }) }}",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "australQa36FnSecret",
+          "name": "Austral QA 36 Funciones"
+        }
+      },
+      "notes": "Revalida la propuesta confirmada y la disponibilidad, y guarda el turno con crear_reserva_whatsapp (idempotente por conversación/versión). Un 409 por horario rechazado sigue al IF en lugar de cortar la ejecución (tarea 41)."
+    },
+    {
+      "id": "qa36-if-saved",
+      "name": "¿Turno guardado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        180
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "qa36-saved",
+              "leftValue": "={{ $json.booking_created === true && Number.isSafeInteger(Number($json.turno_id)) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "qa36-confirmation",
+      "name": "Enviar confirmación",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://cmsymmszlzikqpvfqjre.supabase.co/functions/v1/whatsapp-agent-outbound-pilot",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id, kind: 'booking_confirmation' }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "australQa36FnSecret",
+          "name": "Austral QA 36 Funciones"
+        }
+      },
+      "notes": "Sólo después de guardar: el texto sale de la fila del turno. Una sola vez por turno."
+    },
+    {
+      "id": "qa41-if-rejected",
+      "name": "¿Horario rechazado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        340
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "qa41-rejected",
+              "leftValue": "={{ $json.slot_rejected === true && $json.conversation_reopened === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "Tarea 41: el horario confirmado quedó bloqueado u ocupado y la conversación volvió a elegir horario. No hay turno."
+    },
+    {
+      "id": "qa41-slot-rejected",
+      "name": "Ofrecer otro horario",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        280
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://cmsymmszlzikqpvfqjre.supabase.co/functions/v1/whatsapp-agent-outbound-pilot",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id, kind: 'booking_slot_rejected' }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "australQa36FnSecret",
+          "name": "Austral QA 36 Funciones"
+        }
+      },
+      "notes": "El servidor arma el texto con el motivo y los horarios vigentes. Una sola vez por evento."
+    },
+    {
+      "id": "qa41-not-saved",
+      "name": "Reserva no guardada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        420
+      ],
+      "parameters": {
+        "jsCode": "throw new Error('booking_not_saved:' + String($input.first()?.json?.error || 'unknown').slice(0, 60));"
+      },
+      "notes": "Cualquier otro fallo deja la ejecución marcada como error, sin mensaje al cliente."
+    }
+  ],
+  "connections": {
+    "Ruta QA 36": {
+      "main": [
+        [
+          {
+            "node": "Validar ruta QA 36",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar ruta QA 36": {
+      "main": [
+        [
+          {
+            "node": "¿Cliente confirmó?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Cliente confirmó?": {
+      "main": [
+        [
+          {
+            "node": "Guardar reserva",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar reserva": {
+      "main": [
+        [
+          {
+            "node": "¿Turno guardado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Turno guardado?": {
+      "main": [
+        [
+          {
+            "node": "Enviar confirmación",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Horario rechazado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Horario rechazado?": {
+      "main": [
+        [
+          {
+            "node": "Ofrecer otro horario",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reserva no guardada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

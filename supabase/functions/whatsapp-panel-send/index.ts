@@ -1,6 +1,7 @@
 import { adminClient, authenticate } from '../_shared/supabase.ts'
 import { corsHeaders, json, readJson } from '../_shared/http.ts'
 import { classifyWebhookResponse, handlePanelSend, panelSendErrorBody, panelSendSettings } from '../_shared/whatsappPanelSend.mjs'
+import { manualQaEnabled, manualQaPhoneList, QA_MANUAL_PANEL_ROUTE } from '../_shared/qaManualRuntime.mjs'
 
 // Reemplaza el envío directo navegador → n8n. Antes la URL del webhook vivía
 // en una variable VITE_* (pública en el bundle) y cualquiera podía mandar
@@ -29,23 +30,25 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return fail('Método no permitido.', 405, 'method_not_allowed')
 
   try {
-    const webhookUrl = Deno.env.get('WHATSAPP_PANEL_SEND_WEBHOOK_URL') || ''
-    const webhookSecret = Deno.env.get('WHATSAPP_PANEL_SEND_SECRET') || ''
-    const settings = panelSendSettings({
-      WHATSAPP_PANEL_SEND_ROUTING: Deno.env.get('WHATSAPP_PANEL_SEND_ROUTING'),
+    const admin = adminClient()
+    const user = await authenticate(request, admin)
+    const body = await readJson(request, 16 * 1024)
+    // Sólo el tenant QA habilitado reutiliza el secreto de webhook que ya
+    // comparten Supabase y n8n. Los ajustes de otros negocios no se cambian.
+    const manual = manualQaEnabled((name: string) => Deno.env.get(name), Number(body.tenant_id), `austral-qa-tenant-${Number(body.tenant_id)}`)
+    const webhookUrl = manual ? QA_MANUAL_PANEL_ROUTE : Deno.env.get('WHATSAPP_PANEL_SEND_WEBHOOK_URL') || ''
+    const webhookSecret = manual ? Deno.env.get('EVOLUTION_WEBHOOK_SECRET') || '' : Deno.env.get('WHATSAPP_PANEL_SEND_SECRET') || ''
+    const settings = { ...panelSendSettings({
+      WHATSAPP_PANEL_SEND_ROUTING: manual ? 'instance' : Deno.env.get('WHATSAPP_PANEL_SEND_ROUTING'),
       WHATSAPP_PANEL_SEND_INSTANCE: Deno.env.get('WHATSAPP_PANEL_SEND_INSTANCE'),
       WHATSAPP_PANEL_SEND_RATE_LIMIT: Deno.env.get('WHATSAPP_PANEL_SEND_RATE_LIMIT'),
       WHATSAPP_PANEL_SEND_RATE_WINDOW_SECONDS: Deno.env.get('WHATSAPP_PANEL_SEND_RATE_WINDOW_SECONDS'),
       WHATSAPP_PANEL_SEND_DUPLICATE_WINDOW_SECONDS: Deno.env.get('WHATSAPP_PANEL_SEND_DUPLICATE_WINDOW_SECONDS'),
       WHATSAPP_PANEL_SEND_STALE_PENDING_SECONDS: Deno.env.get('WHATSAPP_PANEL_SEND_STALE_PENDING_SECONDS'),
-    })
+    }), ...(manual ? { allowedRecipients: manualQaPhoneList((name: string) => Deno.env.get(name)) } : {}) }
     if (!webhookUrl.startsWith('https://') || !webhookSecret) {
       return fail('El envío por WhatsApp no está configurado.', 503, 'panel_send_not_configured')
     }
-
-    const admin = adminClient()
-    const user = await authenticate(request, admin)
-    const body = await readJson(request, 16 * 1024)
 
     const store = {
       async membership(tenantId: number, userId: string) {
@@ -101,10 +104,10 @@ Deno.serve(async (request) => {
         if (error) throw error
         return count ?? 0
       },
-      // Reserva atómica (migración 20261005120000). Devuelve null si la RPC
-      // todavía no existe para usar el camino sin migración.
-      async reserve({ tenantId, clienteId, clientMessageId, texto, hora, confirmResend, settings: s }: { tenantId: number, clienteId: number, clientMessageId: string, texto: string, hora: string | null, confirmResend: boolean, settings: Record<string, number> }) {
-        const { data, error } = await admin.rpc('reservar_envio_panel', {
+      // QA manual requiere el wrapper que valida destinatario bajo lock; no
+      // puede degradar al camino sin migración si falta ese contrato.
+      async reserve({ tenantId, clienteId, clientMessageId, texto, hora, confirmResend, settings: s }: { tenantId: number, clienteId: number, clientMessageId: string, texto: string, hora: string | null, confirmResend: boolean, settings: { rateLimit: number, rateWindowSeconds: number, duplicateWindowSeconds: number, stalePendingSeconds: number, allowedRecipients?: string[] } }) {
+        const { data, error } = await admin.rpc(manual ? 'reservar_envio_panel_qa_manual' : 'reservar_envio_panel', {
           p_barberia_id: tenantId,
           p_cliente_id: clienteId,
           p_client_message_id: clientMessageId,
@@ -115,8 +118,9 @@ Deno.serve(async (request) => {
           p_rate_window_seconds: s.rateWindowSeconds,
           p_duplicate_window_seconds: s.duplicateWindowSeconds,
           p_stale_pending_seconds: s.stalePendingSeconds,
+          ...(manual ? { p_allowed_phones: s.allowedRecipients || [] } : {}),
         })
-        if (error?.code === 'PGRST202') return null
+        if (error?.code === 'PGRST202' || error?.code === '42883') return manual ? { status: 'qa_manual_send_not_ready' } : null
         if (error) throw error
         return data
       },
@@ -148,7 +152,7 @@ Deno.serve(async (request) => {
     const deliver = async (payload: { telefono: string, texto: string, barberia_id: number, instance: string, client_message_id: string | null }) => {
       const response = await fetch(webhookUrl, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', [SECRET_HEADER]: webhookSecret },
+        headers: { 'content-type': 'application/json', [SECRET_HEADER]: webhookSecret, ...(manual ? { 'user-agent': 'Austral-QA-Integration/1.0' } : {}) },
         body: JSON.stringify(payload),
         // Más que lo que n8n puede tardar en responder (lectura de Supabase 10 s
         // + Evolution 15 s en la plantilla nueva): cortar antes deja "incierto"

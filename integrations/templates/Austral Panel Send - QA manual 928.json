@@ -1,16 +1,16 @@
 {
-  "name": "Austral Panel Send - Instance Routed",
+  "name": "Austral QA 928 - envío manual del panel",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "austral-panel-send",
+        "path": "austral-qa-panel-send-928",
         "authentication": "headerAuth",
         "responseMode": "responseNode",
         "options": {}
       },
       "id": "panel-send-webhook",
-      "webhookId": "04fc4722-55c9-468b-b6a9-09d0f5d8584c",
+      "webhookId": "8b9a9961-3a88-491c-9d1f-155fe50e0f0f",
       "name": "Recibir envío del panel",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -18,12 +18,18 @@
         0,
         200
       ],
-      "notes": "Bind a Header Auth credential named X-Austral-Panel-Secret with the same secret as WHATSAPP_PANEL_SEND_SECRET in the Edge Function. Responds only from the Respond to Webhook nodes, after Evolution answers."
+      "notes": "Bind a Header Auth credential named X-Austral-Panel-Secret with the same secret as WHATSAPP_PANEL_SEND_SECRET in the Edge Function. Responds only from the Respond to Webhook nodes, after Evolution answers.",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "australQa928PanelHeader",
+          "name": "Austral QA 928 Panel Header"
+        }
+      }
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Valida el pedido de whatsapp-panel-send. Ningún dato del body es\n// autoridad: la instancia se vuelve a verificar contra Supabase.\nconst body = $input.first()?.json?.body ?? {};\nconst telefono = typeof body.telefono === 'string' ? body.telefono : '';\nconst texto = typeof body.texto === 'string' ? body.texto.trim() : '';\nconst tenantId = Number(body.barberia_id);\nconst instance = typeof body.instance === 'string' ? body.instance.trim().toLowerCase() : '';\nconst clientMessageId = typeof body.client_message_id === 'string' ? body.client_message_id : null;\nconst valid = /^549[1-9][0-9]{9}$/.test(telefono)\n  && texto.length > 0 && texto.length <= 4096\n  && Number.isSafeInteger(tenantId) && tenantId > 0\n  && /^[a-z0-9._-]{1,200}$/.test(instance)\n  && (clientMessageId === null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientMessageId));\nreturn [{ json: { valid, telefono, texto, tenantId, instance, clientMessageId, reason: valid ? null : 'invalid_request' } }];"
+        "jsCode": "// Valida el pedido de whatsapp-panel-send. Ningún dato del body es\n// autoridad: la instancia se vuelve a verificar contra Supabase.\nconst body = $input.first()?.json?.body ?? {};\nconst telefono = typeof body.telefono === 'string' ? body.telefono : '';\nconst texto = typeof body.texto === 'string' ? body.texto.trim() : '';\nconst tenantId = Number(body.barberia_id);\nconst instance = typeof body.instance === 'string' ? body.instance.trim().toLowerCase() : '';\nconst clientMessageId = typeof body.client_message_id === 'string' ? body.client_message_id : null;\nconst valid = tenantId === 928 && instance === 'austral-qa-tenant-928' && /^549[1-9][0-9]{9}$/.test(telefono)\n  && texto.length > 0 && texto.length <= 4096\n  && Number.isSafeInteger(tenantId) && tenantId > 0\n  && /^[a-z0-9._-]{1,200}$/.test(instance)\n  && (clientMessageId === null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientMessageId));\nreturn [{ json: { valid, telefono, texto, tenantId, instance, clientMessageId, reason: valid ? null : 'invalid_request' } }];"
       },
       "id": "panel-send-validate",
       "name": "Validar solicitud",
@@ -70,7 +76,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.PANEL_SEND_SUPABASE_URL + '/rest/v1/saas_integraciones' }}",
+        "url": "https://cmsymmszlzikqpvfqjre.supabase.co/rest/v1/saas_integraciones",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -118,7 +124,13 @@
       "alwaysOutputData": true,
       "retryOnFail": false,
       "onError": "continueErrorOutput",
-      "notes": "Bind the environment Supabase service-role credential (apikey + Authorization headers). The tenant comes from the validated request; the instance is read here and compared, never trusted from the body."
+      "notes": "Bind the environment Supabase service-role credential (apikey + Authorization headers). The tenant comes from the validated request; the instance is read here and compared, never trusted from the body.",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "australQa36FnSecret",
+          "name": "Austral QA 36 Funciones"
+        }
+      }
     },
     {
       "parameters": {
@@ -198,7 +210,13 @@
       ],
       "retryOnFail": false,
       "onError": "continueErrorOutput",
-      "notes": "Bind the environment Evolution API credential. No automatic retry: a timeout may have sent the message, so it is reported as uncertain."
+      "notes": "Bind the environment Evolution API credential. No automatic retry: a timeout may have sent the message, so it is reported as uncertain.",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "australQa928Evolution",
+          "name": "Austral QA 928 Evolution"
+        }
+      }
     },
     {
       "parameters": {

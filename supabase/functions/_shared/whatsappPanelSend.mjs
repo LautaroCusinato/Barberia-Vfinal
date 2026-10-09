@@ -208,6 +208,7 @@ export async function resolvePanelSendContext({ user, body, store, settings }) {
   if (!String(cliente.telefono || '').trim()) fail('Este cliente no tiene un teléfono cargado en su ficha.', 422, 'customer_phone_missing')
   const telefono = canonicalArgentineMobile(cliente.telefono)
   if (!telefono) fail('El teléfono de la ficha no es un celular válido para WhatsApp. Corregilo en la ficha del cliente.', 422, 'customer_phone_invalid')
+  if (Array.isArray(settings.allowedRecipients) && !settings.allowedRecipients.includes(telefono)) fail('Esta prueba de WhatsApp sólo permite los teléfonos propios habilitados.', 403, 'qa_recipient_not_allowed')
 
   return { tenantId, clienteId, role: String(membership.role), telefono, nombre: String(cliente.nombre || '').trim() || 'Cliente', botActive: pause.botActive, instance: normalizedInstance(integration.external_instance_id) }
 }
@@ -337,12 +338,26 @@ export async function handlePanelSend({ user, body, store, deliver, settings, no
     case 'customer_not_found': fail('El cliente no existe en este negocio.', 404, 'customer_not_found'); break
     case 'customer_phone_invalid': fail('El teléfono de la ficha no es un celular válido para WhatsApp. Corregilo en la ficha del cliente.', 422, 'customer_phone_invalid'); break
     case 'idempotency_conflict': fail('Ese identificador ya se usó para otro mensaje. Volvé a escribirlo.', 409, 'idempotency_conflict'); break
+    case 'qa_recipient_not_allowed': fail('El teléfono cambió y no está entre los teléfonos propios habilitados para esta prueba.', 403, 'qa_recipient_not_allowed'); break
+    case 'qa_manual_not_authorized': fail('Este negocio no está habilitado para la prueba manual de WhatsApp.', 403, 'qa_manual_not_authorized'); break
+    case 'qa_manual_send_not_ready': fail('Falta preparar el guardado seguro de mensajes de esta prueba. El mensaje no salió.', 503, 'qa_manual_send_not_ready'); break
     default: fail('No se pudo guardar el mensaje.', 502, 'message_insert_failed')
   }
   const saved = reservation.mensaje
   const atomic = reservation.atomic !== false
   // El teléfono de la fila lo resolvió la base desde la ficha; se usa el mismo.
   const telefono = atomic ? String(saved.telefono || context.telefono) : context.telefono
+
+  // La RPC releyó la ficha: un cambio concurrente puede devolver otro
+  // teléfono. La restricción QA también se verifica sobre el destino final,
+  // después de reservar y antes de cualquier llamada al proveedor.
+  if (Array.isArray(settings.allowedRecipients) && !settings.allowedRecipients.includes(telefono)) {
+    const failed = atomic
+      ? await store.complete(context.tenantId, saved.id, 'fallido', null).catch(() => null)
+      : await store.updateMensaje(context.tenantId, saved.id, { estado_envio: 'fallido', enviado_wsp: false }).catch(() => null)
+    if (!failed) fail('El destino cambió y se bloqueó el envío. No se llamó a WhatsApp; no se pudo actualizar su registro.', 502, 'qa_recipient_block_record_failed', { bot_paused: atomic })
+    fail('El teléfono cambió durante el guardado y quedó fuera de los teléfonos propios permitidos. El mensaje no salió.', 403, 'qa_recipient_not_allowed', { bot_paused: atomic })
+  }
 
   const { outcome, providerMessageId } = await safeDeliver(deliver, { telefono, texto, barberia_id: context.tenantId, instance: context.instance, client_message_id: saved.client_message_id ?? null })
   const estado = OUTCOME_STATE[outcome]

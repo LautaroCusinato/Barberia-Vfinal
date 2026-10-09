@@ -133,6 +133,54 @@ async function test(name, fn) {
   results.push(name)
 }
 
+await test('QA manual restringe destinatarios antes de reservar o enviar', async () => {
+  const ctx = createDb()
+  const result = await run(ctx, send('Prueba restringida'), 'owner-7', { ...FIXED, allowedRecipients: [] })
+  assert.equal(result.code, 'qa_recipient_not_allowed')
+  assert.equal(ctx.db.mensajes.length, 0)
+  assert.equal(ctx.deliveries.length, 0)
+})
+
+await test('QA manual revalida el teléfono que devuelve la reserva ante una edición concurrente', async () => {
+  const ctx = createDb({ atomic: true })
+  const reserve = ctx.store.reserve
+  ctx.store.reserve = async (args) => {
+    const result = await reserve(args)
+    result.mensaje.telefono = '5491155559999'
+    ctx.db.mensajes.find(row => row.id === result.mensaje.id).telefono = result.mensaje.telefono
+    return result
+  }
+  const result = await run(ctx, send('Prueba de cambio concurrente'), 'owner-7', { ...FIXED, allowedRecipients: ['5491122334455'] })
+  assert.equal(result.code, 'qa_recipient_not_allowed')
+  assert.equal(ctx.deliveries.length, 0, 'no sale ningún pedido al proveedor')
+  assert.equal(ctx.db.mensajes.length, 1, 'se conserva un solo registro del intento')
+  assert.equal(ctx.db.mensajes[0].estado_envio, 'fallido', 'rechazo local confirmado antes de enviar')
+  assert.equal(result.botPaused, true, 'la reserva atómica ya cedió la atención al operador')
+})
+
+await test('QA manual no envía aunque falle el registro del bloqueo de un teléfono cambiado', async () => {
+  const ctx = createDb({ atomic: true })
+  const reserve = ctx.store.reserve
+  ctx.store.reserve = async (args) => {
+    const result = await reserve(args)
+    result.mensaje.telefono = '5491155559999'
+    return result
+  }
+  ctx.store.complete = async () => { throw new Error('database temporarily unavailable') }
+  const result = await run(ctx, send('Prueba de fallo al registrar'), 'owner-7', { ...FIXED, allowedRecipients: ['5491122334455'] })
+  assert.equal(result.code, 'qa_recipient_block_record_failed')
+  assert.equal(ctx.deliveries.length, 0)
+})
+
+await test('QA manual no degrada el guardado seguro si falta su RPC', async () => {
+  const ctx = createDb({ atomic: true })
+  ctx.store.reserve = async () => ({ status: 'qa_manual_send_not_ready' })
+  const result = await run(ctx, send('Prueba sin wrapper'), 'owner-7', { ...FIXED, allowedRecipients: ['5491122334455'] })
+  assert.equal(result.code, 'qa_manual_send_not_ready')
+  assert.equal(ctx.db.mensajes.length, 0)
+  assert.equal(ctx.deliveries.length, 0)
+})
+
 await test('cliente existente sin conversación: preflight listo, sin escribir ni enviar', async () => {
   const ctx = createDb()
   const result = await run(ctx, { action: 'preflight', tenant_id: TENANT, cliente_id: 100 })

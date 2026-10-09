@@ -25,6 +25,7 @@ assert.equal(workflow.settings.saveDataErrorExecution, 'none')
 
 // Webhook autenticado que responde después de Evolution.
 const webhook = node('Recibir envío del panel')
+assert.match(webhook.webhookId || '', /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'sin webhookId n8n registra un prefijo con workflow/nodo y la URL configurada responde 404')
 assert.equal(webhook.parameters.httpMethod, 'POST')
 assert.equal(webhook.parameters.authentication, 'headerAuth', 'el webhook exige el secreto del servidor')
 assert.equal(webhook.parameters.responseMode, 'responseNode', 'responde desde los nodos de respuesta, no al recibir')

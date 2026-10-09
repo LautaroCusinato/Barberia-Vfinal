@@ -27,7 +27,8 @@ assert.match(source, /fetchInstances\?instanceName=/)
 assert.match(source, /resolveEvolutionState/)
 assert.match(source, /instanceNameFor\(tenantId\)/)
 assert.match(source, /PROTECTED_INSTANCE = 'miwsp'/)
-assert.match(source, /WEBHOOK_EVENTS = \['QRCODE_UPDATED', 'CONNECTION_UPDATE'\]/)
+// Preserve the message event already enabled in deployed QA, along with pairing.
+assert.match(source, /WEBHOOK_EVENTS = \['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT'\]/)
 
 console.log(JSON.stringify({
   cases: 11,
