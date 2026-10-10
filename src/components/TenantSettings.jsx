@@ -128,20 +128,49 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
   const [uploading, setUploading] = useState(false)
   const [pendingOldLogoPath, setPendingOldLogoPath] = useState('')
   const [error, setError] = useState('')
+  // El aviso de Storage no depende de la acción siguiente: queda visible hasta
+  // otro guardado o subida aunque se copie un enlace o se gestione el equipo.
+  const [storageWarning, setStorageWarning] = useState('')
   const [notice, setNotice] = useState('')
   const [invite, setInvite] = useState({ email: '', role: 'empleado', expires: 7 })
   const [inviteLink, setInviteLink] = useState('')
+  const [inviteLinkId, setInviteLinkId] = useState(null)
   const [inviteSaving, setInviteSaving] = useState(false)
   const [memberPending, setMemberPending] = useState({})
   const [invitationNow] = useState(() => Date.now())
   const inviteEmailRef = useRef(null)
   const inviteLinkRef = useRef(null)
+  const nameInputRef = useRef(null)
+  const retryButtonRef = useRef(null)
   const lifetimeRef = useRef(0)
   const loadVersionRef = useRef(0)
   const settingsLoadVersionRef = useRef(0)
   const savingRef = useRef(false)
+  const inviteSavingRef = useRef(false)
+  // Bloquear el fieldset deja el foco en <body>; se devuelve al control que lo
+  // tenía cuando termina, salvo que la persona ya se haya movido a otro lado.
+  const returnFocusRef = useRef(null)
+  const retryFocusRef = useRef(false)
 
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
+  const rememberFocus = (container) => {
+    const active = document.activeElement
+    returnFocusRef.current = container?.contains(active) ? active : null
+  }
+
+  useEffect(() => {
+    if (saving || uploading || !returnFocusRef.current) return
+    const target = returnFocusRef.current
+    returnFocusRef.current = null
+    const active = document.activeElement
+    if (target.isConnected && !target.matches(':disabled') && (!active || active === document.body)) target.focus()
+  }, [saving, uploading])
+
+  useEffect(() => {
+    if (loading || !retryFocusRef.current) return
+    retryFocusRef.current = false
+    ;(settingsReady ? nameInputRef.current : retryButtonRef.current)?.focus()
+  }, [loading, settingsReady])
 
   const load = useCallback(async ({ includeSettings = true } = {}) => {
     const lifetime = lifetimeRef.current
@@ -211,7 +240,8 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
     if (!settingsReady || savingRef.current || uploading) return
     savingRef.current = true
     const lifetime = lifetimeRef.current
-    setSaving(true); setError(''); setNotice('')
+    rememberFocus(event.currentTarget)
+    setSaving(true); setError(''); setStorageWarning(''); setNotice('')
     try {
       if (demoMode) {
         localStorage.setItem(demoStorageKey, JSON.stringify(form))
@@ -234,10 +264,11 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
       }
       setForm({ ...DEFAULTS, ...savedSettings })
       onBrandingChange?.({ nombre: savedSettings.nombre, logo_url: savedSettings.logo_url, logo_storage_path: savedSettings.logo_storage_path, color_principal: savedSettings.color_principal, color_secundario: savedSettings.color_secundario, zona_horaria: savedSettings.zona_horaria })
-      if (pendingOldLogoPath && pendingOldLogoPath !== form.logo_storage_path) {
+      // Sólo se borra el logo anterior si la respuesta confirmada ya no lo usa.
+      if (pendingOldLogoPath && pendingOldLogoPath !== savedSettings.logo_storage_path) {
         const { error: cleanupError } = await supabase.storage.from('tenant-logos').remove([pendingOldLogoPath])
         if (lifetime !== lifetimeRef.current) return
-        if (cleanupError) setError('Configuración guardada, pero no se pudo limpiar el logo anterior.')
+        if (cleanupError) setStorageWarning('Configuración guardada, pero no se pudo limpiar el logo anterior.')
       }
       setPendingOldLogoPath('')
       setNotice('Configuración guardada.')
@@ -257,7 +288,8 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
     const file = event.target.files?.[0]
     if (!file) return
     if (!['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'].includes(file.type) || file.size > 2 * 1024 * 1024) { setError('El logo debe ser PNG, JPG, WebP o SVG y pesar hasta 2 MB.'); return }
-    setUploading(true); setError('')
+    rememberFocus(event.target.form)
+    setUploading(true); setError(''); setStorageWarning('')
     try {
       const extension = file.name.split('.').pop()?.toLowerCase() || 'png'
       const path = `${barberiaId}/${crypto.randomUUID()}.${extension}`
@@ -278,9 +310,10 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
   const createInvite = async (event) => {
     event.preventDefault()
     if (demoMode) { setNotice('Las invitaciones se habilitan al crear tu cuenta real.'); return }
-    if (inviteSaving) return
+    if (inviteSavingRef.current) return
+    inviteSavingRef.current = true
     const lifetime = lifetimeRef.current
-    setInviteSaving(true); setError(''); setNotice(''); setInviteLink('')
+    setInviteSaving(true); setError(''); setNotice(''); setInviteLink(''); setInviteLinkId(null)
     try {
       const { data, error: inviteError } = await supabase.rpc('create_barberia_invitation', { p_barberia_id: barberiaId, p_email: invite.email, p_role: invite.role, p_expires_days: Number(invite.expires) })
       if (lifetime !== lifetimeRef.current) return
@@ -288,6 +321,7 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
       if (!data?.token) { setError('La invitación se creó, pero no se recibió un enlace para compartir.'); return }
       const link = `${getAppOrigin()}/invitacion/${data.token}`
       setInviteLink(link)
+      setInviteLinkId(data.id ?? null)
       setInvite({ email: '', role: 'empleado', expires: 7 })
       setNotice('Invitación creada. Copiá y compartí el enlace manualmente; no se envía email automático.')
       await load({ includeSettings: false })
@@ -295,6 +329,7 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
       if (lifetime === lifetimeRef.current) setError(cleanError(inviteError))
     } finally {
       setInviteSaving(false)
+      inviteSavingRef.current = false
     }
   }
 
@@ -317,7 +352,13 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
     try {
       const { error: cancelError } = await supabase.from('barberia_invitaciones').update({ status: 'canceled' }).eq('id', id).eq('barberia_id', barberiaId).eq('status', 'pending')
       if (lifetime !== lifetimeRef.current) return
-      if (cancelError) setError(cleanError(cancelError)); else await load({ includeSettings: false })
+      if (cancelError) { setError(cleanError(cancelError)); return }
+      // El enlace recién generado deja de servir: no ofrecerlo para copiar.
+      if (inviteLinkId != null && String(inviteLinkId) === String(id)) {
+        setInviteLink(''); setInviteLinkId(null)
+        setNotice('Invitación cancelada. El enlace generado ya no sirve.')
+      }
+      await load({ includeSettings: false })
     } catch (cancelError) {
       if (lifetime === lifetimeRef.current) setError(cleanError(cancelError))
     } finally {
@@ -370,25 +411,25 @@ function TenantSettingsForm({ barberiaId, onBrandingChange, demoMode = false }) 
 
   return <div className="management-screen management-settings settings-page fade-in">
     <div className="page-header"><div><p className="page-kicker">Negocio y marca</p><h1 className="page-title">Configuración del negocio</h1><p className="page-date">{demoMode ? 'Probá branding y preferencias sin modificar ningún negocio real.' : 'Los cambios se validan y afectan sólo a este negocio.'}</p></div><span className="billing-security"><ShieldCheck size={14} /> {demoMode ? 'Sesión aislada' : 'Acceso protegido'}</span></div>
-    {error && <div className="error-banner" role="alert">{error}</div>}{notice && <div className="settings-notice" role="status"><Check size={15} /> {notice}</div>}
+    {error && <div className="error-banner" role="alert">{error}</div>}{storageWarning && <div className="error-banner" role="alert">{storageWarning}</div>}{notice && <div className="settings-notice" role="status"><Check size={15} /> {notice}</div>}
     <WhatsAppConnectionPanel barberiaId={barberiaId} demoMode={demoMode} />
     {settingsReady ? <form className="settings-form" onSubmit={save} aria-busy={saving || uploading}>
     <fieldset className="settings-grid settings-fieldset" disabled={saving || uploading}>
       <section className="panel settings-card"><h2 className="panel-title">Identidad y contacto</h2><div className="settings-fields">
-        <label>Nombre comercial<input className="text-input" required value={form.nombre} onChange={(e) => update('nombre', e.target.value)} /></label>
+        <label>Nombre comercial<input ref={nameInputRef} className="text-input" required value={form.nombre} onChange={(e) => update('nombre', e.target.value)} /></label>
         <label>Descripción<textarea className="text-input" rows="3" value={form.descripcion || ''} onChange={(e) => update('descripcion', e.target.value)} /></label>
         <label>Dirección de tu página de reservas<input className="text-input" required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={form.slug} onChange={(e) => update('slug', e.target.value.toLowerCase())} /><small>Reservas: {publicUrl || '—'}</small></label>
         <div className="settings-two"><label>Email<input className="text-input" type="email" value={form.email || ''} onChange={(e) => update('email', e.target.value)} /></label><label>Teléfono<input className="text-input" inputMode="tel" value={form.telefono || ''} onChange={(e) => update('telefono', e.target.value)} /></label></div>
         <div className="settings-two"><label>WhatsApp<input className="text-input" inputMode="tel" value={form.whatsapp || ''} onChange={(e) => update('whatsapp', e.target.value)} /></label><label>Dirección<input className="text-input" value={form.direccion || ''} onChange={(e) => update('direccion', e.target.value)} /></label></div>
       </div></section>
-      <section className="panel settings-card"><h2 className="panel-title">Logo y colores</h2><div className="logo-preview">{form.logo_url ? <img src={form.logo_url} alt="Logo del negocio" /> : <ImagePlus size={28} />}<label className="btn"><ImagePlus size={14} /> {uploading ? 'Subiendo…' : 'Cargar logo'}<input hidden type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={uploadLogo} disabled={uploading} /></label></div><div className="settings-two"><label>Color principal<input className="color-input" type="color" value={form.color_principal || '#9B6A2F'} onChange={(e) => update('color_principal', e.target.value)} /></label><label>Color secundario<input className="color-input" type="color" value={form.color_secundario || '#EDE6D8'} onChange={(e) => update('color_secundario', e.target.value)} /></label></div></section>
+      <section className="panel settings-card"><h2 className="panel-title">Logo y colores</h2><div className="logo-preview">{form.logo_url ? <img src={form.logo_url} alt="Logo del negocio" /> : <ImagePlus size={28} />}<label className="btn"><ImagePlus size={14} /> {uploading ? 'Subiendo…' : 'Cargar logo'}<input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={uploadLogo} disabled={uploading} /></label></div><div className="settings-two"><label>Color principal<input className="color-input" type="color" value={form.color_principal || '#9B6A2F'} onChange={(e) => update('color_principal', e.target.value)} /></label><label>Color secundario<input className="color-input" type="color" value={form.color_secundario || '#EDE6D8'} onChange={(e) => update('color_secundario', e.target.value)} /></label></div></section>
       <section className="panel settings-card"><h2 className="panel-title">Región y reservas</h2><div className="settings-fields"><div className="settings-two"><label>País<select className="text-input" value={form.pais || ''} onChange={(e) => { const pais = PAISES.find((p) => p.code === e.target.value); update('pais', e.target.value); if (pais) { update('locale', pais.locale); update('zona_horaria', pais.tz); update('moneda', pais.moneda) } }}>{conActual(PAISES.map((p) => [p.code, p.label]), form.pais).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Idioma<select className="text-input" value={form.locale || ''} onChange={(e) => update('locale', e.target.value)}>{conActual(IDIOMAS, form.locale).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><div className="settings-two"><label>Zona horaria<select className="text-input" value={form.zona_horaria || ''} onChange={(e) => update('zona_horaria', e.target.value)}>{conActual(ZONAS, form.zona_horaria).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Moneda<select className="text-input" value={form.moneda || ''} onChange={(e) => update('moneda', e.target.value)}>{conActual(MONEDAS, form.moneda).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><label className="settings-check"><input type="checkbox" checked={Boolean(form.reservas_publicas)} onChange={(e) => update('reservas_publicas', e.target.checked)} /> Permitir reservas públicas</label><div className="settings-three"><label>Anticipación (min)<input className="text-input" type="number" min="0" max="10080" value={form.anticipacion_minutos} onChange={(e) => update('anticipacion_minutos', e.target.value)} /></label><label>Máximo (días)<input className="text-input" type="number" min="1" max="365" value={form.max_dias_reserva} onChange={(e) => update('max_dias_reserva', e.target.value)} /></label><label>Intervalo (min)<input className="text-input" type="number" min="5" max="120" value={form.intervalo_reserva_min} onChange={(e) => update('intervalo_reserva_min', e.target.value)} /></label></div><label>Política de cancelación<textarea className="text-input" rows="3" value={form.politica_cancelacion || ''} onChange={(e) => update('politica_cancelacion', e.target.value)} /></label></div></section>
       <div className="settings-actions"><button className="btn btn-primary" type="submit" disabled={saving || uploading}><Save size={15} /> {saving ? 'Guardando…' : 'Guardar configuración'}</button></div>
     </fieldset>
     </form> : <section className="panel settings-card">
       <h2 className="panel-title">No pudimos cargar la configuración</h2>
       <p className="panel-subtitle">Volvé a consultar antes de editar. No se reemplazaron los datos del negocio por valores por defecto.</p>
-      <button type="button" className="btn btn-primary" onClick={() => load()}>Reintentar configuración</button>
+      <button ref={retryButtonRef} type="button" className="btn btn-primary" onClick={() => { retryFocusRef.current = true; load() }}>Reintentar configuración</button>
     </section>}
     <section className="panel settings-card"><div className="panel-header-inline"><div><h2 className="panel-title"><UsersRound size={16} /> Colaboradores</h2><p className="panel-subtitle">Las invitaciones no envían emails: copiá el enlace y compartilo manualmente.</p></div></div><form className="invite-form" onSubmit={createInvite} aria-busy={inviteSaving}><input ref={inviteEmailRef} className="text-input" type="email" required aria-label="Email de la invitación" placeholder="email@negocio.com" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} /><select className="text-input" aria-label="Rol de la invitación" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })} disabled={inviteSaving}>{Object.entries(ROLE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select className="text-input" aria-label="Duración de la invitación" value={invite.expires} onChange={(e) => setInvite({ ...invite, expires: Number(e.target.value) })} disabled={inviteSaving}><option value={1}>Vence en 1 día</option><option value={7}>Vence en 7 días</option><option value={14}>Vence en 14 días</option><option value={30}>Vence en 30 días</option></select><button className="btn btn-primary" type="submit" disabled={inviteSaving}><UserPlus size={14} /> {inviteSaving ? 'Creando…' : 'Crear invitación'}</button></form>{inviteLink && <div className="invite-link"><input ref={inviteLinkRef} className="text-input" readOnly value={inviteLink} aria-label="Enlace de invitación generado" /><button className="btn" type="button" onClick={copyInvite}><Copy size={14} /> Copiar enlace</button></div>}<div className="member-list">{members.length === 0 ? <EmptyState className="empty-state" icon={<UsersRound size={26} aria-hidden="true" style={{ color: 'var(--border-strong)' }} />} title="Todavía no hay colaboradores" action={<button type="button" className="btn btn-primary" onClick={() => inviteEmailRef.current?.focus()}><UserPlus size={14} /> Invitar miembro</button>} /> : members.map((member) => { const memberName = member.profiles?.full_name || member.user_id; const memberBusy = memberPending[`member:${member.id}`]; return <div className="member-row" key={member.id}><div><strong>{memberName}</strong><small>{member.role === 'owner' ? 'Dueño · no se puede modificar' : 'Miembro del negocio'}</small></div><div className="member-actions"><select className="text-input" aria-label={`Rol de ${memberName}`} value={member.role} disabled={member.role === 'owner' || memberBusy} aria-busy={memberBusy} onChange={(e) => changeRole(member, e.target.value)}>{[['owner', 'Dueño'], ...Object.entries(ROLE_LABELS)].map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{member.role !== 'owner' && <button className="btn-icon-plain" type="button" onClick={() => removeMember(member)} disabled={memberBusy} aria-busy={memberBusy} aria-label="Retirar acceso"><Trash2 size={15} /></button>}</div></div> })}</div><div className="member-list invitations-list">{invitations.length === 0 ? <div className="empty-state">Todavía no hay invitaciones.</div> : invitations.map((item) => { const state = invitationState(item); const inviteBusy = memberPending[`invite:${item.id}`]; return <div className="member-row" key={item.id}><div><strong>{item.email}</strong><small>Invitación · {ROLE_LABELS[item.role] || item.role} · vence {new Date(item.expires_at).toLocaleDateString('es-AR')}</small></div><div className="member-actions"><span className={`status-pill invitation-status invitation-status--${state.tone}`}>{state.label}</span>{state.actionable && <button className="btn-icon-plain" type="button" onClick={() => cancelInvite(item.id)} disabled={inviteBusy} aria-busy={inviteBusy} aria-label={`Cancelar invitación para ${item.email}`}>×</button>}</div></div> })}</div></section>
     <section className="panel settings-card"><div className="panel-header-inline"><div><h2 className="panel-title">Actividad reciente</h2><p className="panel-subtitle">Cambios relevantes del negocio, sin secretos ni tokens.</p></div></div>{activity.length === 0 ? <div className="empty-state">Todavía no hay actividad registrada.</div> : <div className="member-list">{activity.map((item) => <div className="member-row" key={item.id}><div><strong>{auditLabel(item.event_name)}</strong><small>{new Date(item.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · {item.metadata?.slug || ''}</small></div></div>)}</div>}</section>

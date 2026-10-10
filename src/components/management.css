@@ -838,3 +838,11 @@
   padding: 0;
   border: 0;
 }
+
+/* El input de archivo queda accesible por teclado (sr-only); el anillo de foco
+   se muestra en el botón visible que lo contiene. */
+.management-settings .logo-preview .btn:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
