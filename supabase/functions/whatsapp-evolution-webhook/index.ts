@@ -20,7 +20,8 @@ import {
 } from '../_shared/whatsappChannelOffer.mjs'
 import { buildAgentOutboundOperationId } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { advanceConversationTurn, applyWebChannelTurn, buildChannelProposal, buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
-import { nextConversationAction, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
+import { nextConversationAction, recordAvailabilityResult, isConversationStateFresh, parseExplicitConfirmation } from '../_shared/whatsappConversationState.mjs'
+import { conciergeGoal, conciergeNameInput, conciergeChoice, conciergeInformation, conciergeBookingProposal, languageRequest, interpretConcierge, validateLanguageResult, richReply } from '../_shared/whatsappConcierge.mjs'
 import { canonicalArgentineMobile } from '../_shared/whatsappCustomer.mjs'
 import { canonicalSenderJid, normalizeMessagesUpsertData } from '../_shared/whatsappEvolutionPayload.mjs'
 import { EVOLUTION_QR_TTL_MS, qrImageFromEvolutionEvent } from '../_shared/whatsappQrEvent.mjs'
@@ -293,7 +294,7 @@ async function loadRelativeAvailability(admin: ReturnType<typeof adminClient>, c
   }
 }
 
-async function loadConversationAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, state: Record<string, unknown>) {
+async function loadConversationAvailability(admin: ReturnType<typeof adminClient>, context: Awaited<ReturnType<typeof loadTenantContext>>, state: Record<string, unknown>, allowTimeMissing = false) {
   const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
   const request = {
     date_key: safeString(state.requested_date) || null,
@@ -308,7 +309,7 @@ async function loadConversationAvailability(admin: ReturnType<typeof adminClient
   }
   const service = context.services.find((candidate: Record<string, unknown>) => Number(candidate.id) === Number(state.service_id))
   if (!service) return { status: 'service_required', request, slots: [], rpc_executed: false }
-  if (!request.date_key || !request.requested_time) return { status: 'date_or_time_required', request, slots: [], rpc_executed: false }
+  if (!request.date_key || (!request.requested_time && !allowTimeMissing)) return { status: 'date_or_time_required', request, slots: [], rpc_executed: false }
   if (!context.business.slug) return { status: 'error', request, slots: [], rpc_executed: false }
   const { data, error } = await admin.rpc('horarios_disponibles_reserva_publica', {
     p_slug: context.business.slug,
@@ -378,6 +379,14 @@ async function isCustomerNameRequired(admin: ReturnType<typeof adminClient>, ten
   return !safeString(data?.nombre) || (manual && data?.whatsapp_nombre_pendiente === true)
 }
 
+async function loadConciergeCustomer(admin: ReturnType<typeof adminClient>, tenantId: number, remoteJid: string) {
+  const phone = canonicalArgentineMobile(remoteJid)
+  if (!phone) return null
+  const { data, error } = await admin.from('clientes').select('id,nombre,whatsapp_nombre_pendiente').eq('barberia_id', tenantId).eq('telefono', phone).maybeSingle()
+  if (error) throw new Error('customer_lookup_failed')
+  return data
+}
+
 // Entrega del saludo anterior según su reclamo de envío. Si la consulta falla
 // se asume resultado incierto: nunca se arriesga a duplicar el saludo.
 async function loadPreviousOfferDelivery(admin: ReturnType<typeof adminClient>, integrationId: number, state: Record<string, any> | null, now: Date) {
@@ -435,6 +444,7 @@ async function processInboundMessage({
   if (inbound.fromMe) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: 'from_me_ignored', mutation_blocked: true }, status: 202 }
   if (!isFreshInboundTimestamp(inbound.timestamp)) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: 'stale_or_invalid_timestamp', mutation_blocked: true, outbound_send: false }, status: 202 }
   const manual = manualQaEnabled((name: string) => Deno.env.get(name), connection.barberia_id, instance)
+  const concierge = manual && Deno.env.get('WHATSAPP_QA_MANUAL_CONCIERGE_ENABLED') === '1'
   const phone = manual ? canonicalArgentineMobile(inbound.remoteJid) : null
   if (manual && (!phone || !manualQaPhoneAllowed((name: string) => Deno.env.get(name), phone))) {
     return { body: { received: true, accepted: false, reason: 'qa_recipient_not_allowed', mutation_blocked: true, outbound_send: false }, status: 202 }
@@ -463,13 +473,16 @@ async function processInboundMessage({
   // QA manual usa la misma identidad canónica que Clientes y la reserva web,
   // también si el proveedor entrega el celular argentino sin el 9.
   const senderHashValue = await senderHash(manual && phone ? `${phone}@s.whatsapp.net` : inbound.remoteJid)
-  const [context, previousConversation, customerNameRequired] = await Promise.all([
+  const [context, previousConversation, customerContext] = await Promise.all([
     loadTenantContext(admin, connection.barberia_id),
     loadConversationState(admin, connection, instance, senderHashValue),
-    isCustomerNameRequired(admin, tenantId, inbound.remoteJid, manual),
+    concierge ? loadConciergeCustomer(admin, tenantId, inbound.remoteJid) : isCustomerNameRequired(admin, tenantId, inbound.remoteJid, manual),
   ])
+  let customer = concierge && customerContext && typeof customerContext === 'object' ? customerContext : null
+  const customerNameRequired = concierge ? !customer?.nombre || customer.whatsapp_nombre_pendiente === true : customerContext === true
   const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
   const now = new Date()
+  const today = interpretRequestedDate('hoy', timezone, now).requested_date
   const scope = { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }
   // Reservar por chat sólo se ofrece donde el circuito QA puede agendar.
   const chatBookingEnabled = (isQaBookingTenantAllowed(tenantId, Deno.env.get(QA_BOOKING_MUTATION_TENANTS_ENV)) && safeString(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1')
@@ -482,6 +495,54 @@ async function processInboundMessage({
   const linkUnavailableRequest = channelChoice === 'link_request' && bookingLink.available !== true
   const webTurn = (channelChoice === 'link_request' && !linkUnavailableRequest) || (choicePending && channelChoice === 'web')
   const chatChosen = choicePending && channelChoice === 'chat'
+
+  let helperGoal: string | null = null
+  let informationTurn = false
+  let languageProvider: string | null = null
+  let interpretedFields: Record<string, any> = {}
+  let effectiveText = inbound.text
+  let upcoming: Record<string, any>[] = []
+  let identityName: string | null = null
+  if (concierge && !webTurn) {
+    helperGoal = conciergeGoal(inbound.text, previousConversation)
+    if (chatChosen) helperGoal = 'booking'
+    const choice = conciergeChoice(inbound.text, previousConversation)
+    const name = conciergeNameInput(inbound.text, previousConversation, customer)
+    const activeBooking = previousConversation?.pending_intent === 'booking_intent' && previousConversation.confirmation_state !== 'confirmed' && isConversationStateFresh(previousConversation, now)
+    const knownService = resolveRequestedServices(inbound.text, context.services)
+    if (choice?.type === 'service' && context.services.some((s: any) => Number(s.id) === Number(choice.id))) interpretedFields = { service_id: choice.id, requested_time: previousConversation?.requested_time || null, pending_intent: 'booking_intent' }
+    if (choice?.type === 'barber' && context.barbers.some((b: any) => Number(b.id) === Number(choice.id))) interpretedFields = { barber_id: choice.id, barber_selection_pending: false, requested_time: previousConversation?.requested_time || null, pending_intent: 'booking_intent' }
+    if (choice?.type === 'time') interpretedFields = { requested_time: choice.time, pending_intent: 'booking_intent' }
+    if (choice) helperGoal = 'booking'
+    if (name && (knownService.status === 'none' || /^(soy |me llamo |mi nombre es |a nombre de )/i.test(inbound.text.trim())) && previousConversation?.awaiting_customer_name && activeBooking) {
+      interpretedFields = { customer_name: name, customer_name_confirmed: true, pending_intent: 'booking_intent', service_id: previousConversation.service_id || null, barber_id: previousConversation.barber_id || null }
+      helperGoal = 'booking'
+    }
+    if (name && previousConversation?.awaiting_customer_name && !activeBooking && previousConversation.last_information_topic === 'identity') {
+      identityName = name; helperGoal = 'identity'
+      customer = { ...customer, nombre: name, whatsapp_nombre_pendiente: false }
+    }
+    if (previousConversation?.barber_selection_pending && /^(decime vos|elegi vos|me da igual)[.!?]*$/i.test(inbound.text.trim())) { effectiveText = 'Cualquiera'; helperGoal = 'booking' }
+    if (helperGoal === 'unclear' && knownService.status === 'matched') helperGoal = 'booking'
+    if (helperGoal === 'unclear' && !parseExplicitConfirmation(inbound.text) && !previousConversation?.awaiting_customer_name) {
+      const request = languageRequest({ message: inbound.text, business: context.business, services: context.services, barbers: context.barbers, state: previousConversation, customer, today })
+      const raw = await interpretConcierge({ request, secret: safeString(Deno.env.get('EVOLUTION_WEBHOOK_SECRET')) })
+      const understood = validateLanguageResult(raw, { services: context.services, barbers: context.barbers, today })
+      if (understood) { helperGoal = understood.goal; interpretedFields = understood.fields; languageProvider = understood.provider }
+    }
+    informationTurn = ['identity', 'my_booking', 'greeting', 'thanks', 'services', 'prices', 'duration', 'recommend', 'human'].includes(helperGoal || '') || (helperGoal === 'unclear' && !activeBooking)
+    if (informationTurn) {
+      // Una consulta de precio/nombre no cambia el servicio de una reserva ni
+      // convierte el texto de la pregunta en el nombre del cliente.
+      interpretedFields = { pending_intent: activeBooking ? 'booking_intent' : null, service_id: activeBooking ? previousConversation.service_id : null, requested_date: activeBooking ? previousConversation.requested_date : null, requested_time: activeBooking ? previousConversation.requested_time : null, barber_id: activeBooking ? previousConversation.barber_id : null }
+    }
+    if (helperGoal === 'booking' && !informationTurn) interpretedFields.pending_intent = 'booking_intent'
+    if (identityName) { interpretedFields.customer_name = identityName; interpretedFields.customer_name_confirmed = true }
+    if (['my_booking', 'greeting', 'thanks'].includes(helperGoal || '') && customer?.id) {
+      const result = await admin.from('turnos').select('id,fecha,hora,motivo,paciente').eq('barberia_id', tenantId).eq('cliente_id', customer.id).gte('fecha', today).eq('estado', 'confirmado').order('fecha').order('hora').limit(3)
+      if (!result.error) upcoming = result.data || []
+    }
+  }
 
   let availability = null
   let conversationState: Record<string, any>
@@ -502,7 +563,7 @@ async function processInboundMessage({
       state: previousConversation,
       scope,
       eventId: inbound.eventId,
-      text: inbound.text,
+      text: effectiveText,
       messageType: inbound.messageType || 'text',
       fromMe: inbound.fromMe,
       isGroup: inbound.isGroup,
@@ -512,11 +573,14 @@ async function processInboundMessage({
       timezone,
       customerNameRequired,
       forceBookingIntent: chatChosen && chatBookingEnabled,
+      personalizedBooking: concierge,
+      interpretedFields,
+      suppressNameCapture: informationTurn,
       now,
     })
     if (!conversation.accepted) return { body: { received: true, accepted: false, event: INBOUND_EVENT, reason: conversation.reason, duplicate: conversation.duplicate === true, mutation_blocked: true, outbound_send: false }, status: conversation.duplicate ? 202 : 422 }
     conversationState = chatChosen ? { ...conversation.state, channel_choice: 'chat' } : conversation.state
-    const offer = chatChosen
+    const offer = chatChosen || (concierge && ['identity', 'my_booking', 'thanks', 'prices', 'duration', 'human'].includes(helperGoal || ''))
       ? { offer: false }
       : shouldOfferChannels({ state: previousConversation, intent: conversation.intent, extractedFields: conversation.extracted?.fields, linkAvailable: bookingLink.available === true, previousOfferDelivery, now })
     if (linkUnavailableRequest) {
@@ -527,13 +591,36 @@ async function processInboundMessage({
       conversationState = { ...conversationState, channel_offer_at: now.toISOString(), channel_offer_event_id: inbound.eventId, channel_choice: null }
       conversationAction = 'channel_offer'
       proposal = buildChannelProposal({ reply: bookingLink.offerReply, intent: conversation.intent === 'booking_intent' ? 'booking_intent' : 'general_query', requestedAction: conversationAction, state: conversationState })
+      if (concierge) proposal.proposed_reply = richReply(`¡Hola${customer?.nombre && !customer.whatsapp_nombre_pendiente ? `, ${customer.nombre.split(' ')[0]}` : ''}! 👋\nBienvenido a ${context.business.nombre}.\nPodés reservar en la web: ${bookingLink.url}\nO lo hacemos por acá, paso a paso. ¿Qué preferís?`)
       proposal.context_counts = { ...proposal.context_counts, previous_offer_delivery: previousOfferDelivery }
     } else {
-      bookingFlow = conversation.intent === 'booking_intent' || conversationState?.pending_intent === 'booking_intent'
-      if (bookingFlow && conversation.action?.action === 'check_availability') {
+      bookingFlow = !informationTurn && (conversation.intent === 'booking_intent' || conversationState?.pending_intent === 'booking_intent')
+      if (concierge && informationTurn) {
+        const intent = ({ services: 'services_query', prices: 'price_query', duration: 'duration_query' } as Record<string,string>)[helperGoal || ''] || 'general_query'
+        proposal = buildChannelProposal({ reply: conciergeInformation({ goal: helperGoal, message: inbound.text, customer, services: context.services, state: previousConversation, upcoming, business: context.business }), intent, requestedAction: `concierge_${helperGoal}`, state: conversationState })
+        proposal.proposed_reply = richReply(conciergeInformation({ goal: helperGoal, message: inbound.text, customer, services: context.services, state: previousConversation, upcoming, business: context.business }))
+        proposal.provider = 'qa_deterministic_shadow'
+        proposal.tools_considered = ['tenant_context_read','services_read']
+        proposal.context_counts = { ...proposal.context_counts, services: context.services.length, language_provider: languageProvider }
+        conversationState = { ...conversationState, last_information_topic: helperGoal }
+        if (helperGoal === 'identity') conversationState.awaiting_customer_name = !customer?.nombre || customer.whatsapp_nombre_pendiente === true
+        if (['services','recommend'].includes(helperGoal || '')) conversationState.concierge_choices = context.services.slice(0, 5).map((s: any) => ({ type: 'service', id: s.id }))
+      } else {
+      if (bookingFlow && (conversation.action?.action === 'check_availability' || (concierge && conversation.action?.action === 'ask_time'))) {
         try {
-          availability = await loadConversationAvailability(admin, context, conversationState)
-          if (availability.rpc_executed === true) {
+          availability = await loadConversationAvailability(admin, context, conversationState, concierge)
+          if (concierge && !conversationState.requested_time && availability.rpc_executed && conversationState.time_preference && availability.slots.length) {
+            const times = [...new Set(availability.slots.map((s: any) => safeString(s.hora).slice(0, 5)))].sort()
+            conversationState = { ...conversationState, requested_time: conversationState.time_preference === 'latest' ? times.at(-1) : times[0] }
+            availability.requested_slot_available = true
+            conversation.action = { action: 'check_availability' }
+          }
+          if (availability.rpc_executed === true && conversationState.requested_time) {
+            if (concierge && conversationState.barber_id == null) {
+              const matches = availability.slots.filter((s: any) => safeString(s.hora).slice(0, 5) === conversationState.requested_time)
+              const ids = [...new Set(matches.map((s: any) => Number(s.barbero_id)))]
+              if (ids.length === 1) conversationState = { ...conversationState, barber_id: ids[0] }
+            }
             const availabilityResult = recordAvailabilityResult({
               state: conversationState,
               expectedScope: scope,
@@ -572,6 +659,15 @@ async function processInboundMessage({
             model: safeString(Deno.env.get('DEEPSEEK_MODEL')) || 'deepseek-chat',
           })
         })()
+      if (concierge && bookingFlow) {
+        const action = conversation.action?.action === 'check_availability' && availability?.rpc_executed
+          ? nextConversationAction(conversationState, { expectedScope: scope, availabilityStatus: availability.requested_slot_available ? 'available' : 'unavailable', requestedSlotAvailable: availability.requested_slot_available })
+          : conversation.action
+        const enhanced = conciergeBookingProposal({ proposal, state: conversationState, action, services: context.services, barbers: context.barbers, availability, customer, business: context.business })
+        proposal = enhanced.proposal; conversationState = enhanced.state
+        proposal.context_counts.language_provider = languageProvider
+      }
+      }
     }
   }
   const { data: recorded, error: recordError } = await admin.rpc('record_whatsapp_shadow_run', {

@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
 import { manualQaEnabled, manualQaCapabilities, manualQaRecipient } from '../_shared/qaManualRuntime.mjs'
 import { acceptedManualReceipt, parseAcceptedManualReceipt, persistManualMessage } from '../_shared/qaManualMessages.mjs'
 import { requireOperator } from '../_shared/supabase.ts'
+import { conciergeConfirmation } from '../_shared/whatsappConcierge.mjs'
 import {
   PROTECTED_WHATSAPP_INSTANCE,
   agentOutboundGuard,
@@ -201,7 +202,7 @@ Deno.serve(async (request) => {
     }
 
     let bookingPersisted = false
-    if (kind === 'proposal' && (metadata.booking_follow_up as Record<string, unknown> | undefined)?.reason === 'barber_selection_required') {
+    if (kind === 'proposal' && ['barber_selection_required','quote_changed'].includes(safeString((metadata.booking_follow_up as Record<string, unknown> | undefined)?.reason))) {
       // Se recupera primero cualquier recibo aceptado. Un envío nuevo no
       // puede contradecir una reserva guardada o cuyo resultado esté en curso.
       const followUp = metadata.booking_follow_up as Record<string, unknown>
@@ -226,7 +227,7 @@ Deno.serve(async (request) => {
       if (claimRow?.status !== 'completed' || !/^\d+$/.test(safeString(claimRow?.result_reference))) return json({ error: 'booking_not_persisted', outbound_allowed: false }, 409)
       const { data: turno, error: turnoError } = await admin
         .from('turnos')
-        .select('id,barberia_id,servicio_id,fecha,hora,estado,origen,telefono')
+        .select('id,barberia_id,servicio_id,barbero_id,paciente,precio,motivo,fecha,hora,estado,origen,telefono')
         .eq('id', Number(claimRow.result_reference))
         .eq('barberia_id', tenantId)
         .maybeSingle()
@@ -234,9 +235,13 @@ Deno.serve(async (request) => {
       if (!turno || turno.origen !== 'whatsapp' || ['cancelado', 'no_asistio'].includes(safeString(turno.estado)) || safeString(turno.telefono) !== canonicalArgentineMobile(recipient)) return json({ error: 'booking_not_persisted', outbound_allowed: false }, 409)
       const [{ data: service }, { data: business }] = await Promise.all([
         admin.from('servicios').select('nombre').eq('id', turno.servicio_id).eq('barberia_id', tenantId).maybeSingle(),
-        admin.from('barberias').select('nombre').eq('id', tenantId).maybeSingle(),
+        admin.from('barberias').select('nombre,moneda').eq('id', tenantId).maybeSingle(),
       ])
       proposedReply = safeString(buildBookingConfirmedReply({ businessName: business?.nombre, serviceName: service?.nombre, fecha: turno.fecha, hora: turno.hora }))
+      if (manual && Deno.env.get('WHATSAPP_QA_MANUAL_CONCIERGE_ENABLED') === '1') {
+        const { data: barber } = await admin.from('barberos').select('nombre').eq('id', turno.barbero_id).eq('barberia_id', tenantId).maybeSingle()
+        proposedReply = conciergeConfirmation({ turno, service, business, barber })
+      }
       operationId = buildBookingConfirmationOperationId(turno.id)
       if (!operationId || !proposedReply) return json({ error: 'booking_confirmation_invalid', outbound_allowed: false }, 409)
       bookingPersisted = true

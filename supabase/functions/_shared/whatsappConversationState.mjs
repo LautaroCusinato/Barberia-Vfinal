@@ -74,6 +74,10 @@ const EMPTY_STATE_FIELDS = Object.freeze({
   // Nombre informado en el chat por un cliente nuevo. Sólo se pide cuando el
   // teléfono no tiene ficha en el negocio; nunca reemplaza datos existentes.
   customer_name: null,
+  customer_name_confirmed: false,
+  concierge_choices: [],
+  last_information_topic: null,
+  time_preference: null,
   awaiting_customer_name: false,
 })
 
@@ -174,6 +178,8 @@ function normalizeExtracted(extracted = {}) {
     output.customer_name = name
   }
   if (Object.prototype.hasOwnProperty.call(extracted, 'awaiting_customer_name')) output.awaiting_customer_name = extracted.awaiting_customer_name === true
+  if (Object.prototype.hasOwnProperty.call(extracted, 'customer_name_confirmed')) output.customer_name_confirmed = extracted.customer_name_confirmed === true
+  if (Object.prototype.hasOwnProperty.call(extracted, 'time_preference')) output.time_preference = ['earliest', 'latest', 'any'].includes(extracted.time_preference) ? extracted.time_preference : null
   if (Object.prototype.hasOwnProperty.call(extracted, 'availability_slots')) {
     if (!Array.isArray(extracted.availability_slots)) throw new TypeError('availability_slots must be an array')
     output.availability_slots = extracted.availability_slots

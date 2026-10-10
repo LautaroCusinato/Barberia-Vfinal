@@ -66,11 +66,11 @@ export function isValidCustomerName(value) {
  * lo escrito en el chat no los reemplaza. Un cliente nuevo necesita el nombre
  * que confirmó en la conversación; no hay nombre de reemplazo.
  */
-export function resolveBookingCustomer({ existing = null, conversationName = null } = {}) {
+export function resolveBookingCustomer({ existing = null, conversationName = null, preferConversationName = false } = {}) {
   const name = isValidCustomerName(conversationName) ? textFrom(conversationName) : null
   if (existing && typeof existing === 'object') {
     const storedName = textFrom(existing.nombre)
-    if (storedName) return { status: 'existing', nombre: storedName, email: textFrom(existing.email) || null }
+    if (storedName) return { status: 'existing', nombre: preferConversationName && name ? name : storedName, email: textFrom(existing.email) || null }
     if (!name) return { status: 'name_required', nombre: null, email: null }
     return { status: 'existing', nombre: name, email: textFrom(existing.email) || null }
   }

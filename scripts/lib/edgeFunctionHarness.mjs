@@ -60,6 +60,7 @@ export function createMemoryDb(tables = {}, { rpc = {} } = {}) {
     select() { return this }
     eq(key, value) { this.filters.push((row) => String(key.split(/->>?/).reduce((item, part) => item?.[part], row)) === String(value)); return this }
     in(key, values) { this.filters.push((row) => values.map(String).includes(String(row[key]))); return this }
+    gte(key, value) { this.filters.push((row) => row[key] >= value); return this }
     order(key, { ascending = true } = {}) { this.sort = { key, ascending }; return this }
     limit(count) { this.max = count; return this }
     update(values) { this.values = values; return this }

@@ -98,7 +98,7 @@ function hasBookingDetail(fields = {}) {
  * nombre. `forceBookingIntent` se usa cuando el cliente eligió reservar por
  * este chat después del saludo con las dos opciones.
  */
-export function advanceConversationTurn({ state = null, scope, eventId, text, messageType = 'text', fromMe = false, isGroup = false, isBroadcast = false, services = [], barbers = [], timezone, customerNameRequired = false, forceBookingIntent = false, now = new Date() } = {}) {
+export function advanceConversationTurn({ state = null, scope, eventId, text, messageType = 'text', fromMe = false, isGroup = false, isBroadcast = false, services = [], barbers = [], timezone, customerNameRequired = false, forceBookingIntent = false, personalizedBooking = false, interpretedFields = {}, suppressNameCapture = false, now = new Date() } = {}) {
   const acceptedInput = classifyConversationInput({ messageType, text, fromMe, isGroup, isBroadcast })
   if (!acceptedInput.accepted) return { accepted: false, reason: acceptedInput.reason, state }
 
@@ -110,6 +110,7 @@ export function advanceConversationTurn({ state = null, scope, eventId, text, me
     && (state.confirmation_state === 'confirmed' || !isConversationStateFresh(state, now)))
   const pendingIntent = forceBookingIntent === true ? 'booking_intent' : closedState ? null : state?.pending_intent || null
   const extracted = extractConversationTurn({ text, pendingIntent, services, barbers, timezone, now })
+  if (personalizedBooking) Object.assign(extracted.fields, interpretedFields)
   // "Cualquiera" es una preferencia explícita, sólo después de preguntar
   // por profesionales concretos obtenidos de la disponibilidad del negocio.
   if (state?.barber_selection_pending === true && /^(?:con )?(?:cualquiera|el que tenga libre|me da igual)[.!]*$/i.test(textFrom(text))) {
@@ -126,10 +127,11 @@ export function advanceConversationTurn({ state = null, scope, eventId, text, me
 
   let current = state
   const stateFresh = Boolean(current && isConversationStateFresh(current, now))
-  if (stateFresh && current.awaiting_customer_name === true && !hasBookingDetail(extracted.fields)) {
-    const name = extractCustomerName(text)
+  if (stateFresh && current.awaiting_customer_name === true && !hasBookingDetail(extracted.fields) && !suppressNameCapture) {
+    const name = personalizedBooking && interpretedFields.customer_name ? interpretedFields.customer_name : extractCustomerName(text)
     if (name) {
       extracted.fields.customer_name = name
+      if (personalizedBooking) extracted.fields.customer_name_confirmed = true
       extracted.fields.pending_intent = 'booking_intent'
     }
   }
@@ -142,7 +144,9 @@ export function advanceConversationTurn({ state = null, scope, eventId, text, me
   if (!current) current = { ...createConversationState({ ...scope, now }), timezone: timezone || null, ...channelFieldsFrom(state) }
   const merged = mergeConversationTurn({ state: current, expectedScope: scope, eventId, extracted: extracted.fields, now })
   if (!merged.accepted) return { accepted: false, reason: merged.reason, duplicate: merged.duplicate, state: merged.state, intent: extracted.intent, extracted }
-  const action = nextConversationAction(merged.state, { expectedScope: scope, customerNameRequired, now })
+  const action = personalizedBooking && merged.state.pending_intent === 'booking_intent' && merged.state.customer_name_confirmed !== true
+    ? { action: 'ask_name', missing_fields: ['customer_name'], mutation_allowed: false }
+    : nextConversationAction(merged.state, { expectedScope: scope, customerNameRequired, now })
   const nextState = { ...merged.state, awaiting_customer_name: action.action === 'ask_name' }
   return { accepted: true, duplicate: false, reason: null, state: nextState, action, intent: nextState.pending_intent || extracted.intent, extracted, confirmed: false }
 }

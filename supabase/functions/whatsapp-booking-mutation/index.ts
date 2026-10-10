@@ -6,6 +6,7 @@ import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
 import { isConversationStateFresh, isConversationStateForScope, recordAvailabilityResult } from '../_shared/whatsappConversationState.mjs'
 import { canonicalArgentineMobile, resolveBookingCustomer } from '../_shared/whatsappCustomer.mjs'
 import { buildConversationProposal } from '../_shared/whatsappConversationRuntime.mjs'
+import { conciergeBookingProposal } from '../_shared/whatsappConcierge.mjs'
 import {
   QA_BOOKING_MUTATION_ENVIRONMENT,
   QA_BOOKING_MUTATION_FLAG,
@@ -189,23 +190,23 @@ Deno.serve(async (request) => {
     const followUp = metadata.booking_follow_up as Record<string, unknown> | undefined
     if (state && stateScopeValid && stateFresh && promptVersionValid && sourceFresh && sourceEventReal && senderMatches
       && sourceRun.intent === 'booking_intent' && (manual || textFrom(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1')
-      && followUp?.reason === 'barber_selection_required' && state.barber_selection_pending === true
-      && state.confirmation_state === 'collecting' && state.last_event_id === eventId) {
+      && ((followUp?.reason === 'barber_selection_required' && state.barber_selection_pending === true && state.confirmation_state === 'collecting') || (followUp?.reason === 'quote_changed' && state.confirmation_state === 'awaiting_confirmation' && state.ready_for_booking_mutation === false))
+      && state.last_event_id === eventId) {
       const { data: claim, error } = await admin.from('saas_automation_events').select('status').eq('integration_id', connection.integration_id).eq('event_id', followUp.claim_key).maybeSingle()
       if (error || claim) return json({ error: 'booking_follow_up_claim_conflict', mutation_allowed: false }, 409)
-      return json({ error: 'barber_selection_required', booking_created: false, booking_follow_up: true, conversation_reopened: true, booking_mutation_executed: false }, 409)
+      return json({ error: followUp.reason, booking_created: false, booking_follow_up: true, conversation_reopened: true, booking_mutation_executed: false }, 409)
     }
     if (!state || !stateValid) return json({ error: 'confirmed_booking_state_required', mutation_allowed: false }, 409)
     if (!sourceFresh || !sourceEventReal || !senderMatches) return json({ error: 'source_event_not_eligible', mutation_allowed: false }, 403)
 
     const { data: business, error: businessError } = await admin
       .from('barberias')
-      .select('id,nombre,slug,zona_horaria')
+      .select('id,nombre,slug,zona_horaria,moneda')
       .eq('id', tenantId)
       .maybeSingle()
     const { data: service, error: serviceError } = await admin
       .from('servicios')
-      .select('id,nombre,activo')
+      .select('id,nombre,activo,precio,duracion_min')
       .eq('id', Number(state.service_id))
       .eq('barberia_id', tenantId)
       .eq('activo', true)
@@ -309,7 +310,24 @@ Deno.serve(async (request) => {
 
     // Cliente existente: conserva su ficha. Cliente nuevo: el nombre confirmado
     // en la conversación; sin ese nombre no se agenda (no hay nombre de relleno).
-    const customer = resolveBookingCustomer({ existing: await loadExistingCustomer(admin, tenantId, recipient, manual), conversationName: state.customer_name })
+    const personalizedBooking = manual && Deno.env.get('WHATSAPP_QA_MANUAL_CONCIERGE_ENABLED') === '1'
+    if (personalizedBooking && state.customer_name_confirmed !== true) return json({ error: 'customer_name_confirmation_required', mutation_allowed: false }, 409)
+    if (personalizedBooking) {
+      const quote = state.concierge_quote as Record<string, unknown> | undefined
+      if (!quote || Number(quote.service_id) !== Number(service.id) || Number(quote.price) !== Number(service.precio) || quote.currency !== (business.moneda || 'ARS') || Number(quote.duration) !== Number(selected.slot.duracion_min)) {
+        if (existingClaim) return json({ error: 'booking_follow_up_claim_conflict', mutation_allowed: false }, 409)
+        const reopened = recordAvailabilityResult({ state, expectedScope: conversationScope, available: true, snapshotId: `quote:${eventId}`, slots: slots || [] })
+        if (!reopened.accepted) return json({ error: 'quote_reopen_failed', mutation_allowed: false }, 502)
+        reopened.state.ready_for_booking_mutation = false
+        const { data: barber } = await admin.from('barberos').select('id,nombre').eq('barberia_id', tenantId).eq('id', selected.slot.barbero_id).maybeSingle()
+        const proposal = buildConversationProposal({ state: reopened.state, action: { action: 'request_confirmation' }, services: [service] })
+        const enhanced = conciergeBookingProposal({ proposal, state: reopened.state, action: { action: 'request_confirmation' }, services: [service], barbers: barber ? [barber] : [], availability: { slots }, customer: null, business })
+        const { data: changed, error } = await admin.from('saas_automation_shadow_runs').update({ metadata: { ...metadata, proposed_reply: 'El precio o la duración cambiaron. Revisá el resumen actualizado:\n' + enhanced.proposal.proposed_reply, conversation_state: enhanced.state, conversation_action: enhanced.proposal.requested_action, agent: { ...agent, requested_action: enhanced.proposal.requested_action }, booking_follow_up: { reason: 'quote_changed', claim_key: claimEventId } } }).eq('id', sourceRun.id).eq('metadata->conversation_state->>confirmation_state', 'confirmed').select('id').maybeSingle()
+        if (error || !changed) return json({ error: 'quote_reopen_failed', mutation_allowed: false }, 502)
+        return json({ error: 'quote_changed', booking_created: false, booking_follow_up: true, conversation_reopened: true, booking_mutation_executed: false }, 409)
+      }
+    }
+    const customer = resolveBookingCustomer({ existing: await loadExistingCustomer(admin, tenantId, recipient, manual), conversationName: state.customer_name, preferConversationName: personalizedBooking })
     if (customer.status === 'name_required') return json({ error: 'customer_name_required', mutation_allowed: false, revalidated: true, booking_mutation_executed: false }, 409)
     const { data: booking, error: bookingError } = await admin.rpc('crear_reserva_whatsapp', {
       p_integration_id: connection.integration_id,
