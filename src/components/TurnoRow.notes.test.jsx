@@ -34,6 +34,17 @@ describe('Agenda: notas de la ficha del turno (55)', () => {
     expect(screen.queryByText('Nota del homónimo')).toBeNull()
   })
 
+  it('al reasignar el turno a otra ficha muestra sólo las notas de la nueva, sin arrastrar las anteriores', () => {
+    const props = { notas, onAddNota: vi.fn(async () => true), onChangeEstado: vi.fn(), onDeleteTurno: vi.fn(), onEditTurno: vi.fn() }
+    const { rerender } = render(<TurnoRow {...props} turno={turno} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Notas del cliente' }))
+    expect(screen.getByText('Nota de la ficha uno')).toBeInTheDocument()
+    rerender(<TurnoRow {...props} turno={{ ...turno, cliente_id: 2 }} />)
+    expect(screen.getByText('Nota del homónimo')).toBeInTheDocument()
+    expect(screen.queryByText('Nota de la ficha uno')).toBeNull()
+    expect(screen.queryByText('Legado sin vínculo')).toBeNull()
+  })
+
   it('un cliente_id null manda sobre un paciente_id viejo después de reasignar el turno', () => {
     abrir({ turno: { ...turno, cliente_id: null, paciente_id: 1 } })
     expect(screen.getByText('Sin notas todavía')).toBeInTheDocument()
