@@ -100,7 +100,12 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id }) }}",
         "options": {
-          "timeout": 20000
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
         }
       },
       "credentials": {
@@ -203,7 +208,12 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id, kind: 'booking_confirmation' }) }}",
         "options": {
-          "timeout": 20000
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
         }
       },
       "credentials": {
@@ -270,7 +280,12 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id, kind: 'booking_slot_rejected' }) }}",
         "options": {
-          "timeout": 20000
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
         }
       },
       "credentials": {

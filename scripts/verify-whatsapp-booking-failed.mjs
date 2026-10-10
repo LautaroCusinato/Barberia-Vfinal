@@ -189,6 +189,8 @@ assert.match(nodes['Reserva no guardada'].parameters.jsCode, /throw new Error\('
 for (const name of ['Enviar respuesta', 'Enviar confirmación', 'Ofrecer otro horario', 'Avisar reserva no guardada', 'Guardar reserva']) {
   assert.equal(nodes[name].retryOnFail, true, name)
   assert.equal(nodes[name].maxTries, 2, name)
+  // Sólo reintenta fallos de red: un 403/409 del servidor es definitivo.
+  assert.equal(nodes[name].parameters.options?.response?.response?.neverError, true, name)
 }
 const language = read('Austral WhatsApp QA - Lenguaje 928.json')
 const llm = language.nodes.find((node) => node.name === 'Entender pedido con DeepSeek')
