@@ -227,3 +227,17 @@ export function buildSlotRejectedOperationId(eventId) {
   const clean = textFrom(eventId).replace(/[^a-zA-Z0-9_.:-]/g, '').slice(0, 160)
   return clean ? `slot-rejected:${clean}` : null
 }
+
+// La reserva confirmada no se guardó por un motivo que no es el horario
+// (estado, nombre, reclamo en conflicto): el cliente recibe un aviso en vez
+// de silencio. Texto fijo del servidor; no afirma ninguna reserva.
+export const BOOKING_FAILED_REPLY = 'Perdón, no pude confirmar tu turno y todavía no quedó reservado. El equipo del negocio va a ver este chat y te responde por acá.'
+
+export function isSafeBookingFailedReply(reply) {
+  return textFrom(reply) === BOOKING_FAILED_REPLY
+}
+
+export function buildBookingFailedOperationId(eventId) {
+  const clean = textFrom(eventId).replace(/[^a-zA-Z0-9_.:-]/g, '').slice(0, 160)
+  return clean ? `booking-failed:${clean}` : null
+}

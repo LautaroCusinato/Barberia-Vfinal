@@ -18,7 +18,7 @@ import {
   qaAgentOutboundInstanceForTenant,
 } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
-import { SLOT_REJECTION_REASONS, buildBookingClaimEventId, buildBookingConfirmedReply, buildSlotRejectedOperationId, buildSlotRejectedReply } from '../_shared/whatsappBookingMutation.mjs'
+import { BOOKING_FAILED_REPLY, SLOT_REJECTION_REASONS, buildBookingClaimEventId, buildBookingConfirmedReply, buildBookingFailedOperationId, buildSlotRejectedOperationId, buildSlotRejectedReply } from '../_shared/whatsappBookingMutation.mjs'
 import { canonicalArgentineMobile } from '../_shared/whatsappCustomer.mjs'
 import { isQa927WindowOpen } from '../_shared/whatsappQa927Window.mjs'
 import { buildQaEvolutionSendTextPath, normalizeRecipient, sanitizeProviderResult } from '../_shared/whatsappOutboundPilot.mjs'
@@ -32,6 +32,9 @@ function projectRef() {
 }
 
 function json(body: unknown, status = 200) {
+  // Sólo el código de resultado (sin datos de la conversación): permite saber
+  // por qué una confirmación o un envío no avanzó.
+  if (status >= 400) console.log(JSON.stringify({ fn: 'agent_outbound', status, error: String((body as Record<string, unknown> | null)?.error || '').slice(0, 80) }))
   return new Response(JSON.stringify(body), { status, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' } })
 }
 
@@ -102,7 +105,9 @@ Deno.serve(async (request) => {
     const kind = safeString((body as Record<string, unknown>).kind) || 'proposal'
     // kind=booking_slot_rejected (tarea 41): el horario confirmado fue
     // rechazado (bloqueado u ocupado) y no se guardó ningún turno.
-    if (kind !== 'proposal' && kind !== 'booking_confirmation' && kind !== 'booking_slot_rejected') return json({ error: 'kind_not_supported', outbound_allowed: false }, 422)
+    // kind=booking_failed: la reserva confirmada no se guardó por otro motivo;
+    // el cliente recibe un aviso fijo en vez de quedar sin respuesta.
+    if (kind !== 'proposal' && kind !== 'booking_confirmation' && kind !== 'booking_slot_rejected' && kind !== 'booking_failed') return json({ error: 'kind_not_supported', outbound_allowed: false }, 422)
     const eventOperationId = buildAgentOutboundOperationId(eventId)
     if (!eventOperationId) return json({ error: 'event_id_required', outbound_allowed: false }, 422)
 
@@ -129,14 +134,21 @@ Deno.serve(async (request) => {
     if (!operationId) return json({ error: 'qa_927_one_shot_not_configured', outbound_allowed: false }, 503)
     if (legacy927 && !isQa927WindowOpen(Deno.env.get('WHATSAPP_QA_927_OUTBOUND_EXPIRES_AT'))) return json({ error: 'qa_927_window_closed', outbound_allowed: false }, 403)
 
-    const { data: connection, error: connectionError } = await admin
+    // Conexión e integración se leen juntas: ambas dependen sólo del evento
+    // persistido. Las validaciones siguen en el mismo orden que antes.
+    const [{ data: connection, error: connectionError }, { data: integration, error: integrationError }] = await Promise.all([admin
       .from('saas_whatsapp_connections')
       .select('id,barberia_id,integration_id,provider,environment,state,instance_name,automation_enabled,outbound_enabled,booking_enabled,handoff_enabled')
       .eq('barberia_id', tenantId)
       .eq('integration_id', integrationId)
       .eq('provider', 'evolution')
       .eq('environment', 'qa')
-      .maybeSingle()
+      .maybeSingle(), admin
+      .from('saas_integraciones')
+      .select('id,barberia_id,proveedor,integration_type,estado')
+      .eq('id', integrationId)
+      .eq('barberia_id', tenantId)
+      .maybeSingle()])
     if (connectionError) return json({ error: 'connection_lookup_failed', outbound_allowed: false }, 502)
     if (!connection || Number(connection.barberia_id) !== tenantId || Number(connection.integration_id) !== integrationId || connection.instance_name !== expectedInstance || connection.instance_name === PROTECTED_WHATSAPP_INSTANCE) return json({ error: 'qa_connection_not_connected', outbound_allowed: false }, 409)
     // Los pilotos anteriores conservan el gate en el mismo punto. QA928
@@ -151,12 +163,6 @@ Deno.serve(async (request) => {
       if (paused) return json({ error: paused, outbound_allowed: false }, paused === 'bot_paused' ? 409 : 502)
     }
 
-    const { data: integration, error: integrationError } = await admin
-      .from('saas_integraciones')
-      .select('id,barberia_id,proveedor,integration_type,estado')
-      .eq('id', connection.integration_id)
-      .eq('barberia_id', tenantId)
-      .maybeSingle()
     if (integrationError) return json({ error: 'integration_lookup_failed', outbound_allowed: false }, 502)
 
     const metadata = sourceRun.metadata && typeof sourceRun.metadata === 'object' ? sourceRun.metadata as Record<string, unknown> : {}
@@ -179,7 +185,7 @@ Deno.serve(async (request) => {
       try {
         // La confirmación se identifica por el turno del reclamo ya guardado,
         // sin exigir que ese turno siga activo para conservar su mensaje pasado.
-        let recoveryOperationId = kind === 'booking_slot_rejected' ? buildSlotRejectedOperationId(eventId) : operationId
+        let recoveryOperationId = kind === 'booking_slot_rejected' ? buildSlotRejectedOperationId(eventId) : kind === 'booking_failed' ? buildBookingFailedOperationId(eventId) : operationId
         if (kind === 'booking_confirmation') {
           const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : {}
           const claimKey = buildBookingClaimEventId(state)
@@ -267,6 +273,21 @@ Deno.serve(async (request) => {
       proposedReply = safeString(buildSlotRejectedReply({ reason, alternatives }))
       operationId = buildSlotRejectedOperationId(eventId)
       if (!operationId || !proposedReply) return json({ error: 'slot_rejection_invalid', outbound_allowed: false }, 409)
+    }
+    if (kind === 'booking_failed') {
+      // Nunca contradice un turno guardado o en curso: sólo sin reclamo de
+      // reserva o con el reclamo marcado como fallido.
+      const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : {}
+      const claimKey = buildBookingClaimEventId(state)
+      if (claimKey) {
+        const { data: claimRow, error: claimLookupError } = await admin.from('saas_automation_events').select('status')
+          .eq('integration_id', integrationId).eq('event_id', claimKey).maybeSingle()
+        if (claimLookupError) return json({ error: 'booking_claim_lookup_failed', outbound_allowed: false }, 502)
+        if (claimRow && claimRow.status !== 'failed') return json({ error: claimRow.status === 'completed' ? 'booking_already_persisted' : 'booking_claim_active', outbound_allowed: false }, 409)
+      }
+      proposedReply = BOOKING_FAILED_REPLY
+      operationId = buildBookingFailedOperationId(eventId)
+      if (!operationId) return json({ error: 'booking_failed_invalid', outbound_allowed: false }, 409)
     }
     // La pausa por atención humana se vuelve a leer justo antes de enviar: si
     // alguien del equipo tomó el chat después de la propuesta, no se responde.

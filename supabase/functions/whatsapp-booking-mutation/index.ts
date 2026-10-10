@@ -35,6 +35,9 @@ function projectRef() {
 }
 
 function json(body: unknown, status = 200) {
+  // Sólo el código de resultado (sin datos de la conversación): permite saber
+  // por qué una confirmación o un envío no avanzó.
+  if (status >= 400) console.log(JSON.stringify({ fn: 'booking_mutation', status, error: String((body as Record<string, unknown> | null)?.error || '').slice(0, 80) }))
   return new Response(JSON.stringify(body), { status, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' } })
 }
 

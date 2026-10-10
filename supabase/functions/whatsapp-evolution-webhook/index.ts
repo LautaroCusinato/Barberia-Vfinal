@@ -454,8 +454,14 @@ async function processInboundMessage({
   const panelMessage = manual && inbound.messageType === 'text' && !inbound.isGroup && !inbound.isBroadcast && inbound.text.trim() && inbound.text.length <= 4096
     ? { integrationId: Number(connection.integration_id), operationId: `inbound:${inbound.eventId}`, de: 'paciente', phone, text: inbound.text, messageAt: new Date(Number(inboundTimestampSeconds(inbound.timestamp)) * 1000).toISOString(), providerMessageId: inbound.eventId }
     : null
-  if (panelMessage) await persistManualMessage(admin, panelMessage)
-  const { data: existing, error: existingError } = await admin.from('saas_automation_shadow_runs').select('id,metadata').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle()
+  // Guardar el mensaje, buscar el evento repetido y leer la pausa no dependen
+  // entre sí: se hacen juntos. La pausa sólo se evalúa para un evento nuevo,
+  // así que su error se conserva y se relanza recién en ese punto.
+  const [, { data: existing, error: existingError }, pauseLookup] = await Promise.all([
+    panelMessage ? persistManualMessage(admin, panelMessage) : null,
+    admin.from('saas_automation_shadow_runs').select('id,metadata').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle(),
+    loadBotPause(admin, Number(connection.barberia_id)).then((value) => ({ value }), (error) => ({ error })),
+  ])
   if (existingError) return { body: { error: 'shadow_lookup_failed', mutation_blocked: true }, status: 502 }
   if (existing) {
     if (panelMessage) await persistManualMessage(admin, { ...panelMessage, customerName: (existing.metadata as Record<string, any> | null)?.conversation_state?.customer_name })
@@ -468,7 +474,8 @@ async function processInboundMessage({
     return { body: { received: true, accepted: true, event: INBOUND_EVENT, tenant_id: connection.barberia_id, duplicate: true, mutation_blocked: true, outbound_send: false }, status: 202 }
   }
   const tenantId = Number(connection.barberia_id)
-  const pause = await loadBotPause(admin, tenantId)
+  if ('error' in pauseLookup) throw pauseLookup.error
+  const pause = pauseLookup.value
   if (!pause.botActive) return { body: { received: true, accepted: false, event: INBOUND_EVENT, tenant_id: connection.barberia_id, reason: 'bot_paused', mutation_blocked: true, outbound_send: false }, status: 202 }
   // QA manual usa la misma identidad canónica que Clientes y la reserva web,
   // también si el proveedor entrega el celular argentino sin el 9.

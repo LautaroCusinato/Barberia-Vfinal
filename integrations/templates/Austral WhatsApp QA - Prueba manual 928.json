@@ -109,7 +109,10 @@
           "name": "Austral QA 36 Funciones"
         }
       },
-      "notes": "Envía la respuesta persistida al Cliente QA configurado en Supabase (WHATSAPP_OUTBOUND_QA_RECIPIENT). Sin reintento automático."
+      "notes": "Envía la respuesta persistida al Cliente QA configurado en Supabase (WHATSAPP_OUTBOUND_QA_RECIPIENT). Sin reintento automático.",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
     },
     {
       "id": "qa36-booking",
@@ -143,7 +146,10 @@
           "name": "Austral QA 36 Funciones"
         }
       },
-      "notes": "Revalida la propuesta confirmada y la disponibilidad, y guarda el turno con crear_reserva_whatsapp (idempotente por conversación/versión). Un 409 por horario rechazado sigue al IF en lugar de cortar la ejecución (tarea 41)."
+      "notes": "Revalida la propuesta confirmada y la disponibilidad, y guarda el turno con crear_reserva_whatsapp (idempotente por conversación/versión). Un 409 por horario rechazado sigue al IF en lugar de cortar la ejecución (tarea 41).",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
     },
     {
       "id": "qa36-if-saved",
@@ -206,7 +212,10 @@
           "name": "Austral QA 36 Funciones"
         }
       },
-      "notes": "Sólo después de guardar: el texto sale de la fila del turno. Una sola vez por turno."
+      "notes": "Sólo después de guardar: el texto sale de la fila del turno. Una sola vez por turno.",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
     },
     {
       "id": "qa41-if-rejected",
@@ -270,7 +279,10 @@
           "name": "Austral QA 36 Funciones"
         }
       },
-      "notes": "El servidor arma el texto con el motivo y los horarios vigentes. Una sola vez por evento."
+      "notes": "El servidor arma el texto con el motivo y los horarios vigentes. Una sola vez por evento.",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
     },
     {
       "id": "qa41-not-saved",
@@ -278,11 +290,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
+        1800,
         420
       ],
       "parameters": {
-        "jsCode": "throw new Error('booking_not_saved:' + String($input.first()?.json?.error || 'unknown').slice(0, 60));"
+        "jsCode": "throw new Error('booking_not_saved:' + String($('Guardar reserva').first()?.json?.error || 'unknown').slice(0, 60) + ':notice_' + String($input.first()?.json?.sent === true ? 'sent' : ($input.first()?.json?.error || 'not_sent')).slice(0, 40));"
       },
       "notes": "Cualquier otro fallo deja la ejecución marcada como error, sin mensaje al cliente."
     },
@@ -320,6 +332,43 @@
         "options": {}
       },
       "notes": "Recupera una propuesta confirmada antigua con varios profesionales. El servidor persiste la pregunta; Enviar respuesta usa sólo el evento verificado y su reclamo idempotente."
+    },
+    {
+      "id": "b00c1f2a-5e0d-4c55-9a41-0b00c1f2a928",
+      "name": "Avisar reserva no guardada",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://cmsymmszlzikqpvfqjre.supabase.co/functions/v1/whatsapp-agent-outbound-pilot",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $('Validar ruta QA 36').first().json.event_id, kind: 'booking_failed' }) }}",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "australQa36FnSecret",
+          "name": "Austral QA 36 Funciones"
+        }
+      },
+      "notes": "El servidor arma el texto con el motivo y los horarios vigentes. Una sola vez por evento.",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
     }
   ],
   "connections": {
@@ -403,7 +452,7 @@
         ],
         [
           {
-            "node": "Reserva no guardada",
+            "node": "Avisar reserva no guardada",
             "type": "main",
             "index": 0
           }
@@ -422,6 +471,17 @@
         [
           {
             "node": "¿Horario rechazado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avisar reserva no guardada": {
+      "main": [
+        [
+          {
+            "node": "Reserva no guardada",
             "type": "main",
             "index": 0
           }
