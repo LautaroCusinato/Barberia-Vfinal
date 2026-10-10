@@ -283,6 +283,23 @@ describe('catálogo y recuperación de reserva pública', () => {
     expect(rpc).toHaveBeenCalledTimes(llamadas)
   })
 
+  it('al corregir los campos marcados desaparece el aviso de validación sin sugerir otro horario', async () => {
+    await abrir()
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+    fireEvent.click(await screen.findByRole('button', { name: '10:00', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+    confirmar()
+    expect(await screen.findByText('Revisá los datos marcados antes de confirmar.')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: /Nombre y apellido/ }), { target: { value: 'Cliente de prueba' } })
+    expect(screen.getByText('Revisá los datos marcados antes de confirmar.')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: /Teléfono/ }), { target: { value: '1111223344' } })
+    expect(screen.queryByText('Revisá los datos marcados antes de confirmar.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Elegir otro horario' })).toBeNull()
+    confirmar()
+    await screen.findByRole('heading', { name: '¡Turno reservado!' })
+    expect(crear).toHaveBeenCalledTimes(1)
+  })
+
   it('un rechazo confirmado por la base permite corregir y reintentar', async () => {
     await formulario()
     crear.mockResolvedValueOnce({ data: null, error: { code: 'P0001', message: 'El email no es válido' } })

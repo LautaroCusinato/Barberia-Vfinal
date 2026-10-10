@@ -36,6 +36,8 @@ const sameOffer = (before, after) => Boolean(before && after
   && Number(before.precio) === Number(after.precio)
   && Number(before.duracion_min) === Number(after.duracion_min)
   && normalizeCurrency(before.moneda) === normalizeCurrency(after.moneda))
+// Aviso general de campos inválidos: se oculta solo cuando ya no queda ningún campo marcado.
+const FIELDS_TO_REVIEW = 'Revisá los datos marcados antes de confirmar.'
 const UNCERTAIN_BOOKING = 'No pudimos comprobar si la reserva se guardó. Consultá al negocio antes de volver a reservar para evitar duplicarla.'
 const initials = (name) => String(name || '?').split(/[\s_·-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?'
 const prefersReducedMotion = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
@@ -551,7 +553,7 @@ function PublicBookingFlow({ slug }) {
     if (!isValidEmail(email.trim())) nextErrors.email = 'Revisá el formato del email.'
     if (Object.keys(nextErrors).length) {
       setFieldErrors(nextErrors)
-      setSubmitError('Revisá los datos marcados antes de confirmar.')
+      setSubmitError(FIELDS_TO_REVIEW)
       // Llevamos el foco al primer campo con error: en el celular el mensaje
       // general queda lejos del campo que hay que corregir.
       const firstInvalid = ['nombre', 'telefono', 'email'].find((key) => nextErrors[key])
@@ -645,6 +647,7 @@ function PublicBookingFlow({ slug }) {
   const dateHint = maxDate ? `Hasta ${maxDays} días por adelantado.` : 'Desde hoy.'
   const submitLabel = submitting ? 'Confirmando reserva…' : loadingSlots ? 'Validando disponibilidad…' : 'Confirmar reserva'
   const hasFieldError = Object.values(fieldErrors).some(Boolean)
+  const visibleSubmitError = submitError === FIELDS_TO_REVIEW && !hasFieldError ? '' : submitError
   const contactHref = buildWhatsAppHref(whatsappNumber(business.whatsapp), 'Hola! Quería consultar por un turno.')
   const selectionText = visibleStep === 1
     ? (servicio ? `${servicio.nombre} · ${formatMoney(servicio.precio, currency)}` : 'Elegí un servicio')
@@ -745,7 +748,7 @@ function PublicBookingFlow({ slug }) {
                   <FormField label="Teléfono celular" required hint={PHONE_HINT} error={fieldErrors.telefono} id="booking-phone"><PhoneField data-booking-phone value={telefono} onChange={(value) => { setTelefono(value); setFieldErrors((current) => ({ ...current, telefono: '' })) }} className="booking-phone-field" aria-label="Teléfono" enterKeyHint="next" /></FormField>
                   <FormField label="Email (opcional)" hint="Queda guardado con tus datos de cliente del negocio." error={fieldErrors.email} id="booking-email"><Input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setFieldErrors((current) => ({ ...current, email: '' })) }} placeholder="tu@email.com" autoComplete="email" inputMode="email" maxLength={120} enterKeyHint="done" /></FormField>
                 </fieldset>
-                {submitError && <div className="booking-error booking-submit-error" role="alert"><span>{submitError}</span>{confirmationUncertain
+                {visibleSubmitError && <div className="booking-error booking-submit-error" role="alert"><span>{visibleSubmitError}</span>{confirmationUncertain
                   ? contactHref && <a className="booking-button booking-button-secondary booking-link-button" href={contactHref} target="_blank" rel="noreferrer">Consultar al negocio</a>
                   : !hasFieldError && hora && <Button variant="secondary" size="sm" onClick={() => goToStep(2)}>Elegir otro horario</Button>}</div>}
                 <Button type="submit" variant="primary" size="lg" className="booking-button booking-submit" disabled={!hora || loadingSlots || submitting || confirmationUncertain} loading={loadingSlots || submitting}>{submitLabel}</Button>
