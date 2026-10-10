@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { StickyNote, Trash2, Pencil, MessageCircle, Clock3, Scissors, UserRound, Timer } from 'lucide-react'
+import { StickyNote, Trash2, Pencil, Clock3, Scissors, UserRound, Timer } from 'lucide-react'
 import StatusSelect, { statusMeta } from './StatusSelect'
 import { formatFechaVisible } from '../lib/text'
 import { despuesDelColapso } from '../lib/collapseDelete'
+import TurnoOriginBadge from './TurnoOriginBadge.jsx'
 
 export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, barberos = [] }) {
   const [notesOpen, setNotesOpen] = useState(false)
@@ -70,12 +71,7 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
         <div className="agenda-card-heading">
           <p className="agenda-patient">
           <span className="agenda-patient-name">{turno.paciente}</span>
-          {turno.origen === 'whatsapp' && (
-            <span className="origen-badge origen-badge--wsp" title="Agendado por WhatsApp">
-              <MessageCircle size={10} strokeWidth={2.5} />
-              WhatsApp
-            </span>
-          )}
+          <TurnoOriginBadge origen={turno.origen} />
           </p>
         </div>
         <div className="agenda-card-meta">

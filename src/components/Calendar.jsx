@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, ChevronDown, Check, CalendarX, LayoutGrid, List, Plus, Users, Clock3, Coffee, Ban, UserRound } from 'lucide-react'
 import { capitalizar, slotsOcupados, parseHorarioBarbero, barberoDisponible, turnosSeSuperponen } from '../lib/text'
 import TurnoRow from './TurnoRow'
+import TurnoOriginBadge from './TurnoOriginBadge.jsx'
 import { statusMeta } from './StatusSelect'
 import { EmptyState } from './ui'
 import { esBloqueoDiaCompleto } from '../lib/bloqueosAgenda.js'
@@ -1028,23 +1029,9 @@ export default function Calendar({ turnos, todayKey, onChangeEstado, onDeleteTur
                                   if (consumirClick()) return
                                   onEditTurno(t)
                                 }}
-                                title={`${t.hora}–${horaFin(t.hora, t.duracion)} · ${t.paciente} (${t.motivo}) · ${t.duracion || 30} min${t.origen === 'whatsapp' ? ' · vía WhatsApp' : ''}`}
+                                title={`${t.hora}–${horaFin(t.hora, t.duracion)} · ${t.paciente} (${t.motivo}) · ${t.duracion || 30} min${t.origen === 'whatsapp' ? ' · vía WhatsApp' : t.origen === 'reserva_web' ? ' · vía la web' : ''}`}
                               >
-                                {t.origen === 'whatsapp' && (
-                                  <span
-                                    title="Agendado por WhatsApp"
-                                    style={{
-                                      position: 'absolute',
-                                      top: 3,
-                                      right: 3,
-                                      width: 6,
-                                      height: 6,
-                                      borderRadius: '50%',
-                                      background: '#25D366',
-                                      boxShadow: '0 0 0 1px rgba(255,255,255,0.6)',
-                                    }}
-                                  />
-                                )}
+                                <TurnoOriginBadge origen={t.origen} compact />
                                 <span className="week-chip-time" style={{ fontSize: totalTurnos > 1 ? '8px' : '10px', opacity: 0.8 }}>
                                   {t.hora}
                                 </span>
