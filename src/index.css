@@ -751,13 +751,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   background: rgba(37, 211, 102, 0.16);
   color: #1fa855;
 }
-.origen-badge--web { background: var(--green-soft); color: var(--green-text); }
+/* Reserva por el link público: celeste, distinto del verde de WhatsApp. */
+.origen-badge--web { background: rgba(56, 189, 248, 0.18); color: #0275b0; }
+[data-theme="dark"] .origen-badge--web { background: rgba(56, 189, 248, 0.2); color: #7dd3fc; }
 .origen-indicator {
   position: absolute; top: 3px; right: 3px; width: 6px; height: 6px;
   border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,0.6);
 }
 .origen-indicator--wsp { background: #25D366; }
-.origen-indicator--web { background: var(--green-text); }
+.origen-indicator--web { background: #38bdf8; }
 .agenda-reason { font-size: 12px; color: var(--ink-faint); margin: 1px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .agenda-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }

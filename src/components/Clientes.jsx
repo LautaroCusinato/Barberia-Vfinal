@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Users, Search, X, StickyNote, UserPlus, Pencil, Trash2, Check } from 'lucide-react'
+import { Users, Search, X, StickyNote, UserPlus, Pencil, Trash2, Check, MessageCircle } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { normalizar, soloDigitos, formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
 import ClientDetailModal from './ClientDetailModal'
@@ -7,8 +7,9 @@ import EditClientModal from './EditClientModal'
 import NewClientModal from './NewClientModal'
 import { EmptyState } from './ui'
 import { notaDelCliente } from '../lib/clientNotes'
+import { resumenVisitasCliente } from '../lib/clienteVisitas'
 
-export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente, onStartChat, clientesConMensajes }) {
+export default function Clientes({ pacientes, notas, turnos, todayKey, onViewNotes, onAddPaciente, onUpdatePaciente, onDeletePaciente, onStartChat, clientesConMensajes }) {
   const [query, setQuery] = useState('')
   const [detalle, setDetalle] = useState(null)
   const [editando, setEditando] = useState(null)
@@ -30,6 +31,20 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
   }, [pacientes, query])
 
   const notasPorPaciente = (cliente) => (notas || []).filter((n) => notaDelCliente(n, cliente)).length
+
+  const visitas = useMemo(() => new Map(pacientes.map((p) => [p.id, resumenVisitasCliente(p, turnos, todayKey)])), [pacientes, turnos, todayKey])
+
+  // Tocar el teléfono abre el chat de esa persona en Mensajes.
+  const telefono = (p, className) => {
+    const texto = formatTelefonoDisplay(p.telefono) || 'Sin teléfono'
+    if (!onStartChat || !p.telefono) return <span className={className}>{texto}</span>
+    return (
+      <button type="button" className={`${className} client-phone-chat`} onClick={() => onStartChat(p.id)} title="Abrir chat en Mensajes" aria-label={`Abrir chat con ${p.nombre} (${texto})`}>
+        <MessageCircle size={13} aria-hidden="true" />
+        {texto}
+      </button>
+    )
+  }
 
   return (
     <div className="management-screen management-clients">
@@ -95,9 +110,9 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
                       {p.nombre}
                     </button>
                   </td>
-                  <td data-label="Teléfono" className="management-phone">{formatTelefonoDisplay(p.telefono)}</td>
-                  <td>{formatFechaVisible(p.ultima_visita)}</td>
-                  <td>{formatFechaVisible(p.proximo_turno)}</td>
+                  <td data-label="Teléfono" className="management-phone">{telefono(p, 'client-phone')}</td>
+                  <td>{formatFechaVisible(visitas.get(p.id)?.ultimaVisita)}</td>
+                  <td>{formatFechaVisible(visitas.get(p.id)?.proximoTurno)}</td>
                   <td data-label="Notas">
                     <button
                       className="btn"
@@ -182,12 +197,10 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
                     )}
                   </div>
                 </div>
-                <a className="client-mobile-phone" href={p.telefono ? `tel:${soloDigitos(p.telefono)}` : undefined} onClick={(event) => { if (!p.telefono) event.preventDefault() }}>
-                  {formatTelefonoDisplay(p.telefono) || 'Sin teléfono'}
-                </a>
+                {telefono(p, 'client-mobile-phone')}
                 <dl className="client-mobile-details">
-                  <div><dt>Última visita</dt><dd>{formatFechaVisible(p.ultima_visita)}</dd></div>
-                  <div><dt>Próximo turno</dt><dd>{formatFechaVisible(p.proximo_turno)}</dd></div>
+                  <div><dt>Última visita</dt><dd>{formatFechaVisible(visitas.get(p.id)?.ultimaVisita)}</dd></div>
+                  <div><dt>Próximo turno</dt><dd>{formatFechaVisible(visitas.get(p.id)?.proximoTurno)}</dd></div>
                 </dl>
                 <div className="client-mobile-notes">
                   <span><StickyNote size={14} /> Notas</span>

@@ -61,6 +61,8 @@ import { claveDeEnvio, enviarMensajePanel, olvidarClaveDeEnvio, verificarChatCli
 const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
 const WHATSAPP_PANEL_SEND_FUNCTION = 'whatsapp-panel-send'
+const AVISO_DURACION_MS = 7000
+const AVISO_BOT_REANUDADO = 'El bot de WhatsApp volvió a responder automáticamente.'
 
 // Traduce los rechazos de la base (exclusión, triggers de agenda) a un
 // mensaje accionable. Devuelve null si el error no es de reglas de agenda.
@@ -250,6 +252,13 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   const [errorRecuperable, setErrorRecuperable] = useState(false)
   // Avisos informativos: no son errores y no van en rojo.
   const [aviso, setAviso] = useState('')
+  // Los avisos informativos se van solos: antes quedaban fijos y uno viejo
+  // ("el bot volvió a responder") convivía con el estado contrario.
+  useEffect(() => {
+    if (!aviso) return undefined
+    const timer = window.setTimeout(() => setAviso(''), AVISO_DURACION_MS)
+    return () => window.clearTimeout(timer)
+  }, [aviso])
   const contextoBorrados = `${barberiaId}:${demoMode}:${demoSessionId}:${isSupabaseConfigured}`
   const { toasts, mostrar: mostrarToast, cerrar: cerrarToast } = useToasts({ contexto: contextoBorrados })
   const borrados = useDeferredDeletes(contextoBorrados)
@@ -391,7 +400,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
         return
       }
       setBotActivo(true)
-      setAviso('El bot de WhatsApp volvió a responder automáticamente.')
+      setAviso(AVISO_BOT_REANUDADO)
     } catch (error) {
       reportError('No se pudo reanudar el bot de WhatsApp', error)
     } finally {
@@ -1225,10 +1234,13 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   const pausarBotPorRespuestaManual = async (yaPausado) => {
     if (yaPausado) {
       setBotActivo(false)
+      setAviso((actual) => (actual === AVISO_BOT_REANUDADO ? '' : actual))
       return
     }
     if (!botActivo) return
     setBotActivo(false)
+    // El aviso de "volvió a responder" ya no es cierto: se retira.
+    setAviso((actual) => (actual === AVISO_BOT_REANUDADO ? '' : actual))
     if (!isSupabaseConfigured) return
     let { error } = await supabase.rpc('pause_whatsapp_bot_for_manual_reply', { p_barberia_id: barberiaId })
     // Compatibilidad mientras la migración no esté aplicada: el owner
@@ -1936,6 +1948,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
                   pacientes={pacientes}
                   notas={notas}
                   turnos={turnos}
+                  todayKey={todayKey}
                   onViewNotes={verNotasDePaciente}
                   onAddPaciente={addPaciente}
                   onUpdatePaciente={updatePaciente}
