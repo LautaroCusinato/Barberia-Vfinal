@@ -52,6 +52,10 @@ export async function requireOperator(request: Request, admin: SupabaseClient): 
   if (!token || token === authorization) throw Object.assign(new Error('Autenticación requerida.'), { status: 401, code: 'authorization_required' })
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
   if (serviceRoleKey && constantTimeEqual(token, serviceRoleKey)) return 'service_role'
+  // Clave secreta del proyecto que usa n8n (WhatsApp administrado). Se
+  // configura como secreto de la función; nunca llega al navegador.
+  const internalKey = Deno.env.get('WHATSAPP_INTERNAL_FUNCTION_SECRET') || ''
+  if (internalKey.length >= 32 && constantTimeEqual(token, internalKey)) return 'service_role'
   const { data, error } = await admin.auth.getUser(token)
   if (error || !data.user) throw Object.assign(new Error('Sesión inválida.'), { status: 401, code: 'authorization_required' })
   const role = await platformRole(admin, data.user.id)

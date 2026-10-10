@@ -147,13 +147,17 @@ for (const marker of [
   'WHATSAPP_RUNTIME_PROJECT_REF',
   'WHATSAPP_RUNTIME_ENV',
   'WHATSAPP_PROVISIONING_ENABLED',
-  'WHATSAPP_N8N_ALLOWED_HOST',
+  'EVOLUTION_WEBHOOK_SECRET',
   'WHATSAPP_PROTECTED_INSTANCES',
 ]) assert.match(provisioningFunction, new RegExp(marker))
 assert.match(provisioningFunction, /admin\.auth\.getUser\(token\)/)
 assert.match(provisioningFunction, /\['owner', 'admin'\]\.includes/)
 assert.match(provisioningFunction, /managedInstanceName as instanceName/)
+// Preparar arranca con el bot apagado; recién al vincular el teléfono
+// (estado CONNECTED verificado en Evolution) queda respondiendo y reservando.
 assert.match(provisioningFunction, /automation_enabled: false, outbound_enabled: false, booking_enabled: false/)
+assert.match(provisioningFunction, /state: 'CONNECTED'[\s\S]*automation_enabled: true, outbound_enabled: true, booking_enabled: true/)
+assert.match(provisioningFunction, /if \(value\(current\.instance_name\) !== instanceName\(tenantId\)\) return \{ connection: safeConnection\(current\) \}/)
 assert.match(provisioningFunction, /if \(current\?\.state === 'CONNECTED'\) return \{ connection: safeConnection\(current\) \}/)
 assert.match(provisioningFunction, /async function markConnectionError/)
 assert.match(provisioningFunction, /state: 'ERROR'/)
@@ -162,16 +166,17 @@ assert.match(provisioningFunction, /last_error_message: null/)
 assert.match(provisioningFunction, /if \(write\.error \|\| !write\.data\)/)
 assert.match(provisioningFunction, /await markConnectionError\(admin, tenantId, preparedConnection\.id, error\)\.catch/)
 assert.match(provisioningFunction, /publicConnection as safeConnection/)
-assert.match(provisioningFunction, /qr_expires_at: null, last_error_code: null/)
+assert.match(provisioningFunction, /qr_expires_at: null, qr_payload: null, pairing_expires_at: null, last_error_code: null/)
 assert.match(provisioningFunction, /if \(current\.state === 'ERROR'\) return \{ connection: safeConnection\(current\) \}/)
-assert.match(provisioningFunction, /const events = \['MESSAGES_UPSERT'\]/)
+assert.match(provisioningFunction, /const WEBHOOK_EVENTS = \['CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'QRCODE_UPDATED'\]/)
+assert.match(provisioningFunction, /functions\/v1\/whatsapp-evolution-webhook/)
 assert.match(provisioningFunction, /headers: \{ \[WEBHOOK_HEADER\]: config\.webhookSecret \}/)
 assert.match(provisioningFunction, /!\['status', 'prepare'\]\.includes\(action\)/)
 assert.match(provisioningFunction, /runtimeLog/)
 assert.match(provisioningFunction, /request_id: requestId/)
 assert.match(provisioningFunction, /evolution_http_\$\{result\.status\}/)
 assert.match(provisioningFunction, /\['QR_READY', 'CONNECTING'\]\.includes\(value\(current\.state\)\)/)
-assert.match(provisioningFunction, /safeConnection\(data, qr \? \{ qr_available: true, qr \} : \{\}\)/)
+assert.match(provisioningFunction, /safeConnection\(data, qr \? \{ qr_available: true, qr, pairing_expires_at: qrExpiresAt \} : \{\}\)/)
 assert.doesNotMatch(provisioningFunction, /sendText|crear_reserva|cancelar_reserva|reprogramar_reserva|mercadopago|createPayment|createSubscription/i)
 assert.doesNotMatch(provisioningFunction, /cmsymmszlzikqpvfqjre|ssagttjdgtypxjcgdnrw|austral-qa-tenant-/i)
 

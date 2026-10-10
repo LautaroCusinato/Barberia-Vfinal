@@ -120,8 +120,10 @@ for (const invalid of [
   { ...scope, instance: 'miwsp' },
   { ...scope, senderHash: 'raw-number' },
   { ...scope, tenantId: 0 },
-  { ...scope, environment: 'production' },
+  { ...scope, environment: 'sandbox' },
 ]) assert.throws(() => conversationScope(invalid), TypeError)
+// Producción administrada usa el mismo contrato de conversación.
+assert.equal(conversationScope({ ...scope, instance: 'austral-prod-tenant-1', environment: 'production' }).environment, 'production')
 
 const tenantB = createConversationState({ tenantId: 2, integrationId: 2, instance: 'austral-qa-tenant-2', senderHash: scope.senderHash, now })
 assert.notEqual(tenantB.conversation_id, base.conversation_id)

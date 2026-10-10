@@ -23,9 +23,12 @@ export function isQaBookingTenantAllowed(tenantId, allowlistValue) {
   return Number.isSafeInteger(id) && parseQaBookingTenantAllowlist(allowlistValue).includes(id)
 }
 
-export function qaBookingInstanceForTenant(tenantId) {
+const MANAGED_PREFIXES = Object.freeze({ qa: 'austral-qa-tenant-', production: 'austral-prod-tenant-' })
+
+export function qaBookingInstanceForTenant(tenantId, environment = QA_BOOKING_MUTATION_ENVIRONMENT) {
   const id = Number(tenantId)
-  return Number.isSafeInteger(id) && id > 0 ? `austral-qa-tenant-${id}` : null
+  const prefix = MANAGED_PREFIXES[environment]
+  return prefix && Number.isSafeInteger(id) && id > 0 ? `${prefix}${id}` : null
 }
 
 export function normalizePhone(value) {
@@ -56,11 +59,11 @@ export function buildBookingClaimEventId(state = {}) {
   return `booking:${conversationId}:${version}`.slice(0, 200)
 }
 
-export function isConfirmedBookingState(state = {}, eventId = '', allowlistValue = undefined) {
+export function isConfirmedBookingState(state = {}, eventId = '', allowlistValue = undefined, environment = QA_BOOKING_MUTATION_ENVIRONMENT) {
   const version = Number(state.confirmation_version)
-  return textFrom(state.environment).toLowerCase() === QA_BOOKING_MUTATION_ENVIRONMENT
+  return textFrom(state.environment).toLowerCase() === environment
     && isQaBookingTenantAllowed(state.tenant_id, allowlistValue)
-    && textFrom(state.instance) === qaBookingInstanceForTenant(state.tenant_id)
+    && textFrom(state.instance) === qaBookingInstanceForTenant(state.tenant_id, environment)
     && textFrom(state.instance) !== PROTECTED_WHATSAPP_INSTANCE
     && Number(state.integration_id) > 0
     && textFrom(state.confirmation_state) === 'confirmed'
@@ -113,12 +116,13 @@ export function bookingMutationGuard({
   requestedSlotAvailable,
   operationClaimAvailable,
   allowedTenants = undefined,
+  expectedEnvironment = QA_BOOKING_MUTATION_ENVIRONMENT,
 } = {}) {
   if (!runtimeValid) return { allowed: false, reason: 'qa_shadow_runtime_required' }
   if (enabled !== true) return { allowed: false, reason: 'booking_mutation_pilot_disabled' }
   if (!isQaBookingTenantAllowed(tenantId, allowedTenants) || sourceTenantId !== tenantId) return { allowed: false, reason: 'qa_tenant_required' }
-  if (environment !== QA_BOOKING_MUTATION_ENVIRONMENT || sourceEnvironment !== QA_BOOKING_MUTATION_ENVIRONMENT) return { allowed: false, reason: 'qa_environment_required' }
-  if (instance !== qaBookingInstanceForTenant(tenantId) || instance === PROTECTED_WHATSAPP_INSTANCE) return { allowed: false, reason: 'qa_instance_required' }
+  if (!MANAGED_PREFIXES[expectedEnvironment] || environment !== expectedEnvironment || sourceEnvironment !== expectedEnvironment) return { allowed: false, reason: 'qa_environment_required' }
+  if (instance !== qaBookingInstanceForTenant(tenantId, expectedEnvironment) || instance === PROTECTED_WHATSAPP_INSTANCE) return { allowed: false, reason: 'qa_instance_required' }
   if (connectionState !== 'CONNECTED') return { allowed: false, reason: 'qa_connection_not_connected' }
   if (sourceEventPresent !== true || sourceEventFresh !== true || sourceEventReal !== true) return { allowed: false, reason: 'fresh_real_source_event_required' }
   if (sourceIntegrationId !== operationClaimAvailable?.integrationId) return { allowed: false, reason: 'source_integration_mismatch' }

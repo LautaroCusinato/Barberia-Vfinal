@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
-import { manualQaEnabled, manualQaCapabilities, manualQaRecipient } from '../_shared/qaManualRuntime.mjs'
+import { managedRuntimeProfile, manualQaEnabled, manualQaCapabilities, manualQaRecipient } from '../_shared/qaManualRuntime.mjs'
 import { acceptedManualReceipt, parseAcceptedManualReceipt, persistManualMessage } from '../_shared/qaManualMessages.mjs'
 import { requireOperator } from '../_shared/supabase.ts'
 import { conciergeConfirmation } from '../_shared/whatsappConcierge.mjs'
@@ -89,7 +89,11 @@ Deno.serve(async (request) => {
   try {
     if (!safeString(request.headers.get('authorization')).toLowerCase().startsWith('bearer ')) return json({ error: 'authorization_required', outbound_allowed: false }, 401)
     try { await requireOperator(request, adminClient()) } catch (error) { return json({ error: String((error as { code?: string })?.code || 'authorization_required'), outbound_allowed: false }, Number((error as { status?: number })?.status) || 401) }
-    const runtimeValid = isQaAgentOutboundRuntime({
+    // QA conserva su verificación; producción corre sólo con el perfil
+    // administrado habilitado (WHATSAPP_MANAGED_RUNTIME_ENABLED=1).
+    const profile = managedRuntimeProfile((name: string) => Deno.env.get(name))
+    const environment = profile?.environment || 'qa'
+    const runtimeValid = environment === 'production' || isQaAgentOutboundRuntime({
       projectRef: projectRef(),
       provisioningEnv: safeString(Deno.env.get('WHATSAPP_PROVISIONING_ENV')),
       whatsappMode: safeString(Deno.env.get('WHATSAPP_MODE')),
@@ -122,11 +126,11 @@ Deno.serve(async (request) => {
 
     const tenantId = Number(sourceRun.tenant_id)
     const integrationId = Number(sourceRun.integration_id)
-    const manual = manualQaEnabled((name: string) => Deno.env.get(name), tenantId, qaAgentOutboundInstanceForTenant(tenantId))
+    const manual = manualQaEnabled((name: string) => Deno.env.get(name), tenantId, qaAgentOutboundInstanceForTenant(tenantId, environment))
     const allowedTenantIds = parseQaAgentOutboundTenantAllowlist(Deno.env.get('WHATSAPP_AGENT_OUTBOUND_ALLOWED_TENANT_IDS'))
     const tenantAllowlisted = manual || isQaAgentOutboundTenantAllowed(tenantId, allowedTenantIds)
     if (!tenantAllowlisted) return json({ error: 'qa_tenant_not_allowlisted', outbound_allowed: false }, 403)
-    const expectedInstance = qaAgentOutboundInstanceForTenant(tenantId)
+    const expectedInstance = qaAgentOutboundInstanceForTenant(tenantId, environment)
     if (!expectedInstance || expectedInstance === PROTECTED_WHATSAPP_INSTANCE) return json({ error: 'qa_instance_required', outbound_allowed: false }, 403)
     // Recorrido one-shot del 927 (otro chat), sólo con su flag legado activo.
     const legacy927 = tenantId === 927 && safeString(Deno.env.get('WHATSAPP_QA_927_AUTOMATION_ENABLED')) === '1' && kind === 'proposal'
@@ -142,7 +146,7 @@ Deno.serve(async (request) => {
       .eq('barberia_id', tenantId)
       .eq('integration_id', integrationId)
       .eq('provider', 'evolution')
-      .eq('environment', 'qa')
+      .eq('environment', environment)
       .maybeSingle(), admin
       .from('saas_integraciones')
       .select('id,barberia_id,proveedor,integration_type,estado')
@@ -169,7 +173,7 @@ Deno.serve(async (request) => {
     let proposedReply = safeString(metadata.proposed_reply)
     const sourceObservedAt = new Date(String(sourceRun.observed_at || '')).getTime()
     const sourceFresh = Number.isFinite(sourceObservedAt) && Date.now() - sourceObservedAt >= 0 && Date.now() - sourceObservedAt <= MAX_EVENT_AGE_MS
-    const sourceEventReal = isRealPersistedSourceMetadata(metadata)
+    const sourceEventReal = isRealPersistedSourceMetadata(metadata, environment)
     if (!manual && (!sourceFresh || !sourceEventReal)) return json({ error: 'fresh_source_event_required', outbound_allowed: false }, 409)
 
     const manualRecipient = manual ? await manualQaRecipient((name: string) => Deno.env.get(name), safeString(metadata.sender_hash), metadata.qa_manual_sender_phone) : null
@@ -180,7 +184,7 @@ Deno.serve(async (request) => {
       const scopeValid = sourceEventReal && safeString(metadata.instance) === expectedInstance
         && integration?.proveedor === 'evolution' && integration?.integration_type === 'whatsapp'
         && Number(integration?.barberia_id) === tenantId && Number(integration?.id) === integrationId
-        && isPersistedConversationScope(metadata, { tenantId, integrationId, instance: expectedInstance, senderHash: safeString(metadata.sender_hash) })
+        && isPersistedConversationScope(metadata, { tenantId, integrationId, instance: expectedInstance, senderHash: safeString(metadata.sender_hash), environment })
       if (!scopeValid) return json({ error: 'qa_manual_receipt_scope_required', outbound_allowed: false }, 403)
       try {
         // La confirmación se identifica por el turno del reclamo ya guardado,
@@ -304,6 +308,7 @@ Deno.serve(async (request) => {
       integrationId: connection.integration_id,
       instance: connection.instance_name,
       senderHash: sourceHash,
+      environment,
     })) return json({ error: 'conversation_scope_required', outbound_allowed: false }, 403)
     const guard = agentOutboundGuard({
       enabled: pilotEnabled,
@@ -331,6 +336,7 @@ Deno.serve(async (request) => {
       operationAcquired: true,
       replyKind: kind,
       bookingPersisted,
+      expectedEnvironment: environment,
     })
     if (!guard.allowed) return json({ error: guard.reason, outbound_allowed: false }, 403)
 

@@ -54,8 +54,10 @@ assert.match(bookingMutations, /barberia_access_state[\s\S]*active[\s\S]*trialin
 assert.match(provisioningSchema, /unique \(barberia_id, environment\)/i)
 assert.match(provisioningSchema, /revoke all on table public\.saas_whatsapp_connections from public, anon, authenticated/i)
 
-// Current deployable automation remains deliberately QA-only/fail-closed.
-assert.match(webhook, /qa_project_required/)
+// La automatización sólo corre en QA (shadow) o en producción con el perfil
+// administrado habilitado; sin perfil falla cerrada.
+assert.match(webhook, /runtime_not_enabled/)
+assert.match(webhook, /project_target_mismatch/)
 assert.match(webhook, /WHATSAPP_MODE.*shadow/)
 assert.match(provisioning, /qa_project_required/)
 assert.match(provisioning, /PROTECTED_INSTANCE = 'miwsp'/)

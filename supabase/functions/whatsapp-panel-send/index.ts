@@ -1,7 +1,7 @@
 import { adminClient, authenticate } from '../_shared/supabase.ts'
 import { corsHeaders, json, readJson } from '../_shared/http.ts'
 import { classifyWebhookResponse, handlePanelSend, panelSendErrorBody, panelSendSettings } from '../_shared/whatsappPanelSend.mjs'
-import { manualQaEnabled, manualQaPhoneList, manualQaOpenRecipients, QA_MANUAL_PANEL_ROUTE } from '../_shared/qaManualRuntime.mjs'
+import { managedInstanceFor, managedRuntimeProfile, manualQaEnabled, manualQaPhoneList, manualQaOpenRecipients } from '../_shared/qaManualRuntime.mjs'
 
 // Reemplaza el envío directo navegador → n8n. Antes la URL del webhook vivía
 // en una variable VITE_* (pública en el bundle) y cualquiera podía mandar
@@ -33,11 +33,13 @@ Deno.serve(async (request) => {
     const admin = adminClient()
     const user = await authenticate(request, admin)
     const body = await readJson(request, 16 * 1024)
-    // Sólo el tenant QA habilitado reutiliza el secreto de webhook que ya
-    // comparten Supabase y n8n. Los ajustes de otros negocios no se cambian.
-    const manual = manualQaEnabled((name: string) => Deno.env.get(name), Number(body.tenant_id), `austral-qa-tenant-${Number(body.tenant_id)}`)
+    // Los negocios con WhatsApp administrado (QA 928 y producción) reutilizan
+    // el secreto de webhook que ya comparten Supabase y n8n y envían por su
+    // propia instancia. Los ajustes de otros negocios no se cambian.
+    const profile = managedRuntimeProfile((name: string) => Deno.env.get(name))
+    const manual = manualQaEnabled((name: string) => Deno.env.get(name), Number(body.tenant_id), managedInstanceFor(profile, Number(body.tenant_id)))
     const openRecipients = manual && manualQaOpenRecipients((name: string) => Deno.env.get(name))
-    const webhookUrl = manual ? QA_MANUAL_PANEL_ROUTE : Deno.env.get('WHATSAPP_PANEL_SEND_WEBHOOK_URL') || ''
+    const webhookUrl = manual ? profile!.panelRoute : Deno.env.get('WHATSAPP_PANEL_SEND_WEBHOOK_URL') || ''
     const webhookSecret = manual ? Deno.env.get('EVOLUTION_WEBHOOK_SECRET') || '' : Deno.env.get('WHATSAPP_PANEL_SEND_SECRET') || ''
     const settings = { ...panelSendSettings({
       WHATSAPP_PANEL_SEND_ROUTING: manual ? 'instance' : Deno.env.get('WHATSAPP_PANEL_SEND_ROUTING'),
@@ -108,7 +110,9 @@ Deno.serve(async (request) => {
       // QA manual requiere el wrapper que valida destinatario bajo lock; no
       // puede degradar al camino sin migración si falta ese contrato.
       async reserve({ tenantId, clienteId, clientMessageId, texto, hora, confirmResend, expectedPhone, settings: s }: { tenantId: number, clienteId: number, clientMessageId: string, texto: string, hora: string | null, confirmResend: boolean, expectedPhone: string, settings: { rateLimit: number, rateWindowSeconds: number, duplicateWindowSeconds: number, stalePendingSeconds: number, allowedRecipients?: string[] } }) {
-        const { data, error } = await admin.rpc(manual ? 'reservar_envio_panel_qa_manual' : 'reservar_envio_panel', {
+        // Destino abierto: el teléfono de la ficha se revalida bajo el lock.
+        const rpc = openRecipients ? 'reservar_envio_panel_administrado' : manual ? 'reservar_envio_panel_qa_manual' : 'reservar_envio_panel'
+        const { data, error } = await admin.rpc(rpc, {
           p_barberia_id: tenantId,
           p_cliente_id: clienteId,
           p_client_message_id: clientMessageId,
@@ -119,7 +123,7 @@ Deno.serve(async (request) => {
           p_rate_window_seconds: s.rateWindowSeconds,
           p_duplicate_window_seconds: s.duplicateWindowSeconds,
           p_stale_pending_seconds: s.stalePendingSeconds,
-          ...(manual ? { p_allowed_phones: openRecipients ? [expectedPhone] : s.allowedRecipients || [] } : {}),
+          ...(openRecipients ? { p_expected_phone: expectedPhone } : manual ? { p_allowed_phones: s.allowedRecipients || [] } : {}),
         })
         if (error?.code === 'PGRST202' || error?.code === '42883') return manual ? { status: 'qa_manual_send_not_ready' } : null
         if (error) throw error

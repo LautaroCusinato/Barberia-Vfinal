@@ -61,10 +61,10 @@ export function validateLanguageResult(value, { services = [], barbers = [], tod
   return result
 }
 
-export async function interpretConcierge({ request, secret, fetchImpl = globalThis.fetch }) {
+export async function interpretConcierge({ request, secret, route = CONCIERGE_ROUTE, fetchImpl = globalThis.fetch }) {
   if (!secret) return null
   try {
-    const response = await fetchImpl(CONCIERGE_ROUTE, { method: 'POST', headers: { 'content-type': 'application/json', 'x-austral-panel-secret': secret, 'user-agent': 'Austral-QA-Integration/1.0' }, body: JSON.stringify(request), signal: AbortSignal.timeout(9000) })
+    const response = await fetchImpl(route, { method: 'POST', headers: { 'content-type': 'application/json', 'x-austral-panel-secret': secret, 'user-agent': 'Austral-QA-Integration/1.0' }, body: JSON.stringify(request), signal: AbortSignal.timeout(9000) })
     if (!response.ok) return null
     return await response.json()
   } catch { return null }
@@ -155,5 +155,7 @@ export function conciergeBookingProposal({ proposal, state, action, services, ba
 }
 
 export function conciergeConfirmation({ turno, service, business, barber }) {
-  return richReply(`¡Listo! Tu turno quedó reservado ✅\n👤 ${turno.paciente}\n✂️ ${service?.nombre || turno.motivo || 'Servicio'}\n📅 ${friendlyDate(turno.fecha)} · ${text(turno.hora).slice(0, 5)}\n💈 ${barber?.nombre || 'Profesional asignado'}\n💰 ${money(turno.precio, business?.moneda || 'ARS')}\n${business?.nombre || ''}\nSi querés volver a consultar los datos, decime «mi turno».`)
+  // Sin nombre guardado no se muestra la línea (nunca «undefined»).
+  const name = text(turno.paciente)
+  return richReply(`¡Listo! Tu turno quedó reservado ✅\n${name ? `👤 ${name}\n` : ''}✂️ ${service?.nombre || turno.motivo || 'Servicio'}\n📅 ${friendlyDate(turno.fecha)} · ${text(turno.hora).slice(0, 5)}\n💈 ${barber?.nombre || 'Profesional asignado'}\n💰 ${money(turno.precio, business?.moneda || 'ARS')}\n${business?.nombre || ''}\nSi querés volver a consultar los datos, decime «mi turno».`)
 }

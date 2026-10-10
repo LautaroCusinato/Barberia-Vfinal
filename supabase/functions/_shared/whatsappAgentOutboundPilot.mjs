@@ -18,9 +18,13 @@ export function isQaAgentOutboundTenantAllowed(tenantId, allowlist) {
   return Number.isSafeInteger(id) && id > 0 && Array.isArray(allowlist) && allowlist.includes(id)
 }
 
-export function qaAgentOutboundInstanceForTenant(tenantId) {
+// Prefijo de la instancia administrada según el entorno de la conversación.
+export const MANAGED_INSTANCE_PREFIXES = Object.freeze({ qa: 'austral-qa-tenant-', production: 'austral-prod-tenant-' })
+
+export function qaAgentOutboundInstanceForTenant(tenantId, environment = 'qa') {
   const id = Number(tenantId)
-  return Number.isSafeInteger(id) && id > 0 ? `austral-qa-tenant-${id}` : null
+  const prefix = MANAGED_INSTANCE_PREFIXES[environment]
+  return prefix && Number.isSafeInteger(id) && id > 0 ? `${prefix}${id}` : null
 }
 
 export function buildAgentOutboundOperationId(eventId) {
@@ -87,10 +91,10 @@ export function hasAuthoritativePriceSource(metadata = {}) {
     && Number(counts.services) >= 0
 }
 
-export function isRealPersistedSourceMetadata(metadata = {}) {
+export function isRealPersistedSourceMetadata(metadata = {}, environment = 'qa') {
   return metadata.source === 'evolution'
     && metadata.event === 'MESSAGES_UPSERT'
-    && metadata.environment === 'qa'
+    && metadata.environment === environment
     && metadata.from_me === false
     && metadata.mutation_allowed === false
     && metadata.outbound_allowed === false
@@ -98,7 +102,7 @@ export function isRealPersistedSourceMetadata(metadata = {}) {
     && metadata.outbound_send === false
 }
 
-export function isPersistedConversationScope(metadata = {}, { tenantId, integrationId, instance, senderHash } = {}) {
+export function isPersistedConversationScope(metadata = {}, { tenantId, integrationId, instance, senderHash, environment = 'qa' } = {}) {
   const scope = metadata.conversation_scope
   const state = metadata.conversation_state
   if (!scope || typeof scope !== 'object' || !state || typeof state !== 'object') return false
@@ -106,12 +110,12 @@ export function isPersistedConversationScope(metadata = {}, { tenantId, integrat
     && Number(scope.integration_id) === Number(integrationId)
     && textFrom(scope.instance) === textFrom(instance)
     && textFrom(scope.sender_hash) === textFrom(senderHash)
-    && textFrom(scope.environment).toLowerCase() === 'qa'
+    && textFrom(scope.environment).toLowerCase() === environment
     && Number(state.tenant_id) === Number(tenantId)
     && Number(state.integration_id) === Number(integrationId)
     && textFrom(state.instance) === textFrom(instance)
     && textFrom(state.sender_hash) === textFrom(senderHash)
-    && textFrom(state.environment).toLowerCase() === 'qa'
+    && textFrom(state.environment).toLowerCase() === environment
 }
 
 export function isSafePersistedReply({ intent, reply, metadata = {} }) {
@@ -157,19 +161,20 @@ export function agentOutboundGuard({
   operationAcquired,
   replyKind = 'proposal',
   bookingPersisted = false,
+  expectedEnvironment = 'qa',
 }) {
   if (runtimeValid !== true) return { allowed: false, reason: 'qa_shadow_runtime_required' }
   if (enabled !== true) return { allowed: false, reason: 'agent_outbound_pilot_disabled' }
   if (tenantAllowlisted !== true) return { allowed: false, reason: 'qa_tenant_not_allowlisted' }
   if (!Number.isSafeInteger(Number(tenantId)) || Number(tenantId) <= 0 || Number(sourceTenantId) !== Number(tenantId)) return { allowed: false, reason: 'qa_tenant_required' }
-  if (environment !== 'qa' || sourceEnvironment !== 'qa') return { allowed: false, reason: 'qa_environment_required' }
+  if (!MANAGED_INSTANCE_PREFIXES[expectedEnvironment] || environment !== expectedEnvironment || sourceEnvironment !== expectedEnvironment) return { allowed: false, reason: 'qa_environment_required' }
   if (connectionState !== 'CONNECTED') return { allowed: false, reason: 'qa_connection_not_connected' }
   if (integrationProvider !== 'evolution' || integrationType !== 'whatsapp' || integrationState !== 'conectado') return { allowed: false, reason: 'qa_integration_not_connected' }
-  if (instance !== qaAgentOutboundInstanceForTenant(tenantId) || instance === PROTECTED_WHATSAPP_INSTANCE) return { allowed: false, reason: 'qa_instance_required' }
+  if (instance !== qaAgentOutboundInstanceForTenant(tenantId, expectedEnvironment) || instance === PROTECTED_WHATSAPP_INSTANCE) return { allowed: false, reason: 'qa_instance_required' }
   if (textFrom(sourceInstance) !== textFrom(instance)) return { allowed: false, reason: 'qa_instance_required' }
   if (!Number.isSafeInteger(Number(sourceIntegrationId)) || !Number.isSafeInteger(Number(connectionIntegrationId)) || Number(sourceIntegrationId) !== Number(connectionIntegrationId)) return { allowed: false, reason: 'qa_integration_required' }
   if (sourceEventPresent !== true || sourceEventReal !== true) return { allowed: false, reason: 'real_persisted_source_required' }
-  if (!isRealPersistedSourceMetadata(sourceMetadata)) return { allowed: false, reason: 'real_persisted_source_required' }
+  if (!isRealPersistedSourceMetadata(sourceMetadata, expectedEnvironment)) return { allowed: false, reason: 'real_persisted_source_required' }
   if (sourceFromMe === true) return { allowed: false, reason: 'from_me_ignored' }
   if (senderHashMatches !== true) return { allowed: false, reason: 'sender_not_allowlisted' }
   if (intent === 'price_query' && !hasAuthoritativePriceSource(sourceMetadata)) return { allowed: false, reason: 'price_source_required' }

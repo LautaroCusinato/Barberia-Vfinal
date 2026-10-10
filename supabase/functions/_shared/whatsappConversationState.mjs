@@ -20,6 +20,8 @@ export const CONVERSATION_REQUIRED_FIELDS = Object.freeze([
   'requested_time',
 ])
 export const QA_CONVERSATION_ENVIRONMENT = 'qa'
+// Las conversaciones de producción administrada usan el mismo contrato.
+const MANAGED_CONVERSATION_ENVIRONMENTS = new Set([QA_CONVERSATION_ENVIRONMENT, 'production'])
 export const SUPPORTED_CONVERSATION_MESSAGE_TYPES = Object.freeze(['text'])
 export const CONVERSATION_INTENTS = Object.freeze([
   'services_query',
@@ -125,7 +127,7 @@ function normalizeScope({ tenantId, integrationId, instance, senderHash, environ
     environment: textFrom(environment).toLowerCase(),
   }
   if (!scope.instance || scope.instance === 'miwsp') throw new TypeError('instance must be a non-protected value')
-  if (scope.environment !== QA_CONVERSATION_ENVIRONMENT) throw new TypeError('environment must be qa')
+  if (!MANAGED_CONVERSATION_ENVIRONMENTS.has(scope.environment)) throw new TypeError('environment must be qa or production')
   return Object.freeze(scope)
 }
 

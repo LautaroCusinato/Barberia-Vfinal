@@ -44,20 +44,22 @@ function response(body: unknown, status: number, origin: string) {
     },
   })
 }
+// El WhatsApp vinculado entrega sus eventos a whatsapp-evolution-webhook de
+// este mismo proyecto: guarda la conversación en la bandeja, actualiza el QR y
+// el estado, y deriva a n8n la respuesta, la reserva y la confirmación.
+const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'QRCODE_UPDATED']
+const QR_TTL_MS = 45 * 1000
 function evolutionConfig() {
   const baseUrl = value(Deno.env.get('EVOLUTION_BASE_URL')).replace(/\/$/, '')
   const apiKey = value(Deno.env.get('EVOLUTION_API_KEY'))
-  const webhookUrl = value(Deno.env.get('WHATSAPP_N8N_WEBHOOK_URL'))
-  const webhookSecret = value(Deno.env.get('WHATSAPP_N8N_WEBHOOK_SECRET'))
-  const allowedHost = value(Deno.env.get('WHATSAPP_N8N_ALLOWED_HOST')).toLowerCase()
-  let parsed: URL
+  const webhookSecret = value(Deno.env.get('EVOLUTION_WEBHOOK_SECRET'))
+  const ref = projectRef()
   let provider: URL
-  try { parsed = new URL(webhookUrl) } catch { throw Object.assign(new Error('webhook_not_configured'), { status: 503 }) }
   try { provider = new URL(baseUrl) } catch { throw Object.assign(new Error('provider_not_configured'), { status: 503 }) }
-  if (!apiKey || !webhookSecret || provider.protocol !== 'https:' || provider.username || provider.password || provider.search || provider.hash || parsed.protocol !== 'https:' || !allowedHost || parsed.hostname.toLowerCase() !== allowedHost) {
+  if (!apiKey || webhookSecret.length < 16 || !/^[a-z0-9]{20}$/.test(ref) || provider.protocol !== 'https:' || provider.username || provider.password || provider.search || provider.hash) {
     throw Object.assign(new Error('provider_not_configured'), { status: 503 })
   }
-  return { baseUrl, apiKey, webhookUrl, webhookSecret }
+  return { baseUrl, apiKey, webhookUrl: `https://${ref}.supabase.co/functions/v1/whatsapp-evolution-webhook`, webhookSecret }
 }
 async function evolution(path: string, init: { method?: string; body?: unknown } = {}) {
   const config = evolutionConfig()
@@ -99,7 +101,7 @@ function evolutionInstanceName(row: Record<string, unknown>) {
 }
 async function configureWebhook(expectedInstance: string) {
   const config = evolutionConfig()
-  const events = ['MESSAGES_UPSERT']
+  const events = WEBHOOK_EVENTS
   await evolution(`/webhook/set/${encodeURIComponent(expectedInstance)}`, {
     method: 'POST',
     body: { webhook: { enabled: true, url: config.webhookUrl, webhookByEvents: false, webhookBase64: false, events, headers: { [WEBHOOK_HEADER]: config.webhookSecret } } },
@@ -109,7 +111,7 @@ async function configureWebhook(expectedInstance: string) {
   const headers = webhook.headers && typeof webhook.headers === 'object' ? webhook.headers as Record<string, unknown> : {}
   const actualEvents = Array.isArray(webhook.events) ? webhook.events.map(String).sort() : []
   const hasSecretHeader = Object.keys(headers).some((name) => name.toLowerCase() === WEBHOOK_HEADER.toLowerCase())
-  if (webhook.enabled !== true || value(webhook.url) !== config.webhookUrl || !hasSecretHeader || actualEvents.join(',') !== events.join(',')) {
+  if (webhook.enabled !== true || value(webhook.url) !== config.webhookUrl || !hasSecretHeader || actualEvents.join(',') !== [...events].sort().join(',')) {
     throw Object.assign(new Error('evolution_webhook_not_confirmed'), { status: 502 })
   }
 }
@@ -153,7 +155,7 @@ async function ensureIntegration(admin: SupabaseClient, tenantId: number, expect
     const { data, error: updateError } = await admin.from('saas_integraciones').update({
       external_instance_id: expectedInstance,
       credential_reference: 'server:evolution',
-      metadata: { ...(existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {}), environment: ENVIRONMENT, provisioning: 'managed', automation_enabled: false, outbound_enabled: false, booking_enabled: false },
+      metadata: { ...(existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {}), environment: ENVIRONMENT, provisioning: 'managed' },
     }).eq('id', existing.id).eq('barberia_id', tenantId).select('id').single()
     if (updateError) throw Object.assign(new Error('integration_update_failed'), { status: 502 })
     return Number(data.id)
@@ -179,7 +181,7 @@ async function prepare(admin: SupabaseClient, tenantId: number) {
     barberia_id: tenantId, integration_id: integrationId, provider: PROVIDER, environment: ENVIRONMENT,
     provisioning_mode: 'live', instance_name: expectedInstance,
     automation_enabled: false, outbound_enabled: false, booking_enabled: false,
-    qr_expires_at: null, last_error_code: null, last_error_message: null,
+    qr_expires_at: null, qr_payload: null, pairing_expires_at: null, last_error_code: null, last_error_message: null,
   }
   const write = current
     ? await admin.from('saas_whatsapp_connections').update({ ...base, state: 'CREATING_INSTANCE' }).eq('id', current.id).select('*').single()
@@ -192,42 +194,82 @@ async function prepare(admin: SupabaseClient, tenantId: number) {
     const exists = instances.some((item) => evolutionInstanceName(item) === expectedInstance)
     if (!exists) await evolution('/instance/create', { method: 'POST', body: { instanceName: expectedInstance, qrcode: true, integration: 'WHATSAPP-BAILEYS' } })
     await configureWebhook(expectedInstance)
+    // La instancia ya estaba vinculada (por ejemplo, después de un error
+    // transitorio): queda conectada y con el bot activo, sin pedir otro QR.
+    if (exists && normalizeState(await evolution(`/instance/connectionState/${encodeURIComponent(expectedInstance)}`)) === 'CONNECTED') {
+      const { data, error: linkedError } = await admin.from('saas_whatsapp_connections').update(connectedPatch())
+        .eq('id', preparedConnection.id).eq('barberia_id', tenantId).eq('environment', ENVIRONMENT).select('*').single()
+      if (linkedError) throw Object.assign(new Error('connection_state_update_failed'), { status: 502 })
+      return { connection: safeConnection(data) }
+    }
     let qr: string | null = null
     for (let attempt = 0; attempt < 3 && !qr; attempt += 1) {
       qr = extractQr(await evolution(`/instance/connect/${encodeURIComponent(expectedInstance)}`))
       if (!qr && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 750))
     }
     if (!qr) throw Object.assign(new Error('evolution_qr_missing'), { status: 502 })
-    const qrExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
-    const { data, error: updateError } = await admin.from('saas_whatsapp_connections').update({ state: 'QR_READY', qr_expires_at: qrExpiresAt, last_verified_at: new Date().toISOString() })
+    const qrExpiresAt = new Date(Date.now() + QR_TTL_MS).toISOString()
+    const { data, error: updateError } = await admin.from('saas_whatsapp_connections').update({ state: 'QR_READY', qr_payload: qr, qr_expires_at: qrExpiresAt, pairing_expires_at: qrExpiresAt, last_verified_at: new Date().toISOString() })
       .eq('id', preparedConnection.id).eq('barberia_id', tenantId).eq('environment', ENVIRONMENT).select('*').single()
     if (updateError) throw Object.assign(new Error('connection_qr_state_failed'), { status: 502 })
-    return { connection: { ...safeConnection(data), qr_available: true, qr }, qr_expires_at: qrExpiresAt }
+    return { connection: { ...safeConnection(data), qr_available: true, qr, pairing_expires_at: qrExpiresAt }, qr_expires_at: qrExpiresAt }
   } catch (error) {
     await markConnectionError(admin, tenantId, preparedConnection.id, error).catch(() => undefined)
     throw error
   }
 }
+// Vincular el teléfono deja el bot funcionando: responde, reserva y confirma.
+function connectedPatch() {
+  return {
+    state: 'CONNECTED', qr_payload: null, qr_expires_at: null, pairing_expires_at: null,
+    automation_enabled: true, outbound_enabled: true, booking_enabled: true,
+    last_error_code: null, last_error_message: null, last_verified_at: new Date().toISOString(),
+  }
+}
 async function status(admin: SupabaseClient, tenantId: number) {
   const current = await connection(admin, tenantId)
   if (!current || !current.instance_name) return { connection: safeConnection(current) }
+  // Una conexión histórica con otra instancia (por ejemplo miwsp) no se toca.
+  if (value(current.instance_name) !== instanceName(tenantId)) return { connection: safeConnection(current) }
   if (current.state === 'ERROR') return { connection: safeConnection(current) }
-  const providerState = normalizeState(await evolution(`/instance/connectionState/${encodeURIComponent(value(current.instance_name))}`))
-  if (!providerState) throw Object.assign(new Error('provider_state_unknown'), { status: 502 })
-  let qr: string | null = null
-  let nextState = providerState
-  let qrExpiresAt = providerState === 'CONNECTED' ? null : current.qr_expires_at
-  if (providerState !== 'CONNECTED' && ['QR_READY', 'CONNECTING'].includes(value(current.state))) {
-    qr = extractQr(await evolution(`/instance/connect/${encodeURIComponent(value(current.instance_name))}`))
-    if (qr) {
-      nextState = 'QR_READY'
-      qrExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
-    }
+  const name = encodeURIComponent(value(current.instance_name))
+  let providerState: string | null
+  try { providerState = normalizeState(await evolution(`/instance/connectionState/${name}`)) }
+  catch (error) {
+    // Instancia borrada del proveedor: queda desconectada para volver a vincular.
+    if (safeErrorCode(error) !== 'evolution_http_404') throw error
+    providerState = 'DISCONNECTED'
   }
-  const { data, error } = await admin.from('saas_whatsapp_connections').update({ state: nextState, last_verified_at: new Date().toISOString(), qr_expires_at: qrExpiresAt })
+  if (!providerState) throw Object.assign(new Error('provider_state_unknown'), { status: 502 })
+  if (providerState === 'CONNECTED') {
+    const patch = current.state === 'CONNECTED' && current.automation_enabled === true
+      ? { last_verified_at: new Date().toISOString() }
+      : connectedPatch()
+    const { data, error } = await admin.from('saas_whatsapp_connections').update(patch)
+      .eq('id', current.id).eq('barberia_id', tenantId).eq('environment', ENVIRONMENT).select('*').single()
+    if (error) throw Object.assign(new Error('connection_state_update_failed'), { status: 502 })
+    return { connection: safeConnection(data) }
+  }
+  const pairing = ['QR_READY', 'CONNECTING'].includes(value(current.state))
+  if (!pairing) {
+    if (value(current.state) === providerState) return { connection: safeConnection(current) }
+    const { data, error } = await admin.from('saas_whatsapp_connections').update({ state: providerState, qr_payload: null, qr_expires_at: null, pairing_expires_at: null, last_verified_at: new Date().toISOString() })
+      .eq('id', current.id).eq('barberia_id', tenantId).eq('environment', ENVIRONMENT).select('*').single()
+    if (error) throw Object.assign(new Error('connection_state_update_failed'), { status: 502 })
+    return { connection: safeConnection(data) }
+  }
+  // Durante la vinculación el QR rota: se usa el último que entregó el
+  // webhook QRCODE_UPDATED y sólo se pide uno nuevo si ya venció.
+  let qr = typeof current.qr_payload === 'string' && Date.parse(value(current.qr_expires_at)) > Date.now() ? current.qr_payload : null
+  let qrExpiresAt = qr ? value(current.qr_expires_at) : null
+  if (!qr) {
+    qr = extractQr(await evolution(`/instance/connect/${name}`))
+    qrExpiresAt = qr ? new Date(Date.now() + QR_TTL_MS).toISOString() : null
+  }
+  const { data, error } = await admin.from('saas_whatsapp_connections').update({ state: qr ? 'QR_READY' : 'CONNECTING', qr_payload: qr, qr_expires_at: qrExpiresAt, pairing_expires_at: qrExpiresAt, last_verified_at: new Date().toISOString() })
     .eq('id', current.id).eq('barberia_id', tenantId).eq('environment', ENVIRONMENT).select('*').single()
   if (error) throw Object.assign(new Error('connection_state_update_failed'), { status: 502 })
-  return { connection: safeConnection(data, qr ? { qr_available: true, qr } : {}) }
+  return { connection: safeConnection(data, qr ? { qr_available: true, qr, pairing_expires_at: qrExpiresAt } : {}) }
 }
 
 Deno.serve(async (request) => {

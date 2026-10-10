@@ -213,7 +213,7 @@ try {
   other.barberias[0].id = 927
   db = createMemoryDb(other, { rpc })
   await send('Hola', { instance: 'austral-qa-tenant-927' })
-  assert.ok(!db.calls.some(call => call.rpc === 'registrar_mensaje_whatsapp_qa928'))
+  assert.ok(!db.calls.some(call => call.rpc === 'registrar_mensaje_whatsapp'))
 
   // La mutación tampoco acepta un nombre provisional con un estado adulterado
   // al que le faltó el nombre confirmado.

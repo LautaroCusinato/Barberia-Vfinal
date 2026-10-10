@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
-import { manualQaEnabled, manualQaCapabilities, manualQaPhoneAllowed, QA_MANUAL_ROUTE, QA_MANUAL_PUBLIC_ORIGIN } from '../_shared/qaManualRuntime.mjs'
+import { managedRuntimeProfile, managedTenantFromInstance, manualQaEnabled, manualQaCapabilities, manualQaPhoneAllowed } from '../_shared/qaManualRuntime.mjs'
 import { persistManualMessage } from '../_shared/qaManualMessages.mjs'
 import { assertShadowAgentConfiguration, classifyShadowIntent, extractInboundText, generateShadowProposal, interpretRequestedDate, normalizeCustomerReply, resolveRequestedServices } from '../_shared/whatsappAgentShadow.mjs'
 import { QA_BOOKING_MUTATION_FLAG, QA_BOOKING_MUTATION_TENANTS_ENV, isQaBookingTenantAllowed } from '../_shared/whatsappBookingMutation.mjs'
@@ -37,7 +37,6 @@ import {
 
 const QA_PROJECT_REF = 'cmsymmszlzikqpvfqjre'
 const PRODUCTION_PROJECT_REF = 'ssagttjdgtypxjcgdnrw'
-const QA_FIXTURE_PREFIX = 'austral-qa-tenant-'
 const PROTECTED_INSTANCE = 'miwsp'
 const WEBHOOK_HEADER = 'X-Austral-Webhook-Secret'
 const ALLOWED_EVENTS = new Set(['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT'])
@@ -81,7 +80,7 @@ async function forwardQaBookingRoute(connection: Record<string, any>, instance: 
   })) return
   const secret = safeString(Deno.env.get('EVOLUTION_WEBHOOK_SECRET'))
   if (!secret) throw new Error('qa_booking_route_not_configured')
-  const response = await fetch(manual ? QA_MANUAL_ROUTE : QA_BOOKING_ROUTE_URL, {
+  const response = await fetch(manual ? runtimeProfile().route : QA_BOOKING_ROUTE_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-austral-qa-route-secret': secret, ...(manual ? { 'x-austral-panel-secret': secret, 'user-agent': 'Austral-QA-Integration/1.0' } : {}) },
     body: JSON.stringify(buildQaBookingRouteBody({ eventId, tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, readyForBookingMutation })),
@@ -95,12 +94,22 @@ function projectRef() {
   try { return new URL(raw).hostname.split('.')[0].toLowerCase() } catch { return '' }
 }
 
-function assertQaRuntime() {
+// Perfil del entorno (QA o producción administrada). Producción sólo corre
+// con WHATSAPP_MANAGED_RUNTIME_ENABLED=1; QA conserva todos sus gates.
+function runtimeProfile() {
+  const profile = managedRuntimeProfile((name: string) => Deno.env.get(name))
+  if (!profile) throw new Error('runtime_not_enabled')
+  return profile
+}
+
+function assertRuntime() {
   const ref = projectRef()
-  if (!ref || ref === PRODUCTION_PROJECT_REF || ref !== QA_PROJECT_REF) throw new Error('qa_project_required')
-  if (Deno.env.get('WHATSAPP_PROVISIONING_ENV') !== 'qa' || Deno.env.get('WHATSAPP_MODE') !== 'shadow' || Deno.env.get('PILOT_MODE') !== 'shadow') throw new Error('shadow_mode_required')
-  if (Deno.env.get('WHATSAPP_PROVISIONING_ADAPTER') !== 'evolution') throw new Error('evolution_adapter_required')
-  assertShadowAgentConfiguration({ WHATSAPP_MODE: Deno.env.get('WHATSAPP_MODE'), PILOT_MODE: Deno.env.get('PILOT_MODE') })
+  if (ref === QA_PROJECT_REF) {
+    if (Deno.env.get('WHATSAPP_PROVISIONING_ENV') !== 'qa' || Deno.env.get('WHATSAPP_MODE') !== 'shadow' || Deno.env.get('PILOT_MODE') !== 'shadow') throw new Error('shadow_mode_required')
+    if (Deno.env.get('WHATSAPP_PROVISIONING_ADAPTER') !== 'evolution') throw new Error('evolution_adapter_required')
+    assertShadowAgentConfiguration({ WHATSAPP_MODE: Deno.env.get('WHATSAPP_MODE'), PILOT_MODE: Deno.env.get('PILOT_MODE') })
+  } else if (ref !== PRODUCTION_PROJECT_REF) throw new Error('project_target_mismatch')
+  return runtimeProfile()
 }
 
 function adminClient() {
@@ -132,10 +141,10 @@ function eventName(payload: Record<string, unknown>) {
     .replace(/[.\s-]+/g, '_')
 }
 
-function instanceName(payload: Record<string, unknown>) {
+function instanceName(payload: Record<string, unknown>, profile: ReturnType<typeof runtimeProfile>) {
   const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : {}
   const instance = safeString(payload.instance || payload.instanceName || data.instance || data.instanceName)
-  if (!instance || instance.toLowerCase() === PROTECTED_INSTANCE || !instance.startsWith(QA_FIXTURE_PREFIX)) return null
+  if (!instance || instance.toLowerCase() === PROTECTED_INSTANCE || !managedTenantFromInstance(profile, instance)) return null
   return instance
 }
 
@@ -349,10 +358,11 @@ async function loadConversationState(admin: ReturnType<typeof adminClient>, conn
   const row = (data || []).find((candidate: Record<string, unknown>) => {
     const metadata = candidate.metadata && typeof candidate.metadata === 'object' ? candidate.metadata as Record<string, unknown> : {}
     const state = metadata.conversation_state && typeof metadata.conversation_state === 'object' ? metadata.conversation_state as Record<string, unknown> : null
-    return metadata.environment === 'qa'
+    const environment = runtimeProfile().environment
+    return metadata.environment === environment
       && metadata.instance === instance
       && metadata.sender_hash === senderHashValue
-      && state?.environment === 'qa'
+      && state?.environment === environment
       && state?.instance === instance
       && state?.sender_hash === senderHashValue
   })
@@ -404,9 +414,9 @@ async function loadPreviousOfferDelivery(admin: ReturnType<typeof adminClient>, 
 // enlace (no se inventa uno).
 function resolveBookingLink(business: Record<string, unknown>, chatBookingEnabled: boolean, manual = false) {
   const link = buildPublicBookingLink({
-    origin: manual ? QA_MANUAL_PUBLIC_ORIGIN : Deno.env.get(PUBLIC_BOOKING_ORIGIN_ENV),
-    declaredEnvironment: manual ? 'qa' : Deno.env.get(PUBLIC_BOOKING_ENVIRONMENT_ENV),
-    runtimeEnvironment: 'qa',
+    origin: manual ? runtimeProfile().publicOrigin : Deno.env.get(PUBLIC_BOOKING_ORIGIN_ENV),
+    declaredEnvironment: manual ? runtimeProfile().environment : Deno.env.get(PUBLIC_BOOKING_ENVIRONMENT_ENV),
+    runtimeEnvironment: runtimeProfile().environment,
     slug: business.slug,
     publicBookingEnabled: business.reservas_publicas === true,
   })
@@ -490,7 +500,8 @@ async function processInboundMessage({
   const timezone = safeString(context.business.zona_horaria) || 'America/Argentina/Buenos_Aires'
   const now = new Date()
   const today = interpretRequestedDate('hoy', timezone, now).requested_date
-  const scope = { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment: 'qa' }
+  const environment = runtimeProfile().environment
+  const scope = { tenantId: connection.barberia_id, integrationId: connection.integration_id, instance, senderHash: senderHashValue, environment }
   // Reservar por chat sólo se ofrece donde el circuito QA puede agendar.
   const chatBookingEnabled = (isQaBookingTenantAllowed(tenantId, Deno.env.get(QA_BOOKING_MUTATION_TENANTS_ENV)) && safeString(Deno.env.get(QA_BOOKING_MUTATION_FLAG)) === '1')
     || (manualQaEnabled((name: string) => Deno.env.get(name), tenantId, instance) && manualQaCapabilities(connection, { booking: true }))
@@ -533,7 +544,7 @@ async function processInboundMessage({
     if (helperGoal === 'unclear' && knownService.status === 'matched') helperGoal = 'booking'
     if (helperGoal === 'unclear' && !parseExplicitConfirmation(inbound.text) && !previousConversation?.awaiting_customer_name) {
       const request = languageRequest({ message: inbound.text, business: context.business, services: context.services, barbers: context.barbers, state: previousConversation, customer, today })
-      const raw = await interpretConcierge({ request, secret: safeString(Deno.env.get('EVOLUTION_WEBHOOK_SECRET')) })
+      const raw = await interpretConcierge({ request: { ...request, tenant_id: tenantId, instance }, route: runtimeProfile().languageRoute, secret: safeString(Deno.env.get('EVOLUTION_WEBHOOK_SECRET')) })
       const understood = validateLanguageResult(raw, { services: context.services, barbers: context.barbers, today })
       if (understood) { helperGoal = understood.goal; interpretedFields = understood.fields; languageProvider = understood.provider }
     }
@@ -689,7 +700,7 @@ async function processInboundMessage({
     p_metadata: {
       source: 'evolution',
       event: INBOUND_EVENT,
-      environment: 'qa',
+      environment,
       message_type: inbound.messageType,
       message_timestamp: inbound.timestamp,
       processing_started_at: processingStartedAt.toISOString(),
@@ -722,7 +733,7 @@ async function processInboundMessage({
       proposed_reply: proposal.proposed_reply,
       conversation_state: conversationState,
       conversation_action: conversationAction ?? (bookingFlow ? (proposal.requested_action || null) : null),
-      conversation_scope: { tenant_id: connection.barberia_id, integration_id: connection.integration_id, instance, sender_hash: senderHashValue, environment: 'qa' },
+      conversation_scope: { tenant_id: connection.barberia_id, integration_id: connection.integration_id, instance, sender_hash: senderHashValue, environment },
       mutation_blocked: true,
       outbound_send: false,
       mutation_allowed: false,
@@ -748,18 +759,18 @@ async function processInboundMessage({
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
   try {
-    assertQaRuntime()
+    const profile = assertRuntime()
     const expected = safeString(Deno.env.get('EVOLUTION_WEBHOOK_SECRET'))
     const received = safeString(request.headers.get(WEBHOOK_HEADER))
     if (!expected || !constantTimeEqual(received, expected)) return json({ error: 'webhook_unauthorized' }, 401)
     const payload = await request.json().catch(() => null)
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return json({ error: 'invalid_payload' }, 422)
     const event = eventName(payload as Record<string, unknown>)
-    const instance = instanceName(payload as Record<string, unknown>)
+    const instance = instanceName(payload as Record<string, unknown>, profile)
     if (!instance) return json({ error: 'qa_instance_required' }, 403)
     if (!ALLOWED_EVENTS.has(event)) return json({ received: true, accepted: false, reason: 'event_not_enabled' }, 202)
     const admin = adminClient()
-    const { data: connection, error: lookupError } = await admin.from('saas_whatsapp_connections').select('id, barberia_id, integration_id, state, automation_enabled, outbound_enabled, booking_enabled').eq('provider', 'evolution').eq('environment', 'qa').eq('instance_name', instance).maybeSingle()
+    const { data: connection, error: lookupError } = await admin.from('saas_whatsapp_connections').select('id, barberia_id, integration_id, state, automation_enabled, outbound_enabled, booking_enabled').eq('provider', 'evolution').eq('environment', profile.environment).eq('instance_name', instance).maybeSingle()
     if (lookupError) return json({ error: 'connection_lookup_failed' }, 502)
     if (!connection) return json({ error: 'qa_connection_not_found' }, 404)
     if (event === INBOUND_EVENT) {
@@ -808,8 +819,11 @@ Deno.serve(async (request) => {
         last_error_message: null,
         ...(qr ? { qr_payload: qr, qr_expires_at: qrExpiresAt, pairing_expires_at: qrExpiresAt } : {}),
         ...(state === 'CONNECTED' || state === 'DISCONNECTED' ? { qr_payload: null, qr_expires_at: null, pairing_expires_at: null } : {}),
+        // En producción, vincular el WhatsApp desde el panel deja el bot
+        // funcionando: responde, reserva y confirma para este negocio.
+        ...(state === 'CONNECTED' && profile.environment === 'production' ? { automation_enabled: true, outbound_enabled: true, booking_enabled: true } : {}),
       }
-      let update = admin.from('saas_whatsapp_connections').update(fields).eq('id', connection.id).eq('provider', 'evolution').eq('environment', 'qa')
+      let update = admin.from('saas_whatsapp_connections').update(fields).eq('id', connection.id).eq('provider', 'evolution').eq('environment', profile.environment)
       if (event === 'QRCODE_UPDATED') update = update.neq('state', 'CONNECTED')
       const { error: updateError } = await update
       if (updateError) return json({ error: 'connection_state_update_failed' }, 502)

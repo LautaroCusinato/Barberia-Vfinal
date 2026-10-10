@@ -3,9 +3,10 @@ import { manualQaPhoneAllowed } from './qaManualRuntime.mjs'
 
 const RECEIPT_PREFIX = 'qa928-accepted:'
 
-// La RPC escribe sólo en QA928; no envía nada ni cambia la pausa del bot.
+// La RPC escribe sólo en el negocio dueño de la integración administrada; no
+// envía nada ni cambia la pausa del bot.
 export async function persistManualMessage(admin, message) {
-  const { data, error } = await admin.rpc('registrar_mensaje_whatsapp_qa928', {
+  const { data, error } = await admin.rpc('registrar_mensaje_whatsapp', {
     p_integration_id: message.integrationId,
     p_operation_id: message.operationId,
     p_de: message.de,

@@ -78,7 +78,8 @@ assert.equal(normalizeForTest(message({ id: 'BROADCAST', jid: 'status@broadcast'
 assert.equal(normalizeForTest({ key: { remoteJid: '549110000004@s.whatsapp.net' } }).eventId, '')
 
 // Tenant and safety invariants remain in the server-side handler.
-assert.match(webhookSource, /\.eq\('environment', 'qa'\)/)
+// El entorno sale del perfil del servidor (QA o producción administrada).
+assert.match(webhookSource, /\.eq\('environment', profile\.environment\)/)
 assert.match(webhookSource, /const itemPayload = \{ .*data: message \}/)
 assert.match(webhookSource, /for \(const message of messages\)/)
 assert.match(webhookSource, /await processInboundMessage/)

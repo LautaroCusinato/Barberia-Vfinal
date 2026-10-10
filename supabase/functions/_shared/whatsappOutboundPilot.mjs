@@ -35,7 +35,7 @@ export function buildEvolutionSendTextPath(baseUrl, instance = QA_OUTBOUND_INSTA
 
 export function buildQaEvolutionSendTextPath(baseUrl, instance) {
   const rawInstance = textFrom(instance)
-  const match = /^austral-qa-tenant-(\d+)$/.exec(rawInstance)
+  const match = /^austral-(?:qa|prod)-tenant-(\d+)$/.exec(rawInstance)
   if (!match || rawInstance === PROTECTED_INSTANCE) return null
   const tenantId = Number(match[1])
   if (!Number.isSafeInteger(tenantId) || tenantId <= 0) return null

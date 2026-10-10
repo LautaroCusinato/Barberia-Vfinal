@@ -86,6 +86,29 @@ export default function WhatsAppConnectionPanel({ barberiaId, demoMode = false }
 
   useEffect(() => { load() }, [load])
 
+  // Mientras se vincula, el estado se consulta solo: el QR rota cada pocos
+  // segundos y, al escanearlo, el panel pasa a Conectado sin tocar nada.
+  const pairing = !demoMode && ['QR_READY', 'CONNECTING', 'CREATING_INSTANCE'].includes(connection?.state)
+  useEffect(() => {
+    if (!pairing || !isSupabaseConfigured) return
+    let active = true
+    const timer = setInterval(async () => {
+      if (workingRef.current) return
+      try {
+        const { data, error: invokeError } = await supabase.functions.invoke(WHATSAPP_PROVISION_FUNCTION, { body: { action: 'status', tenant_id: barberiaId } })
+        if (!active || invokeError || data?.error || !data?.connection) return
+        setConnection(current => {
+          const next = data.connection
+          // Un estado sin código nuevo conserva el código vigente en pantalla.
+          if (next.state !== 'CONNECTED' && !next.qr && current?.qr && current.qr_available) return { ...next, qr: current.qr, qr_available: true, pairing_expires_at: current.pairing_expires_at }
+          return next
+        })
+        if (data.connection.state === 'CONNECTED') setNotice('WhatsApp quedó vinculado. El asistente ya responde a tus clientes.')
+      } catch { /* el próximo intento vuelve a consultar */ }
+    }, 4000)
+    return () => { active = false; clearInterval(timer) }
+  }, [pairing, barberiaId])
+
   useEffect(() => {
     if (!connection?.qr_available || !connection?.qr) return
     const expiry = Date.parse(connection.pairing_expires_at || '')

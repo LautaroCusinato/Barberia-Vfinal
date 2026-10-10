@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0'
-import { manualQaEnabled, manualQaCapabilities, manualQaRecipient } from '../_shared/qaManualRuntime.mjs'
+import { managedRuntimeProfile, manualQaEnabled, manualQaCapabilities, manualQaRecipient } from '../_shared/qaManualRuntime.mjs'
 import { requireOperator } from '../_shared/supabase.ts'
 import { isRealPersistedSourceMetadata } from '../_shared/whatsappAgentOutboundPilot.mjs'
 import { evaluateBotPause } from '../_shared/whatsappBotPause.mjs'
@@ -97,7 +97,9 @@ Deno.serve(async (request) => {
     if (!textFrom(request.headers.get('authorization')).toLowerCase().startsWith('bearer ')) return json({ error: 'authorization_required', mutation_allowed: false }, 401)
     try { await requireOperator(request, adminClient()) } catch (error) { return json({ error: String((error as { code?: string })?.code || 'authorization_required'), mutation_allowed: false }, Number((error as { status?: number })?.status) || 401) }
 
-    const runtimeValid = isQaBookingMutationRuntime({
+    // QA conserva su verificación; producción corre con el perfil administrado.
+    const environment = managedRuntimeProfile((name: string) => Deno.env.get(name))?.environment || QA_BOOKING_MUTATION_ENVIRONMENT
+    const runtimeValid = environment === 'production' || isQaBookingMutationRuntime({
       projectRef: projectRef(),
       provisioningEnv: Deno.env.get('WHATSAPP_PROVISIONING_ENV'),
       whatsappMode: Deno.env.get('WHATSAPP_MODE'),
@@ -125,18 +127,18 @@ Deno.serve(async (request) => {
     if (sourceRows.length > 1) return json({ error: 'source_event_ambiguous', mutation_allowed: false }, 409)
     const sourceRun = sourceRows[0]
     const tenantId = Number(sourceRun.tenant_id)
-    const manual = manualQaEnabled((name: string) => Deno.env.get(name), tenantId, qaBookingInstanceForTenant(tenantId))
+    const manual = manualQaEnabled((name: string) => Deno.env.get(name), tenantId, qaBookingInstanceForTenant(tenantId, environment))
     const previousAllowed = Deno.env.get(QA_BOOKING_MUTATION_TENANTS_ENV)
     const allowedTenants = manual ? `${previousAllowed || '1'},${tenantId}` : previousAllowed
     if (!isQaBookingTenantAllowed(tenantId, allowedTenants)) return json({ error: 'qa_tenant_required', mutation_allowed: false }, 403)
-    const expectedInstance = qaBookingInstanceForTenant(tenantId)
+    const expectedInstance = qaBookingInstanceForTenant(tenantId, environment)
 
     const { data: connection, error: connectionError } = await admin
       .from('saas_whatsapp_connections')
       .select('id,barberia_id,integration_id,provider,environment,state,instance_name,automation_enabled,outbound_enabled,booking_enabled')
       .eq('barberia_id', tenantId)
       .eq('provider', 'evolution')
-      .eq('environment', QA_BOOKING_MUTATION_ENVIRONMENT)
+      .eq('environment', environment)
       .eq('instance_name', expectedInstance)
       .maybeSingle()
     if (connectionError) return json({ error: 'connection_lookup_failed', mutation_allowed: false }, 502)
@@ -179,13 +181,13 @@ Deno.serve(async (request) => {
       integrationId: connection.integration_id,
       instance: connection.instance_name,
       senderHash: senderHashValue,
-      environment: QA_BOOKING_MUTATION_ENVIRONMENT,
+      environment,
     }
     const stateScopeValid = state ? isConversationStateForScope(state, conversationScope) : false
     const stateFresh = state ? isConversationStateFresh(state) : false
     const promptVersionValid = textFrom(agent?.prompt_version) === QA_BOOKING_MUTATION_PROMPT_VERSION
-    const stateValid = stateScopeValid && stateFresh && promptVersionValid && state ? isConfirmedBookingState(state, eventId, allowedTenants) : false
-    const sourceEventReal = isRealPersistedSourceMetadata(metadata)
+    const stateValid = stateScopeValid && stateFresh && promptVersionValid && state ? isConfirmedBookingState(state, eventId, allowedTenants, environment) : false
+    const sourceEventReal = isRealPersistedSourceMetadata(metadata, environment)
     const sourceFresh = eventIsFresh(sourceRun.observed_at)
 
     // Un reintento del mismo Sí recupera la pregunta persistida, sin pedir
@@ -308,6 +310,7 @@ Deno.serve(async (request) => {
       requestedSlotAvailable: recheck.requested_slot_available,
       operationClaimAvailable: { available: true, integrationId: connection.integration_id },
       allowedTenants,
+      expectedEnvironment: environment,
     })
     if (!guard.allowed) return json({ error: guard.reason, mutation_allowed: false, revalidated: true, booking_mutation_executed: false }, 403)
 

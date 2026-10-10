@@ -24,13 +24,33 @@ describe('recuperación del QR de WhatsApp', () => {
     vi.useFakeTimers()
     const now = new Date('2026-10-09T18:00:00.000Z')
     vi.setSystemTime(now)
-    invoke.mockResolvedValue({ data: { connection: qr(new Date(now.getTime() + 45000).toISOString()) } })
+    // El servidor ya no tiene un código vigente: las consultas automáticas
+    // responden CONNECTING sin QR y nunca piden conectar ni desconectar.
+    invoke.mockResolvedValueOnce({ data: { connection: qr(new Date(now.getTime() + 45000).toISOString()) } })
+      .mockResolvedValue({ data: { connection: { state: 'CONNECTING', qr_available: false } } })
     await act(async () => render(<WhatsAppConnectionPanel barberiaId={928} />))
     expect(screen.getByRole('img')).toBeInTheDocument()
     await act(async () => vi.advanceTimersByTime(45000))
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Generar nuevo código' })).toBeInTheDocument()
-    expect(invoke).toHaveBeenCalledTimes(1)
+    expect(invoke.mock.calls.every(([, request]) => request.body.action === 'status')).toBe(true)
+  })
+
+  it('al escanear el código pasa solo a Conectado y deja de consultar', async () => {
+    vi.useFakeTimers()
+    const now = new Date('2026-10-10T18:00:00.000Z')
+    vi.setSystemTime(now)
+    invoke.mockResolvedValueOnce({ data: { connection: qr(new Date(now.getTime() + 45000).toISOString()) } })
+      .mockResolvedValue({ data: { connection: { state: 'CONNECTED', qr_available: false, automation_enabled: true, outbound_enabled: true, booking_enabled: true } } })
+    await act(async () => render(<WhatsAppConnectionPanel barberiaId={928} />))
+    expect(screen.getByRole('img')).toBeInTheDocument()
+    await act(async () => vi.advanceTimersByTime(4000))
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText('WhatsApp quedó vinculado. El asistente ya responde a tus clientes.')).toBeInTheDocument()
+    expect(screen.getAllByText('Activas', { selector: 'strong' })).toHaveLength(2)
+    const calls = invoke.mock.calls.length
+    await act(async () => vi.advanceTimersByTime(12000))
+    expect(invoke.mock.calls.length).toBe(calls)
   })
 
   it('no habilita regeneración si no pudo verificar el estado del servidor', async () => {

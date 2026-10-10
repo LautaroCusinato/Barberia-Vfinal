@@ -23,6 +23,14 @@ describe('whatsappProvisioning', () => {
     expect(mod.WHATSAPP_PROVISION_FUNCTION).toBe('whatsapp-provision')
   })
 
+  it('el proyecto de producción usa su función de producción sin variable de build', async () => {
+    const mod = await cargarConEnv({ supabaseUrl: 'https://ssagttjdgtypxjcgdnrw.supabase.co' })
+    expect(mod.WHATSAPP_PROVISION_FUNCTION).toBe('whatsapp-production-provision')
+    expect(mod.MANAGED_WHATSAPP_PROVISIONING).toBe(true)
+    expect(mod.WHATSAPP_DISCONNECT_SUPPORTED).toBe(false)
+    expect(mod.provisioningAction('connect')).toBe('prepare')
+  })
+
   it('una URL de Supabase inválida no rompe la carga', async () => {
     const mod = await cargarConEnv({ supabaseUrl: 'no es una url' })
     expect(mod.MANAGED_WHATSAPP_PROVISIONING).toBe(false)
