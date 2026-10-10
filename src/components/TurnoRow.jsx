@@ -4,6 +4,8 @@ import StatusSelect, { statusMeta } from './StatusSelect'
 import { formatFechaVisible } from '../lib/text'
 import { despuesDelColapso } from '../lib/collapseDelete'
 import TurnoOriginBadge from './TurnoOriginBadge.jsx'
+import { notaDelCliente } from '../lib/clientNotes.js'
+import { clienteIdDelTurno } from '../lib/turnoCliente.js'
 
 export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno, onEditTurno, notas, onAddNota, barberos = [] }) {
   const [notesOpen, setNotesOpen] = useState(false)
@@ -13,7 +15,9 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
   const [errorMsg, setErrorMsg] = useState('')
   const wrapRef = useRef(null)
 
-  const notasPaciente = (notas || []).filter((n) => n.paciente === turno.paciente)
+  const clienteId = clienteIdDelTurno(turno)
+  const clienteDelTurno = { id: clienteId, barberia_id: turno.barberia_id }
+  const notasPaciente = (notas || []).filter((n) => notaDelCliente(n, clienteDelTurno))
   const barbero = barberos.find((b) => String(b.id) === String(turno.barbero_id))
   const meta = statusMeta(turno.estado)
   const serviceLabel = turno.motivo || 'Servicio sin especificar'
@@ -30,11 +34,12 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
   }, [notesOpen])
 
   const guardarNota = async () => {
-    if (!draft.trim()) return
+    if (saving || clienteId == null || !draft.trim()) return
     setSaving(true)
     setErrorMsg('')
     try {
-      const saved = await onAddNota({ paciente: turno.paciente, texto: draft.trim() })
+      // App resuelve la ficha vigente por ID y la base valida el negocio.
+      const saved = await onAddNota({ cliente_id: clienteId, paciente: turno.paciente, texto: draft.trim() })
       if (saved !== false) setDraft('')
       else setErrorMsg('No se pudo guardar la nota. El borrador quedó preservado.')
     } catch {
@@ -119,20 +124,22 @@ export default function TurnoRow({ turno, compact, onChangeEstado, onDeleteTurno
               ))}
             </div>
           )}
+          {clienteId == null && <p className="note-popover-empty">Vinculá el turno a una ficha desde Editar turno para agregar notas del cliente.</p>}
           <textarea
             className="note-input"
             placeholder="Agregar una nota sobre este cliente…"
+            aria-label="Contenido de la nota del cliente"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
-            disabled={saving}
+            disabled={saving || clienteId == null}
           />
           {errorMsg && <p className="login-error" role="alert">{errorMsg}</p>}
           <button
             className="btn btn-primary"
             style={{ width: '100%', justifyContent: 'center', marginTop: 6 }}
             onClick={guardarNota}
-            disabled={saving}
+            disabled={saving || clienteId == null}
           >
             {saving ? 'Guardando…' : 'Agregar nota'}
           </button>
