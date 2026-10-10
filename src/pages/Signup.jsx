@@ -38,6 +38,7 @@ export default function Signup() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [created, setCreated] = useState('')
+  const [existing, setExisting] = useState('')
   const next = signupNext()
   const loginHref = next === '/onboarding' ? '/ingresar' : `/ingresar?redirect=${encodeURIComponent(next)}`
 
@@ -74,12 +75,30 @@ export default function Signup() {
         return
       }
       if (data.session) { go(next); return }
+      // Con confirmación por email, Supabase responde igual para un email ya
+      // registrado (sin identidades y sin enviar nada): no hay mail que esperar.
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) { setExisting(cleanEmail); return }
       setCreated(cleanEmail)
     } catch {
       setError('No pudimos conectarnos. Revisá tu conexión e intentá nuevamente.')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (existing) {
+    return (
+      <AuthPage cardClassName="auth-center">
+        <div className="auth-icon-badge"><MailCheck size={24} aria-hidden="true" /></div>
+        <p className="auth-kicker">Email ya registrado</p>
+        <h1 className="auth-title">Ya tenés una cuenta</h1>
+        <p className="auth-copy"><strong>{existing}</strong> ya está registrado, así que no enviamos un email nuevo. Iniciá sesión con tu contraseña o, si no la recordás, pedí un enlace para crear una nueva.</p>
+        <div className="auth-actions">
+          <button type="button" className="btn btn-primary auth-full-button" onClick={() => go(loginHref)}>Iniciar sesión <ArrowRight size={15} aria-hidden="true" /></button>
+          <button type="button" className="btn auth-secondary-button auth-full-button" onClick={() => go('/recuperar')}>Recuperar contraseña</button>
+        </div>
+      </AuthPage>
+    )
   }
 
   if (created) {
