@@ -9,6 +9,16 @@ function deferred() {
 }
 
 describe('enqueueLatest', () => {
+  it('propaga el resultado de la última escritura y no el de una edición descartada', async () => {
+    const map = {}
+    const first = deferred()
+    const execute = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(false)
+    const saving = enqueueLatest(map, 'nombre', 'A', execute)
+    enqueueLatest(map, 'nombre', 'B', execute)
+    first.resolve(true)
+    await expect(saving).resolves.toBe(false)
+    expect(execute.mock.calls.map(([value]) => value)).toEqual(['A', 'B'])
+  })
   it('ejecuta de inmediato el primer valor', async () => {
     const map = {}
     const execute = vi.fn().mockResolvedValue(undefined)

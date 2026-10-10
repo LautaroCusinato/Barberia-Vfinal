@@ -14,8 +14,8 @@ export function enqueueLatest(map, key, value, execute) {
   state.promise = (async () => {
     while (true) {
       const valueToSave = state.latest
-      await execute(valueToSave)
-      if (state.latest === valueToSave) return
+      const result = await execute(valueToSave)
+      if (state.latest === valueToSave) return result
     }
   })().finally(() => {
     state.inFlight = false

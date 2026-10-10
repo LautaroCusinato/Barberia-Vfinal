@@ -77,6 +77,16 @@ function nextLocalId(items) {
   return Math.max(0, ...items.map((item) => Number(item.id) || 0)) + 1
 }
 
+function restoreRejectedField(items, id, field, rejectedValue, confirmedValue) {
+  return items.map((item) => item.id === id && item[field] === rejectedValue
+    ? { ...item, [field]: confirmedValue } : item)
+}
+
+function unconfirmedUpdate({ data, error }, id) {
+  return error || (Array.isArray(data) && data.some((row) => String(row.id) === String(id))
+    ? null : { message: 'No se confirmó ninguna fila modificada de este negocio.' })
+}
+
 function servicioFromDb(row) {
   return { ...row, duracion: row.duracion_min }
 }
@@ -1331,21 +1341,27 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   const updateServicio = async (id, field, value) => {
     const parsed = ['nombre', 'descripcion'].includes(field) ? value : Number(value) || 0
     const anterior = servicios.find((s) => s.id === id)
+    let confirmedValue = anterior?.[field]
     setServicios((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: parsed } : s)))
     if (!isSupabaseConfigured) return true
     const key = `${id}:${field}`
     return enqueueLatest(servicioWritesRef.current, key, parsed, async (valueToSave) => {
       const dbField = field === 'duracion' ? 'duracion_min' : field
       try {
-        const { error } = await supabase.from('servicios').update({ [dbField]: valueToSave }).eq('id', id)
-        if (!error) return true
-        if (servicioWritesRef.current[key]?.latest === valueToSave && anterior) setServicios((prev) => prev.map((s) => (s.id === id ? anterior : s)))
-        const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
-        reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo actualizar el servicio', error)
+        const response = await supabase.from('servicios').update({ [dbField]: valueToSave }).eq('id', id).eq('barberia_id', barberiaId).select('id')
+        const error = unconfirmedUpdate(response, id)
+        if (!error) { confirmedValue = valueToSave; return true }
+        if (servicioWritesRef.current[key]?.latest === valueToSave) {
+          if (anterior) setServicios((prev) => restoreRejectedField(prev, id, field, valueToSave, confirmedValue))
+          const duplicate = error.code === '23505' || /duplicate|unique|nombre/i.test(error.message || '')
+          reportError(duplicate ? 'Ya existe un servicio con ese nombre' : 'No se pudo actualizar el servicio', error)
+        }
         return false
       } catch (error) {
-        if (servicioWritesRef.current[key]?.latest === valueToSave && anterior) setServicios((prev) => prev.map((s) => (s.id === id ? anterior : s)))
-        reportError('No se pudo actualizar el servicio', error)
+        if (servicioWritesRef.current[key]?.latest === valueToSave) {
+          if (anterior) setServicios((prev) => restoreRejectedField(prev, id, field, valueToSave, confirmedValue))
+          reportError('No se pudo actualizar el servicio', error)
+        }
         return false
       }
     })
@@ -1456,8 +1472,10 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   // "ganar" un click viejo por llegar después que uno nuevo.
   const updateBarbero = async (id, field, value) => {
     const anterior = barberos.find((barbero) => barbero.id === id)
+    let confirmedValue = anterior?.[field]
+    let attemptedValue = value
     setBarberos((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)))
-    if (!isSupabaseConfigured) return
+    if (!isSupabaseConfigured) return true
 
     const key = `${id}:${field}`
     const estado = barberoWritesRef.current[key] || { inFlight: false, latest: value, promise: null }
@@ -1473,8 +1491,19 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
     estado.promise = (async () => {
       while (true) {
         const valorAGuardar = estado.latest
-        const { error } = await supabase.from('barberos').update({ [dbField]: valorAGuardar }).eq('id', id)
-        if (error) reportError('No se pudo actualizar el barbero', error)
+        attemptedValue = valorAGuardar
+        let response
+        try {
+          response = await supabase.from('barberos').update({ [dbField]: valorAGuardar }).eq('id', id).eq('barberia_id', barberiaId).select('id')
+        } catch (error) {
+          response = { error }
+        }
+        const error = unconfirmedUpdate(response, id)
+        if (!error) confirmedValue = valorAGuardar
+        if (error && estado.latest === valorAGuardar) {
+          if (anterior) setBarberos((prev) => restoreRejectedField(prev, id, field, valorAGuardar, confirmedValue))
+          reportError('No se pudo actualizar el barbero', error)
+        }
         if (!error && field === 'habilidades') {
           // La pantalla heredada guarda ids derivados del nombre. Convertimos
           // esa selección al vínculo relacional que usa la reserva pública.
@@ -1517,11 +1546,11 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
             }
           }
         }
-        if (estado.latest === valorAGuardar) break // no llego nada nuevo mientras se guardaba, listo
+        if (estado.latest === valorAGuardar) return !error // no llegó nada nuevo mientras se guardaba
         // si llego un valor mas nuevo mientras se guardaba, el loop repite y lo manda
       }
     })().catch((error) => {
-      if (estado.latest === value && anterior) setBarberos((prev) => prev.map((barbero) => (barbero.id === id ? anterior : barbero)))
+      if (estado.latest === attemptedValue && anterior) setBarberos((prev) => restoreRejectedField(prev, id, field, attemptedValue, confirmedValue))
       reportError('No se pudo actualizar el barbero', error)
       return false
     }).finally(() => {
