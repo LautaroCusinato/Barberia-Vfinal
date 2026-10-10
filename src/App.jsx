@@ -149,8 +149,19 @@ function demoBookingDate(todayKey, barberos, servicios, bloqueos, turnos, timezo
   return todayKey
 }
 
+// El tema es una preferencia visual opcional: si el navegador bloquea el
+// almacenamiento (modo privado, cuota llena, política) el panel sigue abierto
+// con el tema en memoria. No usar para datos que una operación necesita guardar.
+function leerPreferencia(key) {
+  try { return window.localStorage.getItem(key) } catch { return null }
+}
+
+function guardarPreferencia(key, value) {
+  try { window.localStorage.setItem(key, value) } catch { /* preferencia opcional */ }
+}
+
 function initialTheme(tenantId, storageKey = null) {
-  const saved = localStorage.getItem(storageKey || tenantStorageKey('theme', tenantId)) || localStorage.getItem(LEGACY_THEME_KEY)
+  const saved = leerPreferencia(storageKey || tenantStorageKey('theme', tenantId)) || leerPreferencia(LEGACY_THEME_KEY)
   if (saved === 'light' || saved === 'dark') return saved
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
@@ -321,7 +332,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem(themeKey, theme)
+    guardarPreferencia(themeKey, theme)
   }, [theme, themeKey])
 
   const toggleTheme = () => {
@@ -1706,7 +1717,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
         {demoMode ? (
           <div className="demo-mode-banner" role="status">
             <div className="demo-mode-banner__message"><Info size={15} /><span><strong>Modo demostración</strong><small>Los cambios son temporales y sólo viven en este navegador. WhatsApp está en validación y esta demo no envía mensajes.</small></span></div>
-            <div className="demo-mode-banner__actions"><button type="button" className="btn btn-primary" onClick={() => window.location.assign('/registro?source=demo')}>Crear mi cuenta</button><button type="button" className="btn" onClick={() => { if (!window.confirm('¿Reiniciar la demo y borrar los cambios temporales?')) return; resetDemoSession(demoSessionId); localStorage.removeItem(`austral-demo-settings:${barberiaId}`); window.location.reload() }}>Reiniciar demo</button><button type="button" className="btn btn-ghost" onClick={() => window.location.assign('/')}>Salir</button></div>
+            <div className="demo-mode-banner__actions"><button type="button" className="btn btn-primary" onClick={() => window.location.assign('/registro?source=demo')}>Crear mi cuenta</button><button type="button" className="btn" onClick={() => { if (!window.confirm('¿Reiniciar la demo y borrar los cambios temporales?')) return; resetDemoSession(demoSessionId); try { localStorage.removeItem(`austral-demo-settings:${barberiaId}`) } catch { /* sin almacenamiento no hay ajustes guardados */ } window.location.reload() }}>Reiniciar demo</button><button type="button" className="btn btn-ghost" onClick={() => window.location.assign('/')}>Salir</button></div>
           </div>
         ) : !isSupabaseConfigured && (
           <div className="demo-banner">
