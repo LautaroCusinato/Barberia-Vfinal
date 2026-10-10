@@ -175,6 +175,12 @@ Deno.serve(async (request) => {
     const manualRecipient = manual ? await manualQaRecipient((name: string) => Deno.env.get(name), senderHashValue, metadata.qa_manual_sender_phone) : null
     const recipient = manual ? manualRecipient?.recipient : canonicalArgentineMobile(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT'))
     const recipientHash = manual ? manualRecipient?.recipientHash || '' : textFrom(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
+    // Chat pausado por el equipo: no se agenda automáticamente para ese cliente.
+    if (recipient) {
+      const { data: chat, error: chatError } = await admin.from('clientes').select('bot_pausado').eq('barberia_id', tenantId).eq('telefono', recipient).maybeSingle()
+      if (chatError) return json({ error: 'manual_pause_lookup_failed', mutation_allowed: false }, 502)
+      if (chat?.bot_pausado === true) return json({ error: 'bot_paused', mutation_allowed: false, booking_mutation_executed: false }, 409)
+    }
     const senderMatches = Boolean(recipient && recipientHash && constantTimeEqual(senderHashValue, recipientHash))
     const conversationScope = {
       tenantId: connection.barberia_id,

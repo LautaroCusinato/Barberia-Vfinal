@@ -21,7 +21,7 @@ const ETIQUETA_ENVIO = {
   fallido: 'No enviado',
 }
 
-export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage, pacientes = [], focusRequest = null, onFocusRequestHandled, estadoChatPorCliente = {} }) {
+export default function Messages({ conversaciones, full, selectedId, onSelectConversation, onSendMessage, pacientes = [], focusRequest = null, onFocusRequestHandled, estadoChatPorCliente = {}, botDisponible = false, botGeneralActivo = true, onToggleBotChat }) {
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false)
   // Borrador y resultado del último envío por conversación: cambiar de hilo (o
   // abrir uno desde Clientes) nunca lleva el texto escrito para otro cliente.
@@ -58,6 +58,15 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
   const sendError = sendErrors[selectedConversationId] ?? null
   const setDraft = (value) => setDrafts((prev) => ({ ...prev, [selectedConversationId]: value }))
   const estadoChat = selected?.clienteId != null ? estadoChatPorCliente[selected.clienteId] : null
+  // Bot de este chat: verde si responde solo, rojo si lo atiende una persona.
+  const clienteSeleccionado = selected?.clienteId != null ? pacientes.find((p) => p.id === selected.clienteId) : null
+  const botChatActivo = botGeneralActivo && clienteSeleccionado?.bot_pausado !== true
+  const [botChatGuardando, setBotChatGuardando] = useState(false)
+  const alternarBot = async () => {
+    if (!onToggleBotChat || !clienteSeleccionado || botChatGuardando || !botGeneralActivo) return
+    setBotChatGuardando(true)
+    try { await onToggleBotChat(clienteSeleccionado.id) } finally { setBotChatGuardando(false) }
+  }
 
   const scrollToBottom = useCallback((behavior = 'auto') => {
     const thread = threadRef.current
@@ -392,6 +401,19 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
           )}
           {onSendMessage && (
             <div className="thread-composer" aria-busy={sending}>
+              {botDisponible && clienteSeleccionado && onToggleBotChat && (
+                <button
+                  type="button"
+                  className={`btn-icon-plain chat-bot-toggle ${botChatActivo ? 'is-on' : 'is-off'}`}
+                  onClick={alternarBot}
+                  disabled={botChatGuardando || !botGeneralActivo}
+                  aria-pressed={botChatActivo}
+                  aria-label={botChatActivo ? `Bot activo en el chat con ${selected.paciente}. Pausar` : `Bot pausado en el chat con ${selected.paciente}. Reanudar`}
+                  title={!botGeneralActivo ? 'El bot está apagado para todo el negocio' : botChatActivo ? 'Bot activo en este chat · tocá para pausarlo' : 'Bot pausado en este chat · tocá para que vuelva a responder'}
+                >
+                  <Bot size={17} strokeWidth={2.25} aria-hidden="true" />
+                </button>
+              )}
               <textarea
                 ref={composerRef}
                 className="note-input"
@@ -409,7 +431,7 @@ export default function Messages({ conversaciones, full, selectedId, onSelectCon
                 onClick={() => enviar()}
                 disabled={!draft.trim() || sending}
                 aria-label="Enviar"
-                title="Enviar (desactiva el bot)"
+                title={botDisponible ? 'Enviar (pausa el bot en este chat)' : 'Enviar'}
               >
                 <Send size={14} strokeWidth={2.5} />
               </button>

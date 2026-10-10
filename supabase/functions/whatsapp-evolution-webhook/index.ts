@@ -373,10 +373,16 @@ async function loadConversationState(admin: ReturnType<typeof adminClient>, conn
 
 // Pausa por atención humana del negocio resuelto en el servidor. Un error de
 // lectura corta el procesamiento del mensaje: sin respuesta automática.
-async function loadBotPause(admin: ReturnType<typeof adminClient>, tenantId: number) {
-  const { data, error } = await admin.from('config').select('barberia_id,clave,valor').eq('barberia_id', tenantId).eq('clave', 'bot_activo')
-  if (error) throw new Error('manual_pause_lookup_failed')
-  return evaluateBotPause(data || [], tenantId)
+// Además del apagado general, cada chat puede tener el bot pausado
+// (clientes.bot_pausado): el mensaje se guarda, pero no hay respuesta.
+async function loadBotPause(admin: ReturnType<typeof adminClient>, tenantId: number, phone: string | null = null) {
+  const [config, chat] = await Promise.all([
+    admin.from('config').select('barberia_id,clave,valor').eq('barberia_id', tenantId).eq('clave', 'bot_activo'),
+    phone ? admin.from('clientes').select('bot_pausado').eq('barberia_id', tenantId).eq('telefono', phone).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  ])
+  if (config.error || chat.error) throw new Error('manual_pause_lookup_failed')
+  const pause = evaluateBotPause(config.data || [], tenantId)
+  return chat.data?.bot_pausado === true ? { ...pause, botActive: false, chatPaused: true } : pause
 }
 
 // El nombre se pide sólo si el teléfono verificado por el proveedor no tiene
@@ -470,7 +476,7 @@ async function processInboundMessage({
   const [, { data: existing, error: existingError }, pauseLookup] = await Promise.all([
     panelMessage ? persistManualMessage(admin, panelMessage) : null,
     admin.from('saas_automation_shadow_runs').select('id,metadata').eq('integration_id', connection.integration_id).eq('event_id', inbound.eventId).maybeSingle(),
-    loadBotPause(admin, Number(connection.barberia_id)).then((value) => ({ value }), (error) => ({ error })),
+    loadBotPause(admin, Number(connection.barberia_id), canonicalArgentineMobile(inbound.remoteJid)).then((value) => ({ value }), (error) => ({ error })),
   ])
   if (existingError) return { body: { error: 'shadow_lookup_failed', mutation_blocked: true }, status: 502 }
   if (existing) {
@@ -486,7 +492,7 @@ async function processInboundMessage({
   const tenantId = Number(connection.barberia_id)
   if ('error' in pauseLookup) throw pauseLookup.error
   const pause = pauseLookup.value
-  if (!pause.botActive) return { body: { received: true, accepted: false, event: INBOUND_EVENT, tenant_id: connection.barberia_id, reason: 'bot_paused', mutation_blocked: true, outbound_send: false }, status: 202 }
+  if (!pause.botActive) return { body: { received: true, accepted: false, event: INBOUND_EVENT, tenant_id: connection.barberia_id, reason: pause.chatPaused ? 'chat_bot_paused' : 'bot_paused', mutation_blocked: true, outbound_send: false }, status: 202 }
   // QA manual usa la misma identidad canónica que Clientes y la reserva web,
   // también si el proveedor entrega el celular argentino sin el 9.
   const senderHashValue = await senderHash(manual && phone ? `${phone}@s.whatsapp.net` : inbound.remoteJid)

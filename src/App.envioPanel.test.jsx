@@ -191,36 +191,39 @@ describe('cambio de negocio con un envío en curso', () => {
   })
 })
 
-describe('rechazo del envío manual: el bot queda pausado y se puede reanudar', () => {
-  it('reserva atómica: el servidor ya pausó; el panel lo muestra, conserva el borrador y el owner puede reanudar', async () => {
+describe('rechazo del envío manual: el bot queda pausado sólo en ese chat y se puede reanudar', () => {
+  it('reserva atómica: el servidor ya pausó el chat; el ícono lo muestra en rojo, sin cartel, y se reanuda desde ahí', async () => {
     render(<App barberiaId={1} barberiaNombre="Negocio A" />)
     const compositor = await escribirYEnviar('Ana Uno', 'Hola A')
+    expect(screen.getByRole('button', { name: /Bot activo en el chat con Ana Uno/ })).toHaveAttribute('aria-pressed', 'true')
     await waitFor(() => expect(falso.estado.envios).toHaveLength(1))
     await act(async () => {
       falso.estado.envios[0].resolve(errorDeFuncion(502, { error: { code: 'panel_send_rejected', message: 'WhatsApp rechazó el envío. El mensaje no salió y el borrador quedó guardado para reintentar.' }, contract: 2, bot_paused: true }))
     })
     expect(await screen.findByText(/WhatsApp rechazó el envío/)).toBeInTheDocument()
     expect(compositor).toHaveValue('Hola A')
-    expect(await screen.findByText(BANNER_PAUSA)).toBeInTheDocument()
-    // El servidor ya lo pausó: el navegador no repite la pausa.
-    expect(falso.estado.rpcs.filter((r) => r.nombre === 'pause_whatsapp_bot_for_manual_reply')).toHaveLength(0)
+    const icono = await screen.findByRole('button', { name: /Bot pausado en el chat con Ana Uno/ })
+    expect(icono).toHaveClass('is-off')
+    expect(screen.queryByText(BANNER_PAUSA)).not.toBeInTheDocument()
+    // El servidor ya lo pausó: el navegador no repite la pausa ni toca el bot general.
+    expect(falso.estado.rpcs.filter((r) => r.nombre === 'pausar_bot_chat' || r.nombre === 'pause_whatsapp_bot_for_manual_reply')).toHaveLength(0)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reanudar bot' }))
-    await waitFor(() => expect(screen.queryByText(BANNER_PAUSA)).not.toBeInTheDocument())
-    const reanudar = falso.estado.llamadas.filter((q) => q.table === 'config' && q.op === 'upsert')
-    expect(reanudar).toHaveLength(1)
-    expect(reanudar[0].payload).toEqual({ barberia_id: 1, clave: 'bot_activo', valor: 'true' })
+    fireEvent.click(icono)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Bot activo en el chat con Ana Uno/ })).toHaveClass('is-on'))
+    expect(falso.estado.rpcs.filter((r) => r.nombre === 'pausar_bot_chat')).toEqual([{ nombre: 'pausar_bot_chat', args: { p_barberia_id: 1, p_cliente_id: 101, p_pausado: false } }])
+    expect(falso.estado.llamadas.filter((q) => q.table === 'config' && q.op === 'upsert')).toHaveLength(0)
   })
 
-  it('sin la migración (el servidor no pausó): el panel pausa igual tras un rechazo del proveedor', async () => {
+  it('sin la pausa del servidor: el panel pausa sólo ese chat tras un rechazo del proveedor', async () => {
     render(<App barberiaId={1} barberiaNombre="Negocio A" />)
     await escribirYEnviar('Ana Uno', 'Hola A')
     await waitFor(() => expect(falso.estado.envios).toHaveLength(1))
     await act(async () => {
       falso.estado.envios[0].resolve(errorDeFuncion(502, { error: { code: 'panel_send_rejected', message: 'WhatsApp rechazó el envío.' }, contract: 2, bot_paused: false }))
     })
-    expect(await screen.findByText(BANNER_PAUSA)).toBeInTheDocument()
-    expect(falso.estado.rpcs.filter((r) => r.nombre === 'pause_whatsapp_bot_for_manual_reply')).toEqual([{ nombre: 'pause_whatsapp_bot_for_manual_reply', args: { p_barberia_id: 1 } }])
+    expect(await screen.findByRole('button', { name: /Bot pausado en el chat con Ana Uno/ })).toBeInTheDocument()
+    expect(falso.estado.rpcs.filter((r) => r.nombre === 'pausar_bot_chat')).toEqual([{ nombre: 'pausar_bot_chat', args: { p_barberia_id: 1, p_cliente_id: 101, p_pausado: true } }])
+    expect(falso.estado.rpcs.filter((r) => r.nombre === 'pause_whatsapp_bot_for_manual_reply')).toHaveLength(0)
   })
 
   it('un bloqueo antes de intentar el envío (límite, teléfono) no pausa el bot', async () => {

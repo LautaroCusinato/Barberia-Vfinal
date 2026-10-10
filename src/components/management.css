@@ -811,6 +811,7 @@
   .messages-grid-full .bubble-meta { margin-top: 6px; font-size: 10px; }
   .messages-grid-full .thread-composer { margin-top: 0; padding-top: 10px; }
   .messages-grid-full .thread-composer .btn { min-width: 44px; min-height: 44px; }
+  .messages-grid-full .thread-composer .chat-bot-toggle { width: 44px; height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

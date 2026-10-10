@@ -1020,6 +1020,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
+
+/* Bot de este chat: verde = responde solo, rojo = lo atiende una persona. */
+.chat-bot-toggle {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm, 10px);
+  border: 1px solid transparent;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.chat-bot-toggle.is-on { background: var(--green-soft); color: var(--green-text); border-color: color-mix(in srgb, var(--green-text) 35%, transparent); }
+.chat-bot-toggle.is-off { background: var(--rose-soft); color: var(--rose-text); border-color: color-mix(in srgb, var(--rose-text) 35%, transparent); }
+.chat-bot-toggle:disabled { opacity: .6; cursor: not-allowed; }
+.chat-bot-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .thread-composer .btn { flex-shrink: 0; padding: 9px 11px; }
 .thread-composer-notice { margin: 0.6rem 0 0; font-size: 12px; color: var(--ink-soft); }
 

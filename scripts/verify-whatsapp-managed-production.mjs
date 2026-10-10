@@ -169,13 +169,30 @@ assert.equal((await send('¿Cuánto sale el corte?')).status, 503)
 assert.equal(routeCalls.length, routesBefore)
 setEnv()
 
+// Chat pausado (lo atiende una persona): se guarda, no responde ni reserva,
+// y otro cliente del mismo negocio sigue atendido por el bot.
+const ficha = db.tables.clientes.find((c) => c.barberia_id === TENANT && c.telefono === CLIENT_PHONE)
+ficha.bot_pausado = true
+const inboxChat = db.tables.mensajes.length
+r = await send('¿Hay lugar mañana?')
+assert.equal(r.body.reason, 'chat_bot_paused')
+assert.equal(db.tables.mensajes.length, inboxChat + 1, 'el mensaje del chat pausado llega a la bandeja')
+assert.equal(routeCalls.length, routesBefore, 'sin respuesta automática en ese chat')
+const lastRun = db.tables.saas_automation_shadow_runs.at(-1)
+assert.equal((await outbound({ event_id: lastRun.event_id }, operator)).body.error, 'bot_paused', 'tampoco responde un reintento tardío')
+const otro = await webhook({ event: 'messages.upsert', instance: INSTANCE, data: { key: { id: 'OTRO1', remoteJid: '5491155557777@s.whatsapp.net', fromMe: false }, message: { conversation: '¿Cuánto sale el corte?' }, messageType: 'conversation', messageTimestamp: Math.floor(Date.now() / 1000) } }, { 'X-Austral-Webhook-Secret': 'harness-secret' })
+assert.equal(otro.status, 200, JSON.stringify(otro.body))
+assert.equal(routeCalls.length, routesBefore + 1, 'otro cliente sigue con el bot')
+ficha.bot_pausado = false
+const routesAfterChat = routeCalls.length
+
 // Bot pausado por el negocio: guarda el mensaje pero no responde.
 db.tables.config.push({ barberia_id: TENANT, clave: 'bot_activo', valor: 'false' })
 const inboxBefore = db.tables.mensajes.length
 r = await send('¿Hay lugar el sábado?')
 assert.equal(r.body.reason, 'bot_paused')
 assert.equal(db.tables.mensajes.length, inboxBefore + 1, 'el mensaje igual llega a la bandeja')
-assert.equal(routeCalls.length, routesBefore)
+assert.equal(routeCalls.length, routesAfterChat)
 
 globalThis.fetch = realFetch
 console.log(`WhatsApp administrado producción (negocio ${TENANT}): conversación, bandeja, reserva, confirmación única y apagado PASS (simulado)`)

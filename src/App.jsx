@@ -3,7 +3,7 @@ import './components/agenda.css'
 import './components/management.css'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Info, CalendarCheck, MessageCircle, Plus, Bot, Download, AlertTriangle, X, Ban } from 'lucide-react'
+import { Info, CalendarCheck, MessageCircle, Plus, Download, AlertTriangle, X, Ban } from 'lucide-react'
 import NewTurnoModal from './components/NewTurnoModal'
 import BloqueosModal from './components/BloqueosModal'
 import { statusMeta } from './components/StatusSelect'
@@ -62,7 +62,6 @@ const TZ = 'America/Argentina/Buenos_Aires'
 const LEGACY_THEME_KEY = 'barberia-central-theme'
 const WHATSAPP_PANEL_SEND_FUNCTION = 'whatsapp-panel-send'
 const AVISO_DURACION_MS = 7000
-const AVISO_BOT_REANUDADO = 'El bot de WhatsApp volvió a responder automáticamente.'
 
 // Traduce los rechazos de la base (exclusión, triggers de agenda) a un
 // mensaje accionable. Devuelve null si el error no es de reglas de agenda.
@@ -380,33 +379,6 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
     navigateFromMenu('configuracion')
     setAviso('Gestioná la conexión de WhatsApp desde Configuración.')
     return
-  }
-
-  // Reanuda la respuesta automática después de un traspaso manual. La
-  // política de `config` sólo permite escribir al owner; para otros roles la
-  // base rechaza el cambio y lo explicamos sin tratarlo como falla técnica.
-  const [reanudandoBot, setReanudandoBot] = useState(false)
-  const reanudarBot = async () => {
-    if (!isSupabaseConfigured || reanudandoBot) return
-    setReanudandoBot(true)
-    try {
-      const { data, error } = await supabase
-        .from('config')
-        .upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: 'true' })
-        .select('clave')
-      if (error || !data?.length) {
-        const sinPermiso = !error || error.code === '42501' || /row-level security|permission/i.test(String(error.message || ''))
-        if (sinPermiso) mostrarValidacion('Sólo el dueño del negocio puede reanudar el bot de WhatsApp.')
-        else reportError('No se pudo reanudar el bot de WhatsApp', error)
-        return
-      }
-      setBotActivo(true)
-      setAviso(AVISO_BOT_REANUDADO)
-    } catch (error) {
-      reportError('No se pudo reanudar el bot de WhatsApp', error)
-    } finally {
-      setReanudandoBot(false)
-    }
   }
 
   const verNotasDePaciente = (clienteId) => {
@@ -1227,32 +1199,32 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
 
   const deleteNota = (id) => eliminarConDeshacer(notas, setNotas, id, 'notas', 'Nota eliminada', 'No se pudo eliminar la nota')
 
-  // Traspaso a atención humana: una respuesta manual pausa el bot. Es la
-  // única escritura de `bot_activo` desde el navegador y sólo puede apagarlo;
-  // la RPC lo permite a cualquier miembro (la política de `config` es sólo
-  // para owners y dejaba al bot activo si respondía otro rol). Con la reserva
-  // atómica el servidor ya lo pausó antes del envío (`yaPausado`).
-  const pausarBotPorRespuestaManual = async (yaPausado) => {
-    if (yaPausado) {
-      setBotActivo(false)
-      setAviso((actual) => (actual === AVISO_BOT_REANUDADO ? '' : actual))
-      return
-    }
-    if (!botActivo) return
-    setBotActivo(false)
-    // El aviso de "volvió a responder" ya no es cierto: se retira.
-    setAviso((actual) => (actual === AVISO_BOT_REANUDADO ? '' : actual))
-    if (!isSupabaseConfigured) return
-    let { error } = await supabase.rpc('pause_whatsapp_bot_for_manual_reply', { p_barberia_id: barberiaId })
-    // Compatibilidad mientras la migración no esté aplicada: el owner
-    // todavía puede pausarlo con la escritura directa.
-    if (error?.code === 'PGRST202') {
-      ({ error } = await supabase.from('config').upsert({ barberia_id: barberiaId, clave: 'bot_activo', valor: 'false' }))
-    }
+  // Bot por chat (clientes.bot_pausado). Responder a mano pausa el bot sólo
+  // en ese chat; el ícono junto a "Enviar" lo pausa o lo reanuda. El resto de
+  // los clientes sigue atendido por el bot. Con la reserva atómica el servidor
+  // ya lo pausó antes del envío (`yaPausado`).
+  const marcarBotChat = (clienteId, pausado) => setPacientes((prev) => prev.map((p) => (p.id === clienteId ? { ...p, bot_pausado: pausado } : p)))
+  const guardarBotChat = async (clienteId, pausado) => {
+    const anterior = pacientes.find((p) => p.id === clienteId)?.bot_pausado === true
+    marcarBotChat(clienteId, pausado)
+    if (!isSupabaseConfigured || demoMode) return true
+    const { error } = await supabase.rpc('pausar_bot_chat', { p_barberia_id: barberiaId, p_cliente_id: clienteId, p_pausado: pausado })
     if (error) {
-      setBotActivo(true)
-      reportError('No se pudo pausar el bot: puede seguir respondiendo este chat', error)
+      marcarBotChat(clienteId, anterior)
+      reportError(pausado ? 'No se pudo pausar el bot en este chat' : 'No se pudo reanudar el bot en este chat', error)
+      return false
     }
+    return true
+  }
+  const pausarBotPorRespuestaManual = async (clienteId, yaPausado) => {
+    if (clienteId == null) return
+    if (yaPausado) { marcarBotChat(clienteId, true); return }
+    if (pacientes.find((p) => p.id === clienteId)?.bot_pausado === true) return
+    await guardarBotChat(clienteId, true)
+  }
+  const alternarBotChat = (clienteId) => {
+    const pausado = pacientes.find((p) => p.id === clienteId)?.bot_pausado === true
+    return guardarBotChat(clienteId, !pausado)
   }
 
   const sendMensaje = async (paciente, texto, clienteId, opciones = {}) => {
@@ -1306,7 +1278,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
         // operador ya tomó la conversación y el bot queda pausado igual.
         // Reanudarlo es una acción explícita ("Reanudar bot"). Un bloqueo
         // previo al envío (límite, teléfono, conexión) no pausa.
-        if (envio.intentado) await pausarBotPorRespuestaManual(envio.botPausado === true)
+        if (envio.intentado) await pausarBotPorRespuestaManual(clienteId, envio.botPausado === true)
         return { ok: false, message: envio.aviso }
       }
       if (envio.mensaje) agregarAlHilo(envio.mensaje)
@@ -1315,11 +1287,11 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
       // traspaso a atención humana. Con la reserva atómica ya lo hizo el
       // servidor, antes del envío.
       const avisoEnvio = envio.aviso || ''
-      await pausarBotPorRespuestaManual(envio.botPausado === true)
+      await pausarBotPorRespuestaManual(clienteId, envio.botPausado === true)
       return avisoEnvio ? { ok: true, aviso: avisoEnvio } : true
     }
 
-    await pausarBotPorRespuestaManual(false)
+    await pausarBotPorRespuestaManual(clienteId, false)
     return true
   }
 
@@ -1803,17 +1775,6 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
           </div>
         )}
 
-        {/* Sólo cuando hay algo que contar: WhatsApp conectado con automatización
-            habilitada pero el bot en pausa. Sin conexión, el sidebar ya muestra
-            el estado y la acción para configurarla; repetirlo acá era ruido fijo. */}
-        {!demoMode && !botActivo && whatsappIntegration.connected && whatsappIntegration.automationEnabled && (
-          <div className="demo-banner bot-paused-banner" role="status" style={{ background: 'var(--rose-soft)', color: 'var(--rose-text)' }}>
-            <Bot size={15} aria-hidden="true" />
-            <span>El bot de WhatsApp está en pausa: las conversaciones se atienden de forma manual desde el panel.</span>
-            <button type="button" className="btn btn-ghost" onClick={reanudarBot} disabled={reanudandoBot}>{reanudandoBot ? 'Reanudando…' : 'Reanudar bot'}</button>
-          </div>
-        )}
-
         {view === 'resumen' && (
           <div className="fade-in view-fit view-fit--resumen">
             <div className="page-header">
@@ -1973,6 +1934,9 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
                 focusRequest={chatFocusRequest}
                 onFocusRequestHandled={consumirFocoChat}
                 estadoChatPorCliente={estadoChatPorCliente}
+                botDisponible={!demoMode && whatsappIntegration.connected && whatsappIntegration.automationEnabled}
+                botGeneralActivo={botActivo}
+                onToggleBotChat={alternarBotChat}
               />
             )}
           </div>

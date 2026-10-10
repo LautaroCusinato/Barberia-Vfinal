@@ -64,9 +64,15 @@ async function finishClaim(admin: ReturnType<typeof adminClient>, integrationId:
   return !error && data === true
 }
 
-async function botPauseBlock(admin: ReturnType<typeof adminClient>, tenantId: number) {
-  const { data, error } = await admin.from('config').select('barberia_id,clave,valor').eq('barberia_id', tenantId).eq('clave', 'bot_activo')
-  if (error) return 'manual_pause_lookup_failed'
+async function botPauseBlock(admin: ReturnType<typeof adminClient>, tenantId: number, recipient: string | null = null) {
+  const phone = recipient ? canonicalArgentineMobile(recipient) : null
+  const [{ data, error }, chat] = await Promise.all([
+    admin.from('config').select('barberia_id,clave,valor').eq('barberia_id', tenantId).eq('clave', 'bot_activo'),
+    phone ? admin.from('clientes').select('bot_pausado').eq('barberia_id', tenantId).eq('telefono', phone).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  ])
+  if (error || chat.error) return 'manual_pause_lookup_failed'
+  // Chat tomado por una persona del equipo: este cliente no recibe respuestas automáticas.
+  if (chat.data?.bot_pausado === true) return 'bot_paused'
   try { return evaluateBotPause(data || [], tenantId).botActive ? null : 'bot_paused' }
   catch { return 'manual_pause_lookup_failed' }
 }
@@ -296,7 +302,7 @@ Deno.serve(async (request) => {
     // La pausa por atención humana se vuelve a leer justo antes de enviar: si
     // alguien del equipo tomó el chat después de la propuesta, no se responde.
     if (manual) {
-      const paused = await botPauseBlock(admin, tenantId)
+      const paused = await botPauseBlock(admin, tenantId, recipient)
       if (paused) return json({ error: paused, outbound_allowed: false }, paused === 'bot_paused' ? 409 : 502)
     }
     const recipientHash = manual ? manualRecipient?.recipientHash || '' : safeString(Deno.env.get('WHATSAPP_OUTBOUND_QA_RECIPIENT_HASH'))
