@@ -108,10 +108,22 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
       }
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
-      if (!focusable.includes(document.activeElement)) {
+      const active = document.activeElement
+      if (!container.contains(active)) {
         event.preventDefault()
         const target = event.shiftKey ? last : first
         target.focus()
+      } else if (!focusable.includes(active)) {
+        // Encabezado con tabIndex=-1 o el propio contenedor: el navegador
+        // sigue el orden del DOM; sólo envolvemos si no queda nada después.
+        const siguiente = (el) => active.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
+        const hayDestino = event.shiftKey
+          ? focusable.some((el) => !siguiente(el))
+          : focusable.some((el) => siguiente(el))
+        if (!hayDestino) {
+          event.preventDefault()
+          ;(event.shiftKey ? last : first).focus()
+        }
       } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault()
         last.focus()

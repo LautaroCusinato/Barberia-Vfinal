@@ -43,3 +43,32 @@ describe('FocusTrap', () => {
     expect(screen.getByRole('button', { name: 'Primero' })).toHaveFocus()
   })
 })
+
+describe('FocusTrap: revisión 48', () => {
+  it('Tab desde un encabezado tabIndex=-1 sigue el orden del DOM (BloqueosModal)', async () => {
+    render(
+      <FocusTrap>
+        <button type="button">Cerrar</button>
+        <button type="button">Bloquear</button>
+        <h3 tabIndex={-1}>Fechas bloqueadas</h3>
+        <button type="button">Desbloquear</button>
+        <button type="button">Último</button>
+      </FocusTrap>,
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveFocus())
+    const heading = screen.getByRole('heading', { name: 'Fechas bloqueadas' })
+    heading.focus()
+    // El navegador mueve el foco al siguiente control si el trap no lo impide.
+    expect(fireEvent.keyDown(document, { key: 'Tab', cancelable: true })).toBe(true)
+    heading.focus()
+    expect(fireEvent.keyDown(document, { key: 'Tab', shiftKey: true, cancelable: true })).toBe(true)
+  })
+
+  it('Tab desde un encabezado posterior al último control vuelve al primero', async () => {
+    render(<FocusTrap><button type="button">Primero</button><h3 tabIndex={-1}>Final</h3></FocusTrap>)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Primero' })).toHaveFocus())
+    screen.getByRole('heading', { name: 'Final' }).focus()
+    expect(fireEvent.keyDown(document, { key: 'Tab', cancelable: true })).toBe(false)
+    expect(screen.getByRole('button', { name: 'Primero' })).toHaveFocus()
+  })
+})
