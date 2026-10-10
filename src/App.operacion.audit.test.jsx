@@ -145,3 +145,42 @@ describe('Operación: rollback por campo y resultado confirmado', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
+
+describe('Operación: revisión independiente de 52 (escenarios adicionales)', () => {
+  it('A y B fallan en la misma cola: vuelve al valor confirmado previo a A, no a A', async () => {
+    const name = await open()
+    fireEvent.change(name, { target: { value: 'Nombre A' } })
+    await waitFor(() => expect(writes('servicios')).toHaveLength(1))
+    fireEvent.change(name, { target: { value: 'Nombre B' } })
+    await act(async () => writes('servicios')[0].finish(fail))
+    await waitFor(() => expect(writes('servicios')).toHaveLength(2))
+    await act(async () => writes('servicios')[1].finish(fail))
+    expect(screen.getByLabelText('Nombre del servicio *')).toHaveValue('Corte')
+    expect(mock.state.db.servicios[0].nombre).toBe('Corte')
+  })
+
+  it('profesional: A falla, B falla en la misma cola: vuelve a Mateo', async () => {
+    await open()
+    const name = screen.getByLabelText('Nombre *')
+    fireEvent.change(name, { target: { value: 'Nombre A' } })
+    await waitFor(() => expect(writes('barberos')).toHaveLength(1))
+    fireEvent.change(name, { target: { value: 'Nombre B' } })
+    await act(async () => writes('barberos')[0].finish(fail))
+    await waitFor(() => expect(writes('barberos')).toHaveLength(2))
+    await act(async () => writes('barberos')[1].finish(fail))
+    expect(screen.getByLabelText('Nombre *')).toHaveValue('Mateo')
+    expect(mock.state.db.barberos[0].nombre).toBe('Mateo')
+  })
+
+  it('una edición nueva tras un rechazo no queda pisada por el rollback del rechazo', async () => {
+    const name = await open()
+    fireEvent.change(name, { target: { value: 'Nombre rechazado' } })
+    await waitFor(() => expect(writes('servicios')).toHaveLength(1))
+    await act(async () => writes('servicios')[0].finish(fail))
+    fireEvent.change(name, { target: { value: 'Nombre nuevo' } })
+    await waitFor(() => expect(writes('servicios')).toHaveLength(2))
+    await act(async () => writes('servicios')[1].finish())
+    expect(screen.getByLabelText('Nombre del servicio *')).toHaveValue('Nombre nuevo')
+    expect(mock.state.db.servicios[0].nombre).toBe('Nombre nuevo')
+  })
+})
