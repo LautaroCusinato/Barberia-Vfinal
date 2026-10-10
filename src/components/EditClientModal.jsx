@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { X, UserPen } from 'lucide-react'
 import { PREFIJO_AR, TELEFONO_NACIONAL_DIGITOS, digitosNacionales, soloDigitos, extraerNumeroLocal, formatTelefonoAR } from '../lib/text'
 import PhoneField from './PhoneField'
 import { conPresencia } from '../lib/presencia'
+import { FocusTrap } from './ui'
 
 function EditClientModal({ paciente, onClose, onSubmit }) {
+  const formId = useId()
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState(PREFIJO_AR)
   const [ultimaVisita, setUltimaVisita] = useState('')
@@ -56,9 +58,9 @@ function EditClientModal({ paciente, onClose, onSubmit }) {
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => { if (!saving && e.target === e.currentTarget) onClose() }}>
-      <div className="modal-box">
+      <FocusTrap onEscape={() => { if (!saving) onClose() }} className="modal-box" role="dialog" aria-modal="true" aria-labelledby={`${formId}-title`}>
         <div className="modal-header">
-          <span className="panel-title-icon">
+          <span className="panel-title-icon" id={`${formId}-title`}>
             <UserPen size={17} style={{ color: 'var(--accent)' }} />
             Editar cliente
           </span>
@@ -69,23 +71,23 @@ function EditClientModal({ paciente, onClose, onSubmit }) {
 
         <form onSubmit={submit} aria-busy={saving}>
           <div className="modal-field">
-            <label className="modal-label">Nombre y apellido *</label>
-            <input className="text-input" value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus />
+            <label className="modal-label" htmlFor={`${formId}-name`}>Nombre y apellido *</label>
+            <input id={`${formId}-name`} className="text-input" value={nombre} onChange={(e) => setNombre(e.target.value)} data-autofocus disabled={saving} />
           </div>
 
           {errorMsg && <p className="login-error" role="alert">{errorMsg}</p>}
 
           <div className="modal-field">
-            <label className="modal-label">Teléfono</label>
-            <PhoneField value={telefono} onChange={setTelefono} aria-label="Teléfono" />
+            <label className="modal-label" htmlFor={`${formId}-phone`}>Teléfono</label>
+            <PhoneField id={`${formId}-phone`} value={telefono} onChange={setTelefono} disabled={saving} aria-label="Teléfono" />
             {telefonoLocal.length > 0 && telefonoLocal.length !== TELEFONO_NACIONAL_DIGITOS && (
               <small className="field-error">Completá código de área y número (10 dígitos, sin 0 ni 15) o dejá el teléfono vacío.</small>
             )}
           </div>
 
           <div className="modal-field">
-            <label className="modal-label">Última visita</label>
-            <input className="text-input" type="date" value={ultimaVisita || ''} onChange={(e) => setUltimaVisita(e.target.value)} />
+            <label className="modal-label" htmlFor={`${formId}-visit`}>Última visita</label>
+            <input id={`${formId}-visit`} className="text-input" type="date" value={ultimaVisita || ''} onChange={(e) => setUltimaVisita(e.target.value)} disabled={saving} />
           </div>
 
           <div className="modal-actions">
@@ -95,7 +97,7 @@ function EditClientModal({ paciente, onClose, onSubmit }) {
             </button>
           </div>
         </form>
-      </div>
+      </FocusTrap>
     </div>
   )
 }

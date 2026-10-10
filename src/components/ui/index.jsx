@@ -90,7 +90,7 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
     document.body.style.overflow = 'hidden'
     const focusFirst = () => {
       // [data-autofocus] tiene prioridad aunque no sea el primero del DOM.
-      const target = container.querySelector('[data-autofocus]') || container.querySelector(FOCUSABLE_SELECTOR)
+      const target = container.querySelector('[data-autofocus]:not([disabled])') || container.querySelector(FOCUSABLE_SELECTOR) || container
       target?.focus()
     }
     const frame = window.requestAnimationFrame(focusFirst)
@@ -101,10 +101,18 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
       }
       if (event.key !== 'Tab') return
       const focusable = [...container.querySelectorAll(FOCUSABLE_SELECTOR)]
-      if (focusable.length === 0) return
+      if (focusable.length === 0) {
+        event.preventDefault()
+        container.focus()
+        return
+      }
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
+      if (!focusable.includes(document.activeElement)) {
+        event.preventDefault()
+        const target = event.shiftKey ? last : first
+        target.focus()
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault()
         last.focus()
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -123,7 +131,7 @@ export function FocusTrap({ open = true, onEscape, className = '', children, ...
     }
   }, [open])
 
-  return <div ref={containerRef} className={joinClass('ui-focus-trap', className)} {...props}>{children}</div>
+  return <div ref={containerRef} tabIndex={-1} className={joinClass('ui-focus-trap', className)} {...props}>{children}</div>
 }
 
 export function Modal({ open, onClose, title, labelledBy, children, className = '' }) {

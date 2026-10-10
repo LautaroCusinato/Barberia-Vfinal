@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { X, Banknote, CreditCard, Landmark, Check } from 'lucide-react'
 import { conPresencia } from '../lib/presencia'
+import { FocusTrap } from './ui'
 
 const METODOS = [
   { value: 'efectivo', label: 'Efectivo', Icon: Banknote },
@@ -9,6 +10,7 @@ const METODOS = [
 ]
 
 function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
+  const formId = useId()
   const [monto, setMonto] = useState('')
   const [metodo, setMetodo] = useState('efectivo')
   const [saving, setSaving] = useState(false)
@@ -52,14 +54,14 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
   }
 
   return (
-    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal-box">
+    <div className="modal-overlay" onMouseDown={(e) => { if (!saving && e.target === e.currentTarget) onClose() }}>
+      <FocusTrap onEscape={() => { if (!saving) onClose() }} className="modal-box" role="dialog" aria-modal="true" aria-labelledby={`${formId}-title`}>
         <div className="modal-header">
-          <span className="panel-title-icon">
+          <span className="panel-title-icon" id={`${formId}-title`}>
             <Banknote size={17} style={{ color: 'var(--accent)' }} />
             ¿Cómo se cobró este servicio?
           </span>
-          <button className="btn-icon-plain" onClick={onClose} aria-label="Cerrar">
+          <button className="btn-icon-plain" onClick={onClose} aria-label="Cerrar" disabled={saving}>
             <X size={17} />
           </button>
         </div>
@@ -68,17 +70,19 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
           {turno.paciente} — {turno.motivo || 'Turno'}
         </p>
 
-        <form onSubmit={submit}>
+        <form onSubmit={submit} aria-busy={saving}>
           <div className="modal-field">
-            <label className="modal-label">Monto cobrado *</label>
+            <label className="modal-label" htmlFor={`${formId}-amount`}>Monto cobrado *</label>
             <input
+              id={`${formId}-amount`}
+              data-autofocus
+              disabled={saving}
               className="text-input"
               type="number"
               min="0"
               step="0.01"
               value={monto}
               onChange={(e) => setMonto(e.target.value)}
-              autoFocus
             />
           </div>
 
@@ -91,6 +95,8 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
                   type="button"
                   className={`habilidad-tag ${metodo === value ? 'active' : ''}`}
                   onClick={() => setMetodo(value)}
+                  disabled={saving}
+                  aria-pressed={metodo === value}
                 >
                   <Icon size={13} />
                   {label}
@@ -103,13 +109,13 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
           {errorMsg && <p className="field-error" role="alert">{errorMsg}</p>}
 
           <div className="modal-actions">
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="button" className="btn" onClick={onClose} disabled={saving}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={!valido || saving}>
               {saving ? 'Guardando…' : 'Confirmar cobro'}
             </button>
           </div>
         </form>
-      </div>
+      </FocusTrap>
     </div>
   )
 }

@@ -83,9 +83,9 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
               return (
                 <tr key={p.id}>
                   <td>
-                    <div
-                      className="table-name-cell"
-                      style={{ cursor: 'pointer' }}
+                    <button
+                      type="button"
+                      className="table-name-cell client-name-button"
                       onClick={() => setDetalle(p)}
                       title="Ver ficha completa"
                     >
@@ -93,7 +93,7 @@ export default function Clientes({ pacientes, notas, turnos, onViewNotes, onAddP
                         {initials(p.nombre)}
                       </div>
                       {p.nombre}
-                    </div>
+                    </button>
                   </td>
                   <td data-label="Teléfono" className="management-phone">{formatTelefonoDisplay(p.telefono)}</td>
                   <td>{formatFechaVisible(p.ultima_visita)}</td>

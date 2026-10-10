@@ -821,3 +821,13 @@
   padding-right: 26px;
   font-variant-numeric: tabular-nums;
 }
+
+.client-name-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}

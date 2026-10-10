@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { X, UserPlus } from 'lucide-react'
 import { PREFIJO_AR, TELEFONO_NACIONAL_DIGITOS, digitosNacionales, soloDigitos } from '../lib/text'
 import PhoneField from './PhoneField'
 import { conPresencia } from '../lib/presencia'
+import { FocusTrap } from './ui'
 
 function NewClientModal({ open, onClose, onSubmit }) {
+  const formId = useId()
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState(PREFIJO_AR)
   const [email, setEmail] = useState('')
@@ -56,9 +58,9 @@ function NewClientModal({ open, onClose, onSubmit }) {
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => { if (!saving && e.target === e.currentTarget) onClose() }}>
-      <div className="modal-box">
+      <FocusTrap onEscape={() => { if (!saving) onClose() }} className="modal-box" role="dialog" aria-modal="true" aria-labelledby={`${formId}-title`}>
         <div className="modal-header">
-          <span className="panel-title-icon">
+          <span className="panel-title-icon" id={`${formId}-title`}>
             <UserPlus size={17} style={{ color: 'var(--accent)' }} />
             Agregar cliente
           </span>
@@ -67,29 +69,33 @@ function NewClientModal({ open, onClose, onSubmit }) {
           </button>
         </div>
 
-        <form onSubmit={submit}>
+        <form onSubmit={submit} aria-busy={saving}>
           <div className="modal-field">
-            <label className="modal-label">Nombre y apellido *</label>
+            <label className="modal-label" htmlFor={`${formId}-name`}>Nombre y apellido *</label>
             <input
+              id={`${formId}-name`}
+              data-autofocus
+              disabled={saving}
               className="text-input"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               placeholder="Ej: Juan Pérez"
-              autoFocus
             />
           </div>
 
           <div className="modal-field">
-            <label className="modal-label">Teléfono *</label>
-            <PhoneField value={telefono} onChange={setTelefono} required aria-label="Teléfono" />
+            <label className="modal-label" htmlFor={`${formId}-phone`}>Teléfono *</label>
+            <PhoneField id={`${formId}-phone`} value={telefono} onChange={setTelefono} disabled={saving} required aria-label="Teléfono" />
             {digitosNumero.length > 0 && digitosNumero.length !== TELEFONO_NACIONAL_DIGITOS && (
               <small className="field-error">Completá código de área y número: 10 dígitos, sin 0 ni 15.</small>
             )}
           </div>
 
           <div className="modal-field">
-            <label className="modal-label">Email (opcional)</label>
+            <label className="modal-label" htmlFor={`${formId}-email`}>Email (opcional)</label>
             <input
+              id={`${formId}-email`}
+              disabled={saving}
               className="text-input"
               type="email"
               value={email}
@@ -99,8 +105,10 @@ function NewClientModal({ open, onClose, onSubmit }) {
           </div>
 
           <div className="modal-field">
-            <label className="modal-label">Última visita (opcional)</label>
+            <label className="modal-label" htmlFor={`${formId}-visit`}>Última visita (opcional)</label>
             <input
+              id={`${formId}-visit`}
+              disabled={saving}
               className="text-input"
               type="date"
               value={ultimaVisita}
@@ -121,7 +129,7 @@ function NewClientModal({ open, onClose, onSubmit }) {
             </button>
           </div>
         </form>
-      </div>
+      </FocusTrap>
     </div>
   )
 }

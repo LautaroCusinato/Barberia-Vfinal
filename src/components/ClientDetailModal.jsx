@@ -1,15 +1,23 @@
+import { useId } from 'react'
 import { X, Phone, CalendarDays, StickyNote, MessageCircle } from 'lucide-react'
 import { initials, colorFor } from '../lib/avatar'
 import { statusMeta } from './StatusSelect'
 import { formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
 import { conPresencia } from '../lib/presencia'
 import { notaDelCliente } from '../lib/clientNotes'
+import { FocusTrap } from './ui'
 
 function ClientDetailModal({ paciente, turnos, notas, onClose, onStartChat, tieneMensajes = false }) {
+  const titleId = useId()
   if (!paciente) return null
 
-  const esDelPaciente = (item) =>
-    item.cliente_id != null ? item.cliente_id === paciente.id : item.paciente === paciente.nombre
+  // El nombre del turno puede ser un alias de reserva o el de un homónimo.
+  // Los fixtures antiguos de demo usan paciente_id; Supabase usa cliente_id.
+  const esDelPaciente = (item) => {
+    const clienteId = item.cliente_id ?? item.paciente_id ?? item.clienteId
+    return clienteId != null && String(clienteId) === String(paciente.id)
+      && (item.barberia_id == null || paciente.barberia_id == null || String(item.barberia_id) === String(paciente.barberia_id))
+  }
 
   const turnosDelPaciente = turnos
     .filter(esDelPaciente)
@@ -20,9 +28,9 @@ function ClientDetailModal({ paciente, turnos, notas, onClose, onStartChat, tien
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal-box" style={{ maxWidth: 480 }}>
+      <FocusTrap onEscape={onClose} className="modal-box" style={{ maxWidth: 480 }} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="modal-header">
-          <span className="panel-title-icon" style={{ fontSize: 15.5, fontWeight: 600 }}>
+          <span id={titleId} className="panel-title-icon" style={{ fontSize: 15.5, fontWeight: 600 }}>
             <div className="avatar" style={{ background: colorFor(paciente.nombre), width: 30, height: 30, fontSize: 12 }}>
               {initials(paciente.nombre)}
             </div>
@@ -90,7 +98,7 @@ function ClientDetailModal({ paciente, turnos, notas, onClose, onStartChat, tien
             )}
           </div>
         </div>
-      </div>
+      </FocusTrap>
     </div>
   )
 }
