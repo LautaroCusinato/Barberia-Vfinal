@@ -831,3 +831,10 @@
   text-align: left;
   cursor: pointer;
 }
+
+.settings-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
