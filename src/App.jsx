@@ -1934,8 +1934,8 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
                 focusRequest={chatFocusRequest}
                 onFocusRequestHandled={consumirFocoChat}
                 estadoChatPorCliente={estadoChatPorCliente}
-                botDisponible={!demoMode && whatsappIntegration.connected && whatsappIntegration.automationEnabled}
-                botGeneralActivo={botActivo}
+                botDisponible={demoMode || (whatsappIntegration.connected && whatsappIntegration.automationEnabled)}
+                botGeneralActivo={demoMode || botActivo}
                 onToggleBotChat={alternarBotChat}
               />
             )}

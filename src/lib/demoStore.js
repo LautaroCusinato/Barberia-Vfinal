@@ -57,7 +57,9 @@ function makeSeed() {
   const turnos = turnsSeed.map(([offset, hora, patientId, serviceId, barberId, estado], index) => {
     const service = serviceAt(serviceId)
     const patient = pacientes.find((item) => item.id === patientId)
-    return { id: 1300 + index, fecha: dateOffset(offset), hora, paciente: patient.nombre, paciente_id: patient.id, motivo: service.nombre, estado, servicio_id: service.id, barbero_id: barberId, precio: service.precio, duracion: service.duracion, notas: index % 3 === 0 ? 'Cliente de demostración · preferencia guardada' : '' }
+    return { id: 1300 + index, fecha: dateOffset(offset), hora, paciente: patient.nombre, paciente_id: patient.id, motivo: service.nombre, estado, servicio_id: service.id, barbero_id: barberId, precio: service.precio, duracion: service.duracion, notas: index % 3 === 0 ? 'Cliente de demostración · preferencia guardada' : '',
+      // Algunos turnos llegan por el link público o por WhatsApp para mostrar sus solapas.
+      origen: [1, 5, 8].includes(index) ? 'reserva_web' : [3, 6].includes(index) ? 'whatsapp' : 'panel' }
   })
   const conversaciones = [
     { id: 1401, paciente: 'Agustín Molina', clienteId: 1200, ultimaHora: '10:42', noLeido: true, mensajes: [{ de: 'paciente', texto: 'Hola, ¿tienen turno hoy?', hora: '10:40' }, { de: 'bot', texto: 'Ejemplo de respuesta preparada: podés reservar desde la página pública de Austral.', hora: '10:41' }, { de: 'paciente', texto: 'Perfecto, gracias.', hora: '10:42' }] },
