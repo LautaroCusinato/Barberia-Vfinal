@@ -1,6 +1,6 @@
 # Conversación con nombre, opciones y consultas · 09/10/2026
 
-Estado: implementada para publicar exclusivamente en QA928. Pendientes revisión
+Estado: publicada y activada exclusivamente en QA928. Pendientes revisión
 independiente y recorrido físico del dueño; los contratos simulados no cierran
 la tarea. No modifica frontend, esquema, RLS, permisos ni contratos de RPC.
 
@@ -64,3 +64,18 @@ modo anterior sin desconectar el número ni borrar historial. Después se puede
 despublicar únicamente australQa928Language. El respaldo de las tres funciones
 previas está en whatsapp-before-concierge/ y coincide con 0332df5. No revertir
 la publicación Realtime ni el frontend: pertenecen a la entrega anterior.
+
+Publicación: código 267627e; webhook 98, booking-mutation 49 y outbound 71
+ACTIVE, manteniendo verify_jwt false/false/true. Las fuentes descargadas tras
+el despliegue coinciden con ese commit. Flag de QA habilitado y conexión 6
+CONNECTED con bot, outbound y booking activos. El turno 47 del dueño sigue
+confirmado. n8n muestra Published; versión activa de australQa928Language:
+464a02eb-1398-4460-b07a-35b97a908b90. Workflows padre/panel conservan sus
+versiones, autenticación y privacidad; Evolution permanece open.
+
+Validación física pendiente: empezar con «Hola», pedir otro turno, confirmar
+nombre, elegir opciones o escribir una frase libre, revisar resumen y confirmar.
+Luego preguntar «Cómo me llamo» y «Mi turno». Verificar una sola ficha y turno,
+mensaje único y actualización de Agenda/Mensajes sin reload. No se afirma aún
+una latencia completa ni funcionamiento de audio o modificaciones/cancelaciones
+automáticas: pedir cambios/cancelación deriva a ayuda del negocio.
