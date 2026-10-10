@@ -3367,6 +3367,12 @@ input.client-search-input {
   transition: background 0.12s var(--ease), border-color 0.12s var(--ease), color 0.12s var(--ease);
 }
 
+/* Pendiente de guardar: sigue enfocable para no perder el foco, pero no acepta clics. */
+.turno-status-btn[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .turno-status-btn.confirmed:hover,
 .turno-status-btn.confirmed.active {
   background: var(--accent-soft);

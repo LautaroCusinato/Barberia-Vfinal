@@ -95,7 +95,7 @@ export default function StatusSelect({ value, onChange }) {
         type="button"
         className={`turno-status-btn confirmed ${confirmado ? 'active' : ''}`}
         onClick={() => change('confirmado')}
-        disabled={pending}
+        aria-disabled={pending}
         aria-label="Marcar como confirmado"
         title="Confirmado"
       >
@@ -107,7 +107,7 @@ export default function StatusSelect({ value, onChange }) {
         type="button"
         className={`turno-status-btn success ${atendido ? 'active' : ''}`}
         onClick={() => change('atendido')}
-        disabled={pending}
+        aria-disabled={pending}
         aria-label="Marcar como atendido"
         title="Atendido"
       >
@@ -119,7 +119,7 @@ export default function StatusSelect({ value, onChange }) {
         type="button"
         className={`turno-status-btn danger ${ausente ? 'active' : ''}`}
         onClick={() => change('no_asistio')}
-        disabled={pending}
+        aria-disabled={pending}
         aria-label="Marcar como faltó o cancelado"
         title="Faltó / cancelado"
       >
