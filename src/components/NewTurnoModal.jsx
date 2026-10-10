@@ -3,6 +3,7 @@ import { X, CalendarPlus, AlertTriangle, Search, Plus, Clock, MapPin, CheckCircl
 import { STATUS_OPTIONS, statusMeta } from './StatusSelect'
 import PhoneField from './PhoneField'
 import { FocusTrap } from './ui'
+import { clienteIdDelTurno, mismoId } from '../lib/turnoCliente'
 import {
   PREFIJO_AR,
   TELEFONO_NACIONAL_DIGITOS,
@@ -133,13 +134,11 @@ function NewTurnoModal({
       setEstado(ESTADOS_MODAL.includes(turnoExistente.estado) ? turnoExistente.estado : 'confirmado')
       setNotas(turnoExistente.motivo || '')
 
-      const matchPorId = turnoExistente.cliente_id != null
-        ? clientes.find((c) => c.id === turnoExistente.cliente_id)
-        : null
-      // Fallback solo para turnos viejos que se hayan guardado sin
-      // cliente_id (de antes de este fix): probamos por nombre.
-      const matchPorNombre = matchPorId ? null : clientes.find((c) => normalizar(c.nombre) === normalizar(turnoExistente.paciente))
-      const match = matchPorId || matchPorNombre
+      // Un turno sin ID no se vincula por nombre: puede ser un homónimo o un
+      // alias. Queda como cliente nuevo con el nombre cargado hasta que se
+      // elija una ficha o se complete el teléfono.
+      const clienteId = clienteIdDelTurno(turnoExistente)
+      const match = clienteId != null ? clientes.find((c) => mismoId(c.id, clienteId)) : null
 
       if (match) {
         setClienteElegido(match)

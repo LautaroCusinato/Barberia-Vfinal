@@ -6,18 +6,15 @@ import { formatTelefonoDisplay, formatFechaVisible } from '../lib/text'
 import { conPresencia } from '../lib/presencia'
 import { notaDelCliente } from '../lib/clientNotes'
 import { FocusTrap } from './ui'
+import { clienteIdDelTurno, mismoId } from '../lib/turnoCliente'
 
 function ClientDetailModal({ paciente, turnos, notas, onClose, onStartChat, tieneMensajes = false }) {
   const titleId = useId()
   if (!paciente) return null
 
   // El nombre del turno puede ser un alias de reserva o el de un homónimo.
-  // Los fixtures antiguos de demo usan paciente_id; Supabase usa cliente_id.
-  const esDelPaciente = (item) => {
-    const clienteId = item.cliente_id ?? item.paciente_id ?? item.clienteId
-    return clienteId != null && String(clienteId) === String(paciente.id)
-      && (item.barberia_id == null || paciente.barberia_id == null || String(item.barberia_id) === String(paciente.barberia_id))
-  }
+  const esDelPaciente = (item) => mismoId(clienteIdDelTurno(item), paciente.id)
+    && (item.barberia_id == null || paciente.barberia_id == null || String(item.barberia_id) === String(paciente.barberia_id))
 
   const turnosDelPaciente = turnos
     .filter(esDelPaciente)
