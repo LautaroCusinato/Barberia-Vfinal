@@ -177,7 +177,7 @@ function NewTurnoModal({
     : servicioSeleccionado?.duracion || turnoExistente?.duracion || DEFAULT_DURACION
   const precio = servicioSeleccionado?.precio || turnoExistente?.precio || 0
   // Solo dejamos elegir barberos que sepan hacer el servicio seleccionado
-  // (los que no tienen ninguna habilidad cargada cuentan como "hacen todo")
+  // (según barbero_servicios; sin servicios asignados no aparece)
   // Y que no tengan un día libre/bloqueo cargado para la fecha elegida.
   const barberosDisponibles = barberos.filter(
     (b) => b.activo !== false && barberoRealizaServicio(b, servicioSeleccionado) && !barberoBloqueadoFecha(bloqueos, b.id, fecha)

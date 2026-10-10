@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Baby, Brush, Check, Coffee, Droplets, Eye, Layers, Palette, Plus, Scissors, Settings, Sparkles, Tag, Trash2, UserRound, Wind } from 'lucide-react'
-import { generarIdHabilidad, normalizar, parseHabilidades, serializeHabilidades } from '../lib/text'
+import { barberoRealizaServicio, normalizar } from '../lib/text'
 import { EmptyState } from './ui'
 import { initials, textoSobre } from '../lib/avatar'
 import './operations.css'
@@ -124,6 +124,7 @@ export default function Operations({
   barberos,
   onAddBarbero,
   onUpdateBarbero,
+  onToggleServicioBarbero,
   onDeleteBarbero,
   config: _config,
 }) {
@@ -159,10 +160,14 @@ export default function Operations({
     return draft ? { ...base, ...draft } : base
   }
 
+  // Habilidades = servicios que realiza cada profesional (barbero_servicios),
+  // la misma relación que usan la reserva web y WhatsApp. Se identifican por
+  // id: renombrar un servicio ya no rompe la asignación.
   const habilidadesDisponibles = servicios
     .filter(s => s.activo !== false)
     .map(s => ({
-      id: generarIdHabilidad(s.nombre),
+      id: s.id,
+      servicio: s,
       label: s.nombre,
       Icono: iconoHabilidad(s.nombre)
     }))
@@ -246,12 +251,8 @@ export default function Operations({
     }
   }
 
-  const toggleHabilidad = (barbero, habilidadId) => {
-    const actuales = parseHabilidades(barbero.habilidades)
-    const nuevas = actuales.includes(habilidadId)
-      ? actuales.filter(h => h !== habilidadId)
-      : [...actuales, habilidadId]
-    mutateBarbero(barbero.id, 'habilidades', serializeHabilidades(nuevas))
+  const toggleHabilidad = (barbero, hab, seleccionada) => {
+    runMutation(`barbero:${barbero.id}:servicio:${hab.id}`, () => onToggleServicioBarbero(barbero.id, hab.id, !seleccionada))
   }
 
   return (
@@ -430,7 +431,7 @@ export default function Operations({
                 horario.breakDesde <= horario.desde ||
                 horario.breakHasta >= horario.hasta
               )
-              const habilidades = parseHabilidades(barbero.habilidades)
+              const habilidades = habilidadesDisponibles.filter((hab) => barberoRealizaServicio(barbero, hab.servicio)).map((hab) => hab.id)
 
               return (
                 <div className="ops-edit-row ops-edit-row--barbero management-employee-row ops-barbero-card" key={barbero.id}>
@@ -474,6 +475,7 @@ export default function Operations({
                         <div className="habilidades-tag-row">
                           {habilidadesDisponibles.map((hab) => {
                             const seleccionada = habilidades.includes(hab.id)
+                            const pendiente = pending[`barbero:${barbero.id}:servicio:${hab.id}`]
                             return (
                               <button
                                 key={hab.id}
@@ -485,8 +487,9 @@ export default function Operations({
                                     ? { background: barbero.color, borderColor: barbero.color, color: textoSobre(barbero.color) }
                                     : undefined
                                 }
-                                onClick={() => toggleHabilidad(barbero, hab.id)}
-                                disabled={pending[`barbero:${barbero.id}:habilidades`]}
+                                onClick={() => toggleHabilidad(barbero, hab, seleccionada)}
+                                disabled={pendiente}
+                                aria-busy={pendiente}
                               >
                                 <hab.Icono size={13} strokeWidth={2} className="habilidad-icon" aria-hidden="true" />
                                 {hab.label}
@@ -495,6 +498,14 @@ export default function Operations({
                             )
                           })}
                         </div>
+                      )}
+                      {habilidadesDisponibles.length > 0 && habilidades.length === 0 && (
+                        <div className="ops-help habilidades-vacias" role="status">
+                          Sin servicios asignados: no aparece para reservar ni en la agenda.
+                        </div>
+                      )}
+                      {habilidadesDisponibles.some((hab) => errors[`barbero:${barbero.id}:servicio:${hab.id}`]) && (
+                        <div className="ops-help habilidades-vacias" role="alert">No se pudo guardar la habilidad. Intentá de nuevo.</div>
                       )}
                     </div>
 

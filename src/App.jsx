@@ -218,6 +218,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   // Una clave por apertura del modal de cobro (reintentos incluidos) y un
   // candado contra envíos simultáneos.
   const cobroClaveRef = useRef(null)
+  const habilidadesWritesRef = useRef({})
   const cobroEnCursoRef = useRef(false)
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [loadedForTenant, setLoadedForTenant] = useState(null)
@@ -1493,6 +1494,49 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
   // Así, si tocás/destocás rápido una habilidad, los guardados a Supabase
   // salen siempre de a uno y en orden — nunca se pisan entre sí ni puede
   // "ganar" un click viejo por llegar después que uno nuevo.
+  // Habilidades: qué servicios realiza cada profesional. Se guardan de a una
+  // en barbero_servicios (por id), la relación que usan la reserva web y el
+  // bot; ya no se borran y recrean todas, y renombrar un servicio no las pierde.
+  const toggleServicioBarbero = async (barberoId, servicioId, habilitar) => {
+    const barbero = barberos.find((item) => item.id === barberoId)
+    const servicio = servicios.find((item) => String(item.id) === String(servicioId))
+    if (!barbero || !servicio) return false
+    const base = barbero.serviciosCargados
+      ? (barbero.servicios || [])
+      : servicios.filter((s) => barberoRealizaServicio(barbero, s)).map((s) => ({ barbero_id: barberoId, servicio_id: s.id }))
+    const sinEste = base.filter((rel) => String(rel.servicio_id ?? rel.id) !== String(servicioId))
+    const siguiente = habilitar ? [...sinEste, { barbero_id: barberoId, servicio_id: servicio.id }] : sinEste
+    const habilidadesJson = JSON.stringify(servicios.filter((s) => siguiente.some((rel) => String(rel.servicio_id) === String(s.id))).map((s) => generarIdHabilidad(s.nombre)))
+    const aplicar = (relaciones, habilidades) => setBarberos((prev) => prev.map((b) => (b.id === barberoId ? { ...b, servicios: relaciones, serviciosCargados: true, habilidades } : b)))
+    aplicar(siguiente, habilidadesJson)
+    if (!isSupabaseConfigured) return true
+
+    const key = `${barberoId}:${servicioId}`
+    const previo = habilidadesWritesRef.current[key] || Promise.resolve()
+    const tarea = previo.catch(() => {}).then(async () => {
+      const { error } = habilitar
+        ? await supabase.from('barbero_servicios').upsert({ barbero_id: barberoId, servicio_id: servicio.id }, { onConflict: 'barbero_id,servicio_id', ignoreDuplicates: true })
+        : await supabase.from('barbero_servicios').delete().eq('barbero_id', barberoId).eq('servicio_id', servicio.id)
+      if (error) {
+        setBarberos((prev) => prev.map((b) => {
+          if (b.id !== barberoId) return b
+          const actual = b.servicios || []
+          const revertido = habilitar
+            ? actual.filter((rel) => String(rel.servicio_id ?? rel.id) !== String(servicioId))
+            : [...actual.filter((rel) => String(rel.servicio_id ?? rel.id) !== String(servicioId)), { barbero_id: barberoId, servicio_id: servicio.id }]
+          return { ...b, servicios: revertido }
+        }))
+        reportError('No se pudo actualizar la habilidad del profesional', error)
+        return false
+      }
+      // Copia de compatibilidad del texto heredado; la relación manda.
+      await supabase.from('barberos').update({ habilidades: habilidadesJson }).eq('id', barberoId).eq('barberia_id', barberiaId)
+      return true
+    })
+    habilidadesWritesRef.current[key] = tarea
+    return tarea
+  }
+
   const updateBarbero = async (id, field, value) => {
     const anterior = barberos.find((barbero) => barbero.id === id)
     let confirmedValue = anterior?.[field]
@@ -2017,6 +2061,7 @@ function PanelNegocio({ barberiaId, barberiaNombre, vertical: _vertical, demoMod
                 barberos={barberos}
                 onAddBarbero={addBarbero}
                 onUpdateBarbero={updateBarbero}
+                onToggleServicioBarbero={toggleServicioBarbero}
                 onDeleteBarbero={deleteBarbero}
                 bloqueos={bloqueos}
                 onAddBloqueo={addBloqueo}
