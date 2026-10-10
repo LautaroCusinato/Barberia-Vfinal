@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import CobroModal from './CobroModal'
@@ -146,5 +146,36 @@ describe('CobroModal', () => {
     await user.click(confirmar())
     expect(onConfirm).toHaveBeenNthCalledWith(2, { monto: 4321, metodo: 'mercadopago' })
     await vi.waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+  it('mientras guarda el foco queda en el diálogo y tras un error vuelve al importe', async () => {
+    const user = userEvent.setup()
+    let rechazar
+    const onConfirm = vi.fn(() => new Promise((_, reject) => { rechazar = reject }))
+    const { monto, confirmar } = renderModal({ onConfirm })
+    const dialogo = screen.getByRole('dialog')
+    await vi.waitFor(() => expect(monto()).toHaveFocus())
+
+    await user.keyboard('{Enter}')
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(confirmar()).toBeDisabled()
+    // El control enfocado se deshabilita: el foco no puede quedar en él ni fuera del diálogo.
+    expect(dialogo).toHaveFocus()
+    await user.keyboard('{Escape}')
+    await user.tab()
+    expect(dialogo.contains(document.activeElement)).toBe(true)
+
+    await act(async () => { rechazar(new Error('red caída')) })
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(monto()).toBeEnabled()
+    expect(monto()).toHaveFocus()
+    expect(monto()).toHaveValue(9000)
+  })
+
+  it('al guardar con un clic el foco tampoco queda en el botón deshabilitado', async () => {
+    const user = userEvent.setup()
+    const onConfirm = vi.fn(() => new Promise(() => {}))
+    const { confirmar } = renderModal({ onConfirm })
+    await user.click(confirmar())
+    expect(screen.getByRole('dialog')).toHaveFocus()
   })
 })

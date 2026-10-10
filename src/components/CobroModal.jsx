@@ -15,6 +15,9 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
   const [metodo, setMetodo] = useState('efectivo')
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const formRef = useRef(null)
+  const montoRef = useRef(null)
+  const enfocarMontoRef = useRef(false)
 
   // Se inicializa una vez por turno: una recarga de servicios (realtime)
   // no debe pisar el monto que la persona ya corrigió.
@@ -33,6 +36,14 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
     setErrorMsg('')
   }, [turno, servicios])
 
+  // Tras un rechazo el importe vuelve a estar habilitado: se enfoca para
+  // corregirlo o reintentar con Enter.
+  useEffect(() => {
+    if (saving || !enfocarMontoRef.current) return
+    enfocarMontoRef.current = false
+    montoRef.current?.focus()
+  }, [saving])
+
   if (!turno) return null
 
   const valido = Number(monto) >= 0 && monto !== ''
@@ -40,6 +51,9 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
   const submit = async (e) => {
     e.preventDefault()
     if (!valido || saving) return
+    // Los controles se deshabilitan mientras guarda; sin esto el navegador
+    // suelta el foco fuera del diálogo.
+    formRef.current?.closest('[role="dialog"]')?.focus()
     setSaving(true)
     setErrorMsg('')
     try {
@@ -48,6 +62,7 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
       // Sin esto el botón quedaba en "Guardando…" para siempre. Importe y
       // método quedan como estaban para reintentar.
       setErrorMsg(error?.name === 'CobroError' && error.message ? error.message : 'No se pudo registrar el cobro. Revisá tu conexión e intentá de nuevo.')
+      enfocarMontoRef.current = true
     } finally {
       setSaving(false)
     }
@@ -70,11 +85,12 @@ function CobroModal({ turno, servicios = [], onClose, onConfirm }) {
           {turno.paciente} — {turno.motivo || 'Turno'}
         </p>
 
-        <form onSubmit={submit} aria-busy={saving}>
+        <form ref={formRef} onSubmit={submit} aria-busy={saving}>
           <div className="modal-field">
             <label className="modal-label" htmlFor={`${formId}-amount`}>Monto cobrado *</label>
             <input
               id={`${formId}-amount`}
+              ref={montoRef}
               data-autofocus
               disabled={saving}
               className="text-input"
